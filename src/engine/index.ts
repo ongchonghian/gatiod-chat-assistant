@@ -1,10 +1,10 @@
 /**
- * GATIOD Calculation Engine — extracted from AcuScore
+ * GATIOD Calculation Engine — all 9 systems extracted from AcuScore.
  * Pure TypeScript functions with no UI dependencies.
  */
 
+// ─── CVC Calculator (shared) ────────────────────────────────────────────────
 export {
-  // CVC Calculator
   combineTwoValues,
   combineTwoValuesChart,
   combineMultipleValues,
@@ -13,46 +13,14 @@ export {
   selectHighest,
 } from "./cvcCalculator.js";
 
+// ─── Upper Limb (Chapter 3) ─────────────────────────────────────────────────
 export {
-  // Types
   type Side,
   type FingerKey,
-  type LossType,
-  type DeficitType,
-  type DbeEntryType,
-  type UpperDbeCategory,
-  type UpperAnatomicalKey,
-  type ArmAmputationLevel,
-  type FingerAmputationLevel,
-  type AmputationValue,
-  type RomLookup,
-  type RomDirection,
-  type RomJoint,
-  type RomJointValue,
-  type RomValue,
-  type NerveEntry,
-  type NerveSelection,
-  type NeurologicalValue,
-  type DbeCondition,
-  type DbeSelection,
-  type DbeValue,
   type UpperLimbValue,
-  type CategoryResult,
   type UpperLimbResult,
-
-  // Schema
+  type CategoryResult,
   UpperLimbValueSchema,
-
-  // Lookup tables
-  ARM_AMPUTATION_LEVELS,
-  FINGER_AMPUTATION_LEVELS,
-  ROM_JOINTS,
-  UPPER_LIMB_NERVES,
-  DBE_CONDITIONS,
-  UPPER_ANATOMICAL_LABELS,
-  FINGER_LABELS,
-
-  // Calculation functions
   calculateUpperLimb,
   calculateAmputation,
   calculateRom,
@@ -63,4 +31,45 @@ export {
   getRomLookupTable,
   getAmputationSuppressedJoints,
   defaultUpperLimbValue,
+  ARM_AMPUTATION_LEVELS,
+  FINGER_AMPUTATION_LEVELS,
+  ROM_JOINTS,
+  UPPER_LIMB_NERVES,
+  DBE_CONDITIONS,
+  UPPER_ANATOMICAL_LABELS,
+  FINGER_LABELS,
 } from "./upperLimbData.js";
+
+// ─── Lower Limb (Chapter 4) ─────────────────────────────────────────────────
+export { type LowerLimbValue, type LowerLimbResult, calculateLowerLimb } from "./lowerLimbData.js";
+
+// ─── Spine (Chapter 5) ──────────────────────────────────────────────────────
+export {
+  type SpinalRegion,
+  type CategoryEntry as SpineCategoryEntry,
+  type SpineAssessmentResult,
+  calculateSpineAssessment,
+} from "./spineAssessmentData.js";
+
+// ─── Respiratory (Chapter 6) ────────────────────────────────────────────────
+export { type RespiratoryValue, type RespiratoryResult, calculateRespiratoryAssessment } from "./respiratoryData.js";
+
+// ─── Renal (Chapter 7) ──────────────────────────────────────────────────────
+export { type RenalValue, type RenalResult, calculateRenalAssessment } from "./renalData.js";
+
+// ─── Gastro/Digestive (Chapter 8) ───────────────────────────────────────────
+export {
+  type GastroDigestiveValue,
+  type GastroDigestiveResult,
+  calculateGastroDigestiveAssessment,
+  GASTRO_SUB_SYSTEMS,
+} from "./gastroDigestiveData.js";
+
+// ─── Hearing (Chapter 9) ────────────────────────────────────────────────────
+export { type HearingValue, type HearingResult, calculateHearing } from "./hearingData.js";
+
+// ─── CNS (Chapter 10) ──────────────────────────────────────────────────────
+export { type CnsValue, type CnsResult, calculateCns, defaultCnsValue } from "./cnsAssessmentData.js";
+
+// ─── Visual (Chapter 11) ────────────────────────────────────────────────────
+export { type VisualValue, type VisualResult, calculateVisual, defaultVisualValue } from "./visualAssessmentData.js";

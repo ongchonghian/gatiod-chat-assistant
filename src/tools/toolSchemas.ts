@@ -167,3 +167,54 @@ export const TOOL_DECLARATIONS: any[] = [
     },
   },
 ];
+
+// ─── Per-system assessment tools (Chapters 4–11) + Global CVC ───────────────
+
+
+export const MULTI_SYSTEM_TOOL_DECLARATIONS: any[] = [
+  {
+    name: "assess_lower_limb",
+    description: "Run the full GATIOD Lower Limb (Chapter 4) assessment. Takes structured findings (amputations, ROM, neurological, shortening, DBE) and returns PI% with breakdown. ONLY call after doctor confirms.",
+    parameters: { type: SchemaType.OBJECT, properties: { side: { type: SchemaType.STRING }, amputations: { type: SchemaType.OBJECT }, rom: { type: SchemaType.OBJECT }, neurological: { type: SchemaType.OBJECT }, shortening: { type: SchemaType.OBJECT }, dbe: { type: SchemaType.OBJECT } }, required: ["side", "amputations", "rom", "neurological", "shortening", "dbe"] },
+  },
+  {
+    name: "assess_spine",
+    description: "Run the GATIOD Spine (Chapter 5) assessment. Requires spinal region and category entries with diagnosis, severity, and modifiers.",
+    parameters: { type: SchemaType.OBJECT, properties: { region: { type: SchemaType.STRING, description: "cervical, thoraco_lumbar, or lumbo_sacral" }, categoryEntries: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT } } }, required: ["region", "categoryEntries"] },
+  },
+  {
+    name: "assess_respiratory",
+    description: "Run the GATIOD Respiratory (Chapter 6) assessment. Takes PFT values (FVC, FEV1, DLCO, VO2 Max), diagnosis type, and qualifiers.",
+    parameters: { type: SchemaType.OBJECT, properties: { diagnosis: { type: SchemaType.STRING }, fvc: { type: SchemaType.NUMBER, nullable: true }, fev1: { type: SchemaType.NUMBER, nullable: true }, dlco: { type: SchemaType.NUMBER, nullable: true }, vo2Max: { type: SchemaType.NUMBER, nullable: true }, asthmaRequiresDailyMaintenance: { type: SchemaType.BOOLEAN }, asthmaTransferredFromExposureOneYear: { type: SchemaType.BOOLEAN }, asthmaUnlikelyFurtherImprovement: { type: SchemaType.BOOLEAN }, asthmaMedication: { type: SchemaType.STRING, nullable: true }, asbestosisRadiologicallyDefinite: { type: SchemaType.BOOLEAN }, asbestosisProfusion: { type: SchemaType.STRING }, selectedPi: { type: SchemaType.NUMBER, nullable: true }, dyspnoea: { type: SchemaType.STRING, nullable: true } }, required: ["diagnosis"] },
+  },
+  {
+    name: "assess_renal",
+    description: "Run the GATIOD Renal (Chapter 7) assessment. Takes lab values, CKD stage, clinical severity, and modifiers.",
+    parameters: { type: SchemaType.OBJECT, properties: { sex: { type: SchemaType.STRING }, serumCreatinine: { type: SchemaType.NUMBER, nullable: true }, creatinineClearance: { type: SchemaType.NUMBER, nullable: true }, ckdStage: { type: SchemaType.NUMBER, nullable: true }, clinicalSeverity: { type: SchemaType.STRING, nullable: true }, solitaryKidney: { type: SchemaType.BOOLEAN }, provisionalAward: { type: SchemaType.BOOLEAN }, selectedPi: { type: SchemaType.NUMBER, nullable: true } }, required: ["sex"] },
+  },
+  {
+    name: "assess_gastro",
+    description: "Run the GATIOD Gastro/Digestive (Chapter 8) assessment. Takes sub-system, bracket, and PI selection.",
+    parameters: { type: SchemaType.OBJECT, properties: { subSystem: { type: SchemaType.STRING, description: "upperDigestive, colonicRectalAnal, liverBiliary, or herniation" }, colonalSubPath: { type: SchemaType.STRING }, liverBiliarySubPath: { type: SchemaType.STRING }, selectedBracketIndex: { type: SchemaType.NUMBER, nullable: true }, piPercent: { type: SchemaType.NUMBER, nullable: true }, clinicalJustification: { type: SchemaType.STRING } }, required: ["subSystem"] },
+  },
+  {
+    name: "assess_hearing",
+    description: "Run the GATIOD Hearing (Chapter 9) assessment. Path A: NID (noise-induced deafness) with better-ear logic. Path B: Injury with per-ear logic.",
+    parameters: { type: SchemaType.OBJECT, properties: { path: { type: SchemaType.STRING, description: "nid or injury" }, leftEarAhl: { type: SchemaType.NUMBER }, rightEarAhl: { type: SchemaType.NUMBER }, age: { type: SchemaType.NUMBER }, affectedEars: { type: SchemaType.STRING } }, required: ["path"] },
+  },
+  {
+    name: "assess_cns",
+    description: "Run the GATIOD CNS (Chapter 10) assessment. Section A: cerebral groups (highest-score). Section B: other neurological (CVC). Section C: paralysed limbs.",
+    parameters: { type: SchemaType.OBJECT, properties: { group1Consciousness: { type: SchemaType.OBJECT }, group1Episodic: { type: SchemaType.OBJECT }, group1Arousal: { type: SchemaType.OBJECT }, group2: { type: SchemaType.OBJECT }, group2NeuropsychologistConfirmed: { type: SchemaType.BOOLEAN }, group3: { type: SchemaType.OBJECT }, group4: { type: SchemaType.OBJECT }, group4PsychiatristConfirmed: { type: SchemaType.BOOLEAN }, olfaction: { type: SchemaType.OBJECT }, facialNerve: { type: SchemaType.OBJECT }, equilibrium: { type: SchemaType.OBJECT }, equilibriumEntConfirmed: { type: SchemaType.BOOLEAN }, swallowing: { type: SchemaType.OBJECT }, stationGait: { type: SchemaType.OBJECT }, respiration: { type: SchemaType.OBJECT }, paralysedLimbs: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } } } },
+  },
+  {
+    name: "assess_visual",
+    description: "Run the GATIOD Visual (Chapter 11) assessment. Per-eye: acuity, field loss, modifiers, conditions. Binocular: diplopia. 50% monocular cap, legal blindness = 100%.",
+    parameters: { type: SchemaType.OBJECT, properties: { leftEye: { type: SchemaType.OBJECT }, rightEye: { type: SchemaType.OBJECT }, diplopiaId: { type: SchemaType.STRING } }, required: ["leftEye", "rightEye"] },
+  },
+  {
+    name: "assess_global_cvc",
+    description: "Combine all calculated system subtotals into a global PI% using the CVC formula. Call this after two or more systems have been individually assessed.",
+    parameters: { type: SchemaType.OBJECT, properties: { systemSubtotals: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: { system: { type: SchemaType.STRING }, piPercent: { type: SchemaType.NUMBER } }, required: ["system", "piPercent"] } } }, required: ["systemSubtotals"] },
+  },
+];

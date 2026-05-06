@@ -2,6 +2,7 @@
  * GATIOD Chat Assistant — Express Server
  */
 
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { existsSync } from "fs";

@@ -11,7 +11,7 @@ import {
   type GenerateContentResult,
 } from "@google/generative-ai";
 import { SYSTEM_PROMPT } from "./systemPrompt.js";
-import { TOOL_DECLARATIONS } from "../tools/toolSchemas.js";
+import { TOOL_DECLARATIONS, MULTI_SYSTEM_TOOL_DECLARATIONS } from "../tools/toolSchemas.js";
 import { handleToolCall } from "../tools/toolHandlers.js";
 
 interface ChatSession {
@@ -56,7 +56,7 @@ export async function processChat(
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",
     systemInstruction: SYSTEM_PROMPT,
-    tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+    tools: [{ functionDeclarations: [...TOOL_DECLARATIONS, ...MULTI_SYSTEM_TOOL_DECLARATIONS] }],
   });
 
   const session = getOrCreateSession(sessionId);
