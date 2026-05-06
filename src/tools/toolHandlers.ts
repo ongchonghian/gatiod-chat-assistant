@@ -12,6 +12,11 @@ import {
   type UpperLimbValue, type FingerKey,
   // Lower Limb
   calculateLowerLimb, type LowerLimbValue,
+  LEG_AMPUTATION_LEVELS, TOE_AMPUTATION_LEVELS,
+  LOWER_LIMB_NERVES, lookupShortening,
+  LOWER_DBE_CONDITIONS, LOWER_ANATOMICAL_LABELS,
+  TOE_LABELS,
+  type ToeKey,
   // Spine
   calculateSpineAssessment, type SpinalRegion, type SpineCategoryEntry,
   // Respiratory
@@ -75,6 +80,16 @@ export function handleToolCall(name: string, args: Record<string, unknown>): Too
         return handleLookupDbe(args);
       case "search_dictionary":
         return handleSearchDictionary(args);
+
+      // ─── Lower limb lookup tools ────────────────────────────────
+      case "lookup_lower_amputation":
+        return handleLookupLowerAmputation(args);
+      case "lookup_lower_nerve":
+        return handleLookupLowerNerve(args);
+      case "lookup_shortening":
+        return handleLookupShortening(args);
+      case "lookup_lower_dbe_condition":
+        return handleLookupLowerDbe(args);
 
       default:
         return { success: false, error: `Unknown tool: ${name}` };
@@ -228,4 +243,117 @@ function handleSearchDictionary(args: Record<string, unknown>): ToolResult {
   const query = args.query as string;
   const results = searchDictionary(query);
   return { success: true, data: { query, results: results.slice(0, 5), totalMatches: results.length } };
+}
+
+// ─── Lower limb lookup tools ─────────────────────────────────────────────────
+
+function handleLookupLowerAmputation(args: Record<string, unknown>): ToolResult {
+  const type = args.type as string;
+  const level = args.level as string;
+
+  if (type === "leg") {
+    const entry = LEG_AMPUTATION_LEVELS.find((l) => l.id === level);
+    if (!entry) {
+      return {
+        success: false,
+        error: `Unknown leg amputation level: ${level}. Valid levels: ${LEG_AMPUTATION_LEVELS.map((l) => `${l.id} (${l.percent}%)`).join(", ")}`,
+      };
+    }
+    return { success: true, data: { type: "leg", label: entry.label, percent: entry.percent, disablesBelow: entry.disablesBelow } };
+  }
+
+  if (type === "toe") {
+    const toe = (args.toe as ToeKey) ?? "fourth";
+    const levels = TOE_AMPUTATION_LEVELS[toe];
+    if (!levels) {
+      return { success: false, error: `Unknown toe: ${toe}. Valid toes: great, second, third, fourth, fifth` };
+    }
+    const entry = levels.find((l) => l.id === level);
+    if (!entry) {
+      return {
+        success: false,
+        error: `Unknown amputation level '${level}' for ${TOE_LABELS[toe]}. Valid levels: ${levels.map((l) => `${l.id} (${l.percent}%)`).join(", ")}`,
+      };
+    }
+    return { success: true, data: { type: "toe", toe: TOE_LABELS[toe], label: entry.label, percent: entry.percent } };
+  }
+
+  return { success: false, error: `Unknown amputation type: ${type}. Use 'leg' or 'toe'.` };
+}
+
+function handleLookupLowerNerve(args: Record<string, unknown>): ToolResult {
+  const nerveKey = args.nerveKey as string;
+  const deficitType = args.deficitType as string;
+  const lossType = args.lossType as string;
+
+  const nerve = LOWER_LIMB_NERVES.find((n) => n.key === nerveKey);
+  if (!nerve) {
+    return {
+      success: false,
+      error: `Unknown lower limb nerve: ${nerveKey}. Valid nerves: ${LOWER_LIMB_NERVES.map((n) => n.key).join(", ")}`,
+    };
+  }
+
+  let maxPct = 0;
+  if (deficitType === "sensory") maxPct = nerve.sensoryMax ?? 0;
+  else if (deficitType === "motor") maxPct = nerve.motorMax ?? 0;
+  else maxPct = nerve.combinedMax ?? 0;
+
+  const pct = lossType === "partial" ? maxPct / 2 : maxPct;
+  return { success: true, data: { nerve: nerve.label, group: nerve.group, deficitType, lossType, maxPercent: maxPct, adjustedPercent: pct } };
+}
+
+function handleLookupShortening(args: Record<string, unknown>): ToolResult {
+  const cm = args.discrepancyCm as number;
+  if (cm === undefined || cm === null) {
+    return { success: false, error: "discrepancyCm is required. This is the measured limb length difference in cm, NOT toe amputation." };
+  }
+  const pct = lookupShortening(cm);
+  return {
+    success: true,
+    data: {
+      discrepancyCm: cm,
+      percent: pct,
+      note: "Shortening is ONLY for measured limb length discrepancy. Toe amputations are assessed under the amputations category, not shortening.",
+    },
+  };
+}
+
+function handleLookupLowerDbe(args: Record<string, unknown>): ToolResult {
+  const conditionId = args.conditionId as string;
+  const cond = LOWER_DBE_CONDITIONS.find((c) => c.id === conditionId);
+  if (!cond) {
+    const query = conditionId.toLowerCase();
+    const matches = LOWER_DBE_CONDITIONS.filter(
+      (c) => c.label.toLowerCase().includes(query) || c.description.toLowerCase().includes(query)
+    ).slice(0, 5);
+    if (matches.length > 0) {
+      return {
+        success: true,
+        data: {
+          exactMatch: false,
+          suggestions: matches.map((m) => ({
+            id: m.id,
+            label: m.label,
+            range: `${m.minPercent}–${m.maxPercent}%`,
+            anatomicalKeys: m.anatomicalKeys,
+          })),
+        },
+      };
+    }
+    return { success: false, error: `Unknown lower limb DBE condition: ${conditionId}` };
+  }
+  return {
+    success: true,
+    data: {
+      exactMatch: true,
+      id: cond.id,
+      label: cond.label,
+      category: cond.category,
+      minPercent: cond.minPercent,
+      maxPercent: cond.maxPercent,
+      description: cond.description,
+      applicableJoints: cond.anatomicalKeys.map((k) => LOWER_ANATOMICAL_LABELS[k] ?? k),
+    },
+  };
 }

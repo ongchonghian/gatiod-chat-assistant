@@ -41,7 +41,20 @@ export {
 } from "./upperLimbData.js";
 
 // ─── Lower Limb (Chapter 4) ─────────────────────────────────────────────────
-export { type LowerLimbValue, type LowerLimbResult, calculateLowerLimb } from "./lowerLimbData.js";
+export {
+  type LowerLimbValue,
+  type LowerLimbResult,
+  type ToeKey,
+  calculateLowerLimb,
+  LEG_AMPUTATION_LEVELS,
+  TOE_AMPUTATION_LEVELS,
+  LOWER_LIMB_NERVES,
+  SHORTENING_TABLE,
+  lookupShortening,
+  DBE_CONDITIONS as LOWER_DBE_CONDITIONS,
+  LOWER_ANATOMICAL_LABELS,
+  TOE_LABELS,
+} from "./lowerLimbData.js";
 
 // ─── Spine (Chapter 5) ──────────────────────────────────────────────────────
 export {

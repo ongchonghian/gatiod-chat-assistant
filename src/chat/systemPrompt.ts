@@ -90,7 +90,24 @@ Ask if the doctor wants to adjust any values or export the report.
 ## All 9 GATIOD Systems
 
 ### Lower Limb (Chapter 4) — use assess_lower_limb
-Similar to Upper Limb: amputations (leg-level or per-toe), ROM (hip, knee, ankle, subtalar, midfoot, great toe), neurological (lumbosacral plexus, peripheral), shortening (discrepancy in cm), DBE. Same rules apply: amputation suppression, ROM-nerve gate (R0017), DBE vs ROM conflict. Cap: 100% (above-knee = 100%).
+Five categories combined via CVC:
+- **Amputations**: Leg-level (above_knee 75%, below_knee 65%, syme 55%, midtarsal 35%, transmetatarsal 20%) OR per-toe. **ALL toe amputations go in the amputations object.**
+- **ROM**: Hip, knee, ankle, subtalar, great toe MTP, great toe IP, lesser toes MTP.
+- **Neurological**: Lumbosacral plexus and peripheral nerves.
+- **Shortening**: ONLY for measured limb LENGTH discrepancy in cm. NOT for amputations. If no leg-length difference, shortening = 0.
+- **DBE**: Fractures, ligament injuries, osteoarthritis.
+
+**CRITICAL — Toe Amputation Level Mapping:**
+For 2nd–5th toes: "one phalanx" = dip (1%), "two phalanges" = pip (2%), "three phalanges" / "complete loss" = mtp (3%), "with metatarsal" = metatarsal (7%).
+For great toe: "through IP" = ip (3%), "through MTP" / "two phalanges" = mtp (14%), "with 1st metatarsal" = metatarsal (23%).
+Total toe amputations capped at 20% (transmetatarsal value).
+
+**CRITICAL — Shortening vs Amputation Distinction:**
+Shortening (Chapter 4 Section IV) is EXCLUSIVELY for measured limb length discrepancy (e.g. "left leg is 2cm shorter"). The table maps cm values to PI%: 0.5cm=2%, 1cm=4%, 2cm=8%, 5cm=20%, 7.5cm+=30%. Toe amputations are NEVER entered as shortening — they are entered under amputations.
+
+Same rules apply: amputation suppression, ROM-nerve gate (R0022), DBE vs ROM conflict. Cap: 100%.
+
+**Use lookup_lower_amputation** to verify toe/leg amputation PI% values. **Use lookup_shortening** only for measured limb length discrepancies.
 
 ### Spine (Chapter 5) — use assess_spine
 Category-driven assessment. Requires spinal region (cervical, thoraco-lumbar, lumbo-sacral) and diagnosis category (fractures/dislocations, spinal cord injury, intervertebral disc, spondylolysis/spondylolisthesis, chronic pain). Multiple categories → highest award wins. Modifiers: monoparesis halving, bladder/bowel add-on. Critical gates: disc with cord involvement routes to Section 2; Section 4 pathway selection (acute traumatic vs pre-existing).

@@ -3,7 +3,7 @@
     "source_file": "gatiod.txt",
     "source_title": "A Guide to the Assessment of Traumatic Injuries and Occupational Diseases for Work Injury Compensation (Sixth Edition, July 2022)",
     "scope_note": "This plain-language dictionary was compiled from the uploaded guide. It aims to cover the document's distinct acronyms, rules, formulas, assessment methods, named diagnoses, anatomy terms, and other medically significant terminology. Repeated severity modifiers are usually defined once as shared concepts rather than repeated for every table row.",
-    "record_count": 593,
+    "record_count": 598,
     "category_counts": {
       "acronym": 39,
       "acronym / classification system": 1,
@@ -96,8 +96,8 @@
     },
     "EEG": {
       "category": "acronym",
-      "description_plain_english": "electroencephalogram, a test of the brain’s electrical activity.",
-      "how_the_guide_uses_it": "In the guide, EEG is shorthand for electroencephalogram, a test of the brain’s electrical activity throughout the guide. Knowing this abbreviation helps the reader understand test reports, table headings, and classification decisions.",
+      "description_plain_english": "electroencephalogram, a test of the brain\u2019s electrical activity.",
+      "how_the_guide_uses_it": "In the guide, EEG is shorthand for electroencephalogram, a test of the brain\u2019s electrical activity throughout the guide. Knowing this abbreviation helps the reader understand test reports, table headings, and classification decisions.",
       "chapter_or_section": "Various chapters"
     },
     "EMG": {
@@ -292,7 +292,7 @@
     },
     "light duties": {
       "category": "administrative term",
-      "description_plain_english": "Modified work that is easier or safer than the worker’s normal job while recovering.",
+      "description_plain_english": "Modified work that is easier or safer than the worker\u2019s normal job while recovering.",
       "how_the_guide_uses_it": "The guide uses light duties as a framework concept in Chapter 1. It explains how the overall compensation assessment should be interpreted and applied.",
       "chapter_or_section": "Chapter 1"
     },
@@ -334,7 +334,7 @@
     },
     "carpometacarpal joint": {
       "category": "anatomy term",
-      "description_plain_english": "The joint where the thumb’s metacarpal meets the wrist bones.",
+      "description_plain_english": "The joint where the thumb\u2019s metacarpal meets the wrist bones.",
       "how_the_guide_uses_it": "The guide uses carpometacarpal joint as the name of a specific body structure in Chapter 3. That tells the assessor exactly which bone, joint, ligament, nerve, or region is injured and which table should be used.",
       "chapter_or_section": "Chapter 3",
       "aliases": [
@@ -676,7 +676,7 @@
     },
     "central sleep apnoea syndrome": {
       "category": "central nervous system term",
-      "description_plain_english": "a disorder where breathing repeatedly stops during sleep because the brain’s breathing signals are abnormal.",
+      "description_plain_english": "a disorder where breathing repeatedly stops during sleep because the brain\u2019s breathing signals are abnormal.",
       "how_the_guide_uses_it": "The guide uses central sleep apnoea syndrome in neurological assessment in Chapter 10. It helps describe the affected brain, spinal, or nerve function and can change the final impairment class.",
       "chapter_or_section": "Chapter 10"
     },
@@ -1036,7 +1036,7 @@
     },
     "noise induced deafness early": {
       "category": "classification stage",
-      "description_plain_english": "Noise-induced hearing loss where the better ear’s average hearing loss at 1, 2, and 3 kHz is still below 50 dB. It must be notified but is not yet compensable for permanent disability.",
+      "description_plain_english": "Noise-induced hearing loss where the better ear\u2019s average hearing loss at 1, 2, and 3 kHz is still below 50 dB. It must be notified but is not yet compensable for permanent disability.",
       "how_the_guide_uses_it": "The guide uses noise induced deafness early as a severity label in Chapter 9. Once a patient is placed in this band, the matching compensation range or table value follows.",
       "chapter_or_section": "Chapter 9"
     },
@@ -1088,10 +1088,10 @@
       "how_the_guide_uses_it": "The guide uses aspiration in digestive-system assessment in Chapter 8. It helps identify the diagnosis, the part of the gut or hepatobiliary system involved, or the severity features that drive the rating.",
       "chapter_or_section": "Chapter 8"
     },
-    "Barrett’s oesophagus": {
+    "Barrett\u2019s oesophagus": {
       "category": "digestive diagnosis or method",
       "description_plain_english": "a change in the lining of the lower oesophagus caused by long-term reflux, with increased cancer risk.",
-      "how_the_guide_uses_it": "The guide uses Barrett’s oesophagus in digestive-system assessment in Chapter 8. It helps identify the diagnosis, the part of the gut or hepatobiliary system involved, or the severity features that drive the rating.",
+      "how_the_guide_uses_it": "The guide uses Barrett\u2019s oesophagus in digestive-system assessment in Chapter 8. It helps identify the diagnosis, the part of the gut or hepatobiliary system involved, or the severity features that drive the rating.",
       "chapter_or_section": "Chapter 8"
     },
     "diffuse oesophageal spasm": {
@@ -1306,7 +1306,7 @@
     },
     "Kayser-Fleischer rings": {
       "category": "digestive or hepatobiliary term",
-      "description_plain_english": "copper-related rings in the eyes seen in Wilson’s disease.",
+      "description_plain_english": "copper-related rings in the eyes seen in Wilson\u2019s disease.",
       "how_the_guide_uses_it": "The guide uses Kayser-Fleischer rings in digestive-system assessment in Chapter 8. It helps identify the diagnosis, the part of the gut or hepatobiliary system involved, or the severity features that drive the rating.",
       "chapter_or_section": "Chapter 8"
     },
@@ -1793,14 +1793,14 @@
     },
     "Combined Values Chart formula": {
       "category": "formula",
-      "description_plain_english": "When A and B are written as decimal fractions, the combined value is A + B × (1 − A). When percentages are used, it is equivalent to A + B × (100 − A) / 100.",
+      "description_plain_english": "When A and B are written as decimal fractions, the combined value is A + B \u00d7 (1 \u2212 A). When percentages are used, it is equivalent to A + B \u00d7 (100 \u2212 A) / 100.",
       "how_the_guide_uses_it": "This is the combining rule behind the Combined Values Chart. It merges two percentages into one total that is always less than simple arithmetic addition, so combined disabilities are not overstated.",
       "chapter_or_section": "Appendix 1",
-      "formula_or_rule": "combined value = A + B(1 − A), with A and B as decimal equivalents of impairment ratings"
+      "formula_or_rule": "combined value = A + B(1 \u2212 A), with A and B as decimal equivalents of impairment ratings"
     },
     "compensation formula for permanent or current incapacity": {
       "category": "formula",
-      "description_plain_english": "Compensation is based on three things multiplied together: the incapacity percentage, an age factor, and the worker’s monthly salary.",
+      "description_plain_english": "Compensation is based on three things multiplied together: the incapacity percentage, an age factor, and the worker\u2019s monthly salary.",
       "how_the_guide_uses_it": "The guide uses this formula to convert the assessed percentage of permanent or current incapacity into the amount of compensation payable under the work injury framework.",
       "chapter_or_section": "Chapter 1"
     },
@@ -2402,13 +2402,13 @@
     },
     "abduction": {
       "category": "movement term",
-      "description_plain_english": "Moving a limb away from the body’s midline.",
+      "description_plain_english": "Moving a limb away from the body\u2019s midline.",
       "how_the_guide_uses_it": "The guide uses abduction as a named joint movement in Chapters 2 to 4. Loss or fixation of this movement changes the measured range and therefore the incapacity percentage.",
       "chapter_or_section": "Chapters 2 to 4"
     },
     "adduction": {
       "category": "movement term",
-      "description_plain_english": "Moving a limb toward the body’s midline.",
+      "description_plain_english": "Moving a limb toward the body\u2019s midline.",
       "how_the_guide_uses_it": "The guide uses adduction as a named joint movement in Chapters 2 to 4. Loss or fixation of this movement changes the measured range and therefore the incapacity percentage.",
       "chapter_or_section": "Chapters 2 to 4"
     },
@@ -2432,7 +2432,7 @@
     },
     "external rotation": {
       "category": "movement term",
-      "description_plain_english": "Turning a limb outward away from the body’s centre.",
+      "description_plain_english": "Turning a limb outward away from the body\u2019s centre.",
       "how_the_guide_uses_it": "The guide uses external rotation as a named joint movement in Chapters 2 to 4. Loss or fixation of this movement changes the measured range and therefore the incapacity percentage.",
       "chapter_or_section": "Chapters 2 to 4"
     },
@@ -2450,7 +2450,7 @@
     },
     "internal rotation": {
       "category": "movement term",
-      "description_plain_english": "Turning a limb inward toward the body’s centre.",
+      "description_plain_english": "Turning a limb inward toward the body\u2019s centre.",
       "how_the_guide_uses_it": "The guide uses internal rotation as a named joint movement in Chapters 2 to 4. Loss or fixation of this movement changes the measured range and therefore the incapacity percentage.",
       "chapter_or_section": "Chapters 2 to 4"
     },
@@ -2672,7 +2672,7 @@
     },
     "acidification test": {
       "category": "renal term",
-      "description_plain_english": "a test of the kidney’s ability to acidify urine.",
+      "description_plain_english": "a test of the kidney\u2019s ability to acidify urine.",
       "how_the_guide_uses_it": "The guide uses acidification test in kidney assessment in Chapter 7. It helps identify kidney function, disease stage, treatment burden, or complications that affect the renal rating.",
       "chapter_or_section": "Chapter 7"
     },
@@ -2708,7 +2708,7 @@
     },
     "dilution test": {
       "category": "renal term",
-      "description_plain_english": "a test of the kidney’s ability to dilute urine appropriately.",
+      "description_plain_english": "a test of the kidney\u2019s ability to dilute urine appropriately.",
       "how_the_guide_uses_it": "The guide uses dilution test in kidney assessment in Chapter 7. It helps identify kidney function, disease stage, treatment burden, or complications that affect the renal rating.",
       "chapter_or_section": "Chapter 7"
     },
@@ -2925,7 +2925,7 @@
     "nearest-5-percent rule": {
       "category": "rounding rule",
       "description_plain_english": "Some chapter ratings are expressed to the nearest 5%.",
-      "how_the_guide_uses_it": "After a class-based percentage is worked out in these chapters, the result is rounded to the nearest 5% so the final award fits the guide’s rating scale.",
+      "how_the_guide_uses_it": "After a class-based percentage is worked out in these chapters, the result is rounded to the nearest 5% so the final award fits the guide\u2019s rating scale.",
       "chapter_or_section": "Chapters 6 and 7"
     },
     "14-hour noise-free rule": {
@@ -2955,13 +2955,13 @@
     "asbestosis or silicosis minimum 10% rule": {
       "category": "rule",
       "description_plain_english": "A worker with radiologically definite asbestosis or silicosis can receive at least 10% incapacity even if symptoms are absent and pulmonary function looks normal.",
-      "how_the_guide_uses_it": "This rule sets a floor of 10% once the guide’s stated criteria for this dust-related lung disease are met, so qualifying cases are not rated below that level.",
+      "how_the_guide_uses_it": "This rule sets a floor of 10% once the guide\u2019s stated criteria for this dust-related lung disease are met, so qualifying cases are not rated below that level.",
       "chapter_or_section": "Chapter 6"
     },
     "asbestosis or silicosis profusion threshold": {
       "category": "rule",
       "description_plain_english": "For an award in asbestosis or silicosis, the x-ray profusion should be at least 1/1 on the ILO classification.",
-      "how_the_guide_uses_it": "This rule requires the chest-imaging profusion score to reach the guide’s threshold before the disease is treated as compensable under that table.",
+      "how_the_guide_uses_it": "This rule requires the chest-imaging profusion score to reach the guide\u2019s threshold before the disease is treated as compensable under that table.",
       "chapter_or_section": "Chapter 6"
     },
     "better-ear rule for noise induced deafness": {
@@ -2979,7 +2979,7 @@
     "both-eyes visual cap rule": {
       "category": "rule",
       "description_plain_english": "When the percentages for both eyes are added together, the total should not exceed 100%.",
-      "how_the_guide_uses_it": "This cap prevents the final visual award for both eyes together from exceeding the chapter’s maximum allowed value, even if several visual deficits are present.",
+      "how_the_guide_uses_it": "This cap prevents the final visual award for both eyes together from exceeding the chapter\u2019s maximum allowed value, even if several visual deficits are present.",
       "chapter_or_section": "Chapter 11"
     },
     "bronchodilator-only occupational asthma award": {
@@ -3015,7 +3015,7 @@
     "hearing compensation threshold rule": {
       "category": "rule",
       "description_plain_english": "Compensation is payable only when the average hearing loss at 1, 2, and 3 kHz reaches 50 dB or more.",
-      "how_the_guide_uses_it": "This threshold rule means hearing loss must reach the guide’s minimum compensable level before any award is made.",
+      "how_the_guide_uses_it": "This threshold rule means hearing loss must reach the guide\u2019s minimum compensable level before any award is made.",
       "chapter_or_section": "Chapter 9"
     },
     "hearing stabilisation rule": {
@@ -3051,13 +3051,13 @@
     "low-dose inhaled steroid occupational asthma award": {
       "category": "rule",
       "description_plain_english": "Occupational asthma requiring low-dose inhaled steroids may be rated at 10%.",
-      "how_the_guide_uses_it": "This rule assigns occupational asthma to the guide’s corresponding medication-based class when control requires low-dose inhaled steroid treatment.",
+      "how_the_guide_uses_it": "This rule assigns occupational asthma to the guide\u2019s corresponding medication-based class when control requires low-dose inhaled steroid treatment.",
       "chapter_or_section": "Chapter 6"
     },
     "most-severe-cerebral-category rule": {
       "category": "rule",
       "description_plain_english": "For brain-related impairment, the guide first looks across four cerebral-function areas and takes the most severe one as the cerebral impairment rating.",
-      "how_the_guide_uses_it": "In the cerebral-function tables, the assessor uses the category that best matches the person’s most severe accepted deficit, rather than stacking overlapping cerebral categories on top of one another.",
+      "how_the_guide_uses_it": "In the cerebral-function tables, the assessor uses the category that best matches the person\u2019s most severe accepted deficit, rather than stacking overlapping cerebral categories on top of one another.",
       "chapter_or_section": "Chapter 10"
     },
     "MRI requirement for back injuries": {
@@ -3209,8 +3209,8 @@
     },
     "central nervous system 5-step sequence": {
       "category": "rule sequence",
-      "description_plain_english": "The guide’s step-by-step order for rating cerebral impairment.",
-      "how_the_guide_uses_it": "For central nervous system injuries, the guide uses a five-step workflow: identify the main neurological problem, choose the matching category, rate each relevant function, avoid counting the same deficit twice, and then combine the accepted values using the guide’s method.",
+      "description_plain_english": "The guide\u2019s step-by-step order for rating cerebral impairment.",
+      "how_the_guide_uses_it": "For central nervous system injuries, the guide uses a five-step workflow: identify the main neurological problem, choose the matching category, rate each relevant function, avoid counting the same deficit twice, and then combine the accepted values using the guide\u2019s method.",
       "chapter_or_section": "Chapter 10",
       "aliases": [
         "CNS 5-step sequence"
@@ -3246,7 +3246,7 @@
         "Test the palmar side of the finger using two-point discrimination.",
         "Identify which digital nerve or nerves are affected.",
         "Classify the sensory loss as total, partial, or none based on the test distance.",
-        "Use the guide’s finger maps and values.",
+        "Use the guide\u2019s finger maps and values.",
         "For partial sensory loss, give 50% of the value for total sensory loss."
       ]
     },
@@ -3259,7 +3259,7 @@
         "Identify the affected nerve or nerve plexus.",
         "Assess sensory loss and motor loss.",
         "Decide whether each loss is partial or total.",
-        "Use the guide’s maximum values for that nerve.",
+        "Use the guide\u2019s maximum values for that nerve.",
         "Give a proportion of the maximum; for partial loss that interferes with activity, 50% of the listed value can be used."
       ]
     },
@@ -3423,7 +3423,7 @@
     },
     "aphakia": {
       "category": "visual term",
-      "description_plain_english": "absence of the eye’s natural lens.",
+      "description_plain_english": "absence of the eye\u2019s natural lens.",
       "how_the_guide_uses_it": "The guide uses aphakia in eye and visual-function assessment in Chapter 11. It helps describe what part of sight is affected, how it is tested, or how severity is classified.",
       "chapter_or_section": "Chapter 11"
     },
@@ -3459,7 +3459,7 @@
     },
     "cataract": {
       "category": "visual term",
-      "description_plain_english": "clouding of the eye’s lens.",
+      "description_plain_english": "clouding of the eye\u2019s lens.",
       "how_the_guide_uses_it": "The guide uses cataract in eye and visual-function assessment in Chapter 11. It helps describe what part of sight is affected, how it is tested, or how severity is classified.",
       "chapter_or_section": "Chapter 11"
     },
@@ -3591,7 +3591,7 @@
     },
     "loss of accommodation": {
       "category": "visual term",
-      "description_plain_english": "loss of the eye’s focusing ability for near vision.",
+      "description_plain_english": "loss of the eye\u2019s focusing ability for near vision.",
       "how_the_guide_uses_it": "The guide uses loss of accommodation in eye and visual-function assessment in Chapter 11. It helps describe what part of sight is affected, how it is tested, or how severity is classified.",
       "chapter_or_section": "Chapter 11"
     },
@@ -3639,7 +3639,7 @@
     },
     "pupillary abnormality": {
       "category": "visual term",
-      "description_plain_english": "an abnormality in the pupil’s size, shape, or reaction.",
+      "description_plain_english": "an abnormality in the pupil\u2019s size, shape, or reaction.",
       "how_the_guide_uses_it": "The guide uses pupillary abnormality in eye and visual-function assessment in Chapter 11. It helps describe what part of sight is affected, how it is tested, or how severity is classified.",
       "chapter_or_section": "Chapter 11"
     },
@@ -3687,7 +3687,7 @@
     },
     "ckd-stage": {
       "category": "renal term",
-      "description_plain_english": "Chronic Kidney Disease staging from 1 (mildest — structural damage with normal GFR ≥ 90 mL/min) to 5 (kidney failure, GFR < 15 mL/min).",
+      "description_plain_english": "Chronic Kidney Disease staging from 1 (mildest \u2014 structural damage with normal GFR \u2265 90 mL/min) to 5 (kidney failure, GFR < 15 mL/min).",
       "how_the_guide_uses_it": "Under GATIOD Chapter 7, CKD stage is used together with biological investigations and clinical signs to determine the governing severity class for renal permanent impairment. When CKD stage, serum creatinine, and creatinine clearance point to different impairment classes, the higher class governs.",
       "chapter_or_section": "Chapter 7",
       "aliases": [
@@ -3695,6 +3695,30 @@
         "CKD stage",
         "chronic kidney disease stage"
       ]
+    },
+    "toe amputation": {
+      "category": "rule",
+      "description_plain_english": "Loss of a toe is assessed under the Amputations category of the Lower Limb (Chapter 4, Section II). For 2nd to 5th toes: one phalanx (DIP level) = 1%, two phalanges (PIP level) = 2%, three phalanges (MTP level) = 3%, with metatarsal = 7%. For the great toe: through IP = 3%, through MTP = 14%, with 1st metatarsal = 23%. Total toe amputations are capped at 20% (the transmetatarsal value). Toe amputations are NEVER assessed under Shortening.",
+      "how_the_guide_uses_it": "In the Lower Limb assessment, toe amputations are placed in the amputations stream. The shortening stream is exclusively for measured limb length discrepancy in centimetres. Confusing these two streams produces incorrect PI% values.",
+      "chapter_or_section": "Chapter 4, Section II"
+    },
+    "lower limb shortening": {
+      "category": "rule",
+      "description_plain_english": "Shortening of the lower limb (Chapter 4, Section IV) is assessed ONLY when there is a measured limb length discrepancy in centimetres (e.g. one leg is shorter than the other). The table maps: 0.5cm = 2%, 1cm = 4%, 1.5cm = 6%, 2cm = 8%, 3cm = 12%, 5cm = 20%, 7.5cm or more = 30%. This stream is NOT used for toe or leg amputations, which have their own separate amputation table.",
+      "how_the_guide_uses_it": "The assessor measures the actual leg length difference in centimetres. If no limb length discrepancy is present, shortening = 0%. Amputations (including toe amputations) are assessed separately under the amputations stream.",
+      "chapter_or_section": "Chapter 4, Section IV"
+    },
+    "lower limb amputation": {
+      "category": "rule",
+      "description_plain_english": "Lower limb amputations (Chapter 4, Section II) include both leg-level and toe-level amputations. Leg-level: above knee = 75%, below knee = 65%, Syme (at ankle) = 55%, midtarsal (Chopart) = 35%, transmetatarsal = 20%. Toe-level: assessed per individual toe with specific PI% values based on how much of the toe is lost. Proximal amputations suppress distal structures.",
+      "how_the_guide_uses_it": "When a leg-level amputation is present, all toe values must be none because the proximal amputation absorbs the distal loss. Toe amputations are combined additively but capped at 20% (transmetatarsal value).",
+      "chapter_or_section": "Chapter 4, Section II"
+    },
+    "phalanx level mapping for toes": {
+      "category": "rule",
+      "description_plain_english": "When a doctor describes toe loss by number of phalanges rather than by joint level, use this mapping: one phalanx = DIP level, two phalanges = PIP level, three phalanges (complete toe) = MTP level (through the metatarsophalangeal joint). For the great toe which has only two phalanges: one phalanx = IP level, two phalanges (complete great toe) = MTP level.",
+      "how_the_guide_uses_it": "This mapping is essential for correctly translating clinical descriptions into the amputation level IDs used by the assessment tool. Getting this wrong leads to incorrect PI% calculations.",
+      "chapter_or_section": "Chapter 4, Section II"
     }
   }
 }

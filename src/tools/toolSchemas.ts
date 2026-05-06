@@ -166,6 +166,54 @@ export const TOOL_DECLARATIONS: any[] = [
       required: ["query"],
     },
   },
+  {
+    name: "lookup_lower_amputation",
+    description: "Look up the PI% for a lower limb amputation level (leg or toe). Use to verify correct amputation PI% before calling assess_lower_limb.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        type: { type: SchemaType.STRING, enum: ["leg", "toe"], description: "Whether leg-level or toe-level amputation." },
+        level: { type: SchemaType.STRING, description: "Amputation level id. Leg: 'above_knee', 'below_knee', 'syme', 'midtarsal', 'transmetatarsal'. Toe: 'dip', 'pip', 'mtp', 'metatarsal' (great toe uses 'ip' instead of 'dip'/'pip')." },
+        toe: { type: SchemaType.STRING, description: "For toe amputations: 'great', 'second', 'third', 'fourth', or 'fifth'." },
+      },
+      required: ["type", "level"],
+    },
+  },
+  {
+    name: "lookup_lower_nerve",
+    description: "Look up the maximum PI% for a lower limb nerve deficit.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        nerveKey: { type: SchemaType.STRING, description: "Lower limb nerve identifier." },
+        deficitType: { type: SchemaType.STRING, enum: ["sensory", "motor", "combined"] },
+        lossType: { type: SchemaType.STRING, enum: ["total", "partial"] },
+      },
+      required: ["nerveKey", "deficitType", "lossType"],
+    },
+  },
+  {
+    name: "lookup_shortening",
+    description: "Look up the PI% for a lower limb LENGTH discrepancy. This is ONLY for measured leg-length differences in cm, NOT for amputations.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        discrepancyCm: { type: SchemaType.NUMBER, description: "Limb length discrepancy in centimetres." },
+      },
+      required: ["discrepancyCm"],
+    },
+  },
+  {
+    name: "lookup_lower_dbe_condition",
+    description: "Look up a lower limb DBE condition's PI% and applicable anatomical keys.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        conditionId: { type: SchemaType.STRING, description: "DBE condition identifier or partial label to search." },
+      },
+      required: ["conditionId"],
+    },
+  },
 ];
 
 // ─── Per-system assessment tools (Chapters 4–11) + Global CVC ───────────────
@@ -174,8 +222,105 @@ export const TOOL_DECLARATIONS: any[] = [
 export const MULTI_SYSTEM_TOOL_DECLARATIONS: any[] = [
   {
     name: "assess_lower_limb",
-    description: "Run the full GATIOD Lower Limb (Chapter 4) assessment. Takes structured findings (amputations, ROM, neurological, shortening, DBE) and returns PI% with breakdown. ONLY call after doctor confirms.",
-    parameters: { type: SchemaType.OBJECT, properties: { side: { type: SchemaType.STRING }, amputations: { type: SchemaType.OBJECT }, rom: { type: SchemaType.OBJECT }, neurological: { type: SchemaType.OBJECT }, shortening: { type: SchemaType.OBJECT }, dbe: { type: SchemaType.OBJECT } }, required: ["side", "amputations", "rom", "neurological", "shortening", "dbe"] },
+    description: "Run the full GATIOD Lower Limb (Chapter 4) assessment. Takes structured findings and returns PI% with breakdown. ONLY call after doctor confirms. CRITICAL: Toe amputations go in the 'amputations' object, NOT 'shortening'. Shortening is ONLY for measured limb length discrepancy in cm.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        side: {
+          type: SchemaType.STRING,
+          enum: ["left", "right"],
+          description: "Which lower limb is being assessed.",
+        },
+        amputations: {
+          type: SchemaType.OBJECT,
+          description: "Amputation findings. legLevel is 'none' or a level id. Each toe is 'none' or a phalanx level id. Toe amputation PI% values: Great toe: ip=3%, mtp=14%, metatarsal=23%. 2nd-5th toes: dip=1%, pip=2%, mtp=3%, metatarsal=7%. Map 'three phalanges' to 'mtp', 'two phalanges' to 'pip', 'one phalanx' to 'dip'.",
+          properties: {
+            legLevel: {
+              type: SchemaType.STRING,
+              description: "Leg-level amputation: 'none', 'above_knee' (75%), 'below_knee' (65%), 'syme' (55%), 'midtarsal' (35%), or 'transmetatarsal' (20%).",
+            },
+            toes: {
+              type: SchemaType.OBJECT,
+              description: "Per-toe amputation levels. Each value is 'none' or a level id: 'dip' (one phalanx), 'pip' (two phalanges), 'mtp' (three phalanges/all phalanges), 'metatarsal' (with metatarsal bone). Great toe uses: 'ip', 'mtp', 'metatarsal'.",
+              properties: {
+                great: { type: SchemaType.STRING, description: "Great toe: 'none', 'ip' (3%), 'mtp' (14%), 'metatarsal' (23%)." },
+                second: { type: SchemaType.STRING, description: "2nd toe: 'none', 'dip' (1%), 'pip' (2%), 'mtp' (3%), 'metatarsal' (7%)." },
+                third: { type: SchemaType.STRING, description: "3rd toe: 'none', 'dip' (1%), 'pip' (2%), 'mtp' (3%), 'metatarsal' (7%)." },
+                fourth: { type: SchemaType.STRING, description: "4th toe: 'none', 'dip' (1%), 'pip' (2%), 'mtp' (3%), 'metatarsal' (7%)." },
+                fifth: { type: SchemaType.STRING, description: "5th toe: 'none', 'dip' (1%), 'pip' (2%), 'mtp' (3%), 'metatarsal' (7%)." },
+              },
+              required: ["great", "second", "third", "fourth", "fifth"],
+            },
+          },
+          required: ["legLevel", "toes"],
+        },
+        rom: {
+          type: SchemaType.OBJECT,
+          description: "Range of Motion findings. Each joint has isAnkylosed flag and measurements mapping direction keys to angles in degrees.",
+          properties: {
+            joints: {
+              type: SchemaType.OBJECT,
+              description: "Map of joint keys to ROM values. Keys: hip, knee, ankle, subtalar, great_toe_mtp, great_toe_ip, lesser_toes_mtp.",
+            },
+          },
+          required: ["joints"],
+        },
+        neurological: {
+          type: SchemaType.OBJECT,
+          description: "Neurological findings.",
+          properties: {
+            selectedNerves: {
+              type: SchemaType.ARRAY,
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  nerveKey: { type: SchemaType.STRING, description: "Nerve identifier: lumbosacral_l3_s1, femoral, obturator, superior_gluteal, inferior_gluteal, lateral_femoral_cutaneous, sciatic, common_peroneal, superficial_peroneal, deep_peroneal, tibial, sural, medial_plantar, lateral_plantar." },
+                  deficitType: { type: SchemaType.STRING, enum: ["sensory", "motor", "combined"] },
+                  lossType: { type: SchemaType.STRING, enum: ["total", "partial"] },
+                },
+                required: ["nerveKey", "deficitType", "lossType"],
+              },
+            },
+            romFromNerve: {
+              type: SchemaType.BOOLEAN,
+              description: "If true, ROM restrictions are attributed to nerve lesion and ROM stream is excluded (Rule R0022).",
+            },
+          },
+          required: ["selectedNerves", "romFromNerve"],
+        },
+        shortening: {
+          type: SchemaType.OBJECT,
+          description: "Lower limb LENGTH discrepancy ONLY. This is NOT for amputations — toe/leg amputations go in 'amputations'. Shortening requires a measured leg-length difference in cm (e.g. one leg is 2cm shorter than the other). If no limb length discrepancy, set discrepancyCm to 0.",
+          properties: {
+            discrepancyCm: {
+              type: SchemaType.NUMBER,
+              description: "Measured limb length discrepancy in centimetres. 0 if no shortening. Table: 0.5cm=2%, 1cm=4%, 2cm=8%, 3cm=12%, 5cm=20%, 7.5cm+=30%.",
+            },
+          },
+          required: ["discrepancyCm"],
+        },
+        dbe: {
+          type: SchemaType.OBJECT,
+          description: "Diagnosis-Based Estimate conditions (fractures, ligament injuries, osteoarthritis).",
+          properties: {
+            selectedConditions: {
+              type: SchemaType.ARRAY,
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  conditionId: { type: SchemaType.STRING, description: "DBE condition identifier from Chapter 4 Section V tables." },
+                  selectedAnatomicalKey: { type: SchemaType.STRING, description: "Target anatomical structure." },
+                  selectedPercent: { type: SchemaType.NUMBER, description: "Selected PI% within condition's allowed range." },
+                },
+                required: ["conditionId", "selectedPercent"],
+              },
+            },
+          },
+          required: ["selectedConditions"],
+        },
+      },
+      required: ["side", "amputations", "rom", "neurological", "shortening", "dbe"],
+    },
   },
   {
     name: "assess_spine",
