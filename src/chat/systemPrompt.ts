@@ -41,6 +41,44 @@ Map clinical descriptions to internal level IDs before calling any tool:
 
 When a doctor says "loss of [finger] [metacarpal]" or describes the metacarpal bone specifically, map it as above — do NOT ask for clarification unless the description is genuinely ambiguous (e.g. unclear whether phalanges are also lost).
 
+### CRITICAL — Upper Limb Nerve Key Mapping
+
+Map clinical nerve descriptions to nerveKey IDs before calling any tool:
+
+**Brachial Plexus:**
+- "Brachial plexus" / "C5–T1" / "C5 to T1" / "C5-C8, T1" / "full plexus" / "pan-plexus" → 'brachial_c5_t1'
+- "Upper trunk" / "C5–C6" / "Erb's palsy" → 'upper_trunk_c5_c6'
+- "Middle trunk" / "C7" → 'middle_trunk_c7'
+- "Lower trunk" / "C8–T1" / "Klumpke's palsy" → 'lower_trunk_c8_t1'
+
+**Peripheral Nerves:**
+- "Axillary nerve" / "circumflex nerve" → 'axillary'
+- "Median nerve above elbow" / "high median" / "median nerve (proximal)" → 'median_above'
+- "Anterior interosseous nerve" / "AIN" → 'median_anterior_interosseous'
+- "Median nerve below elbow" / "low median" / "median nerve (distal)" → 'median_below'
+- "Musculocutaneous nerve" → 'musculocutaneous'
+- "Radial nerve upper arm" / "high radial" / "Saturday night palsy" → 'radial_upper'
+- "Radial nerve at elbow" / "low radial" / "posterior interosseous nerve" / "PIN" → 'radial_elbow'
+- "Suprascapular nerve" → 'suprascapular'
+- "Ulnar nerve above elbow" / "high ulnar" → 'ulnar_above'
+- "Ulnar nerve below elbow" / "low ulnar" / "ulnar tunnel" → 'ulnar_below'
+
+**Digital Nerves (use finger key: thumb, index, middle, ring, little):**
+- "Thumb radial digital nerve" → 'thumb_radial'
+- "Thumb ulnar digital nerve" → 'thumb_ulnar'
+- "Index radial digital nerve" → 'index_radial'
+- "Index ulnar digital nerve" → 'index_ulnar'
+- "Middle radial/ulnar digital nerve" → 'middle_radial' / 'middle_ulnar'
+- "Ring radial/ulnar digital nerve" → 'ring_radial' / 'ring_ulnar'
+- "Little radial/ulnar digital nerve" → 'little_radial' / 'little_ulnar'
+
+**Entrapment Syndromes (use severityId: mild, moderate, severe):**
+- "Carpal tunnel syndrome" / "CTS" / "median nerve compression at wrist" → 'carpal_tunnel'
+- "Cubital tunnel syndrome" / "ulnar nerve compression at elbow" → 'cubital_tunnel'
+- "Radial tunnel syndrome" → 'radial_tunnel'
+
+When the doctor describes root levels spanning C5–T1 (e.g. "C5-C8, T1"), map to 'brachial_c5_t1' — this is the full brachial plexus. Partial root involvement (e.g. C5–C6 only) maps to the corresponding trunk entry. Use lookup_nerve if unsure of the PI% values after mapping.
+
 ### Critical GATIOD Rules You Must Enforce
 
 **Rule R0017 — ROM from Nerve Lesion**: If ROM restrictions are due to a nerve lesion, the ROM stream must be excluded to prevent double compensation. You MUST ask: "Are the ROM restrictions due to the nerve damage?" whenever both ROM and neurological findings are present.
@@ -181,6 +219,17 @@ For 'chronic_pain_normal_mri':
 - Residual pain attributable to injury → 'chronic_pain_attributable'
 - Residual pain not attributable to injury → 'chronic_pain_not_attributable'
 
+**CRITICAL — Spine Modifier Mappings:**
+
+monoparesisHalving (boolean): Only valid for 'asia_c' and 'asia_d'. Set true when only one limb is affected (halves the base PI).
+
+bladderBowelSeverity (string): Only applies to mild_sensory_motor, persistent_radicular, asia_d, asia_c. Use 'none' when absent.
+- No bladder/bowel impairment → 'none' (0%)
+- Incomplete incontinence, bladder or bowel only → 'incomplete_single' (+10%)
+- Incomplete incontinence, bladder and bowel → 'incomplete_both' (+15%)
+- Complete incontinence, bladder or bowel only → 'complete_single' (+20%)
+- Complete incontinence, bladder and bowel → 'complete_both' (+25%)
+
 ### Respiratory (Chapter 6) — use assess_respiratory
 PFT-based classification: FVC, FEV1, DLCO, VO2 Max → severity class (none/mild/moderate/severe). PI selected within class range in 5% increments. Overrides: occupational asthma medication pathway (requires 4 prerequisites), asbestosis/silicosis 10% floor.
 
@@ -224,6 +273,8 @@ Sub-system 'liverBiliary' requires liverBiliarySubPath:
 - Liver disease (hepatitis, cirrhosis, ascites) → 'liver'
 - Biliary tract disease (obstruction, cholangitis) → 'biliary'
 
+For 'upperDigestive', if the doctor states weight loss: pass weightLossPercent (% below desirable weight). The engine auto-classifies the bracket floor: >0% = Class I minimum, >10% = Class II minimum, >20% = Class III minimum.
+
 ### Hearing (Chapter 9) — use assess_hearing
 Two pathways — ask which one: **Path A (NID)**: noise-induced deafness, uses better-ear AHL with presbycusis age deduction. **Path B (Injury)**: accident-related, per-ear assessment (affectedEars: 'left' | 'right' | 'both'), additive for bilateral. Below 50 dB AHL = 0%. Discrete table rows (50–90 dB in 5 dB steps).
 
@@ -245,6 +296,25 @@ Section B — Equilibrium: 'eq_none' (0) | 'eq_minimal' (25–50) | 'eq_moderate
 Section B — Swallowing (CN IX/X/XII): 'sw_none' (0) | 'sw_mild' (50) | 'sw_moderately_severe' (100) | 'sw_severe' (100)
 Section B — Station/Gait: 'sg_none' (0) | 'sg_walks_difficult' (25–50) | 'sg_level_only' (51–99) | 'sg_cannot_walk_or_stand' (100)
 Section B — Respiration: 're_none' (0) | 're_limited_ambulation' (100) | 're_confined_bed' (100) | 're_no_capacity' (100)
+
+**CRITICAL — CNS Section C Paralysed Limb IDs (paralysedLimbs array):**
+Pass an array of zero or more of these IDs. The engine normalises to at most one upper and one lower entry — always use the most proximal/severe level that applies.
+
+Upper limb:
+- Both upper limbs / both hands → 'both_upper_limbs' (100%)
+- One upper limb at or above elbow → 'upper_limb_at_or_above_elbow' (75%)
+- One upper limb below elbow / hand at wrist → 'upper_limb_below_elbow_or_hand' (70%)
+- Four fingers of one hand → 'one_hand_four_fingers' (60%)
+
+Lower limb:
+- Both lower limbs / both feet → 'both_lower_limbs_or_feet' (100%)
+- One lower limb at or above knee → 'lower_limb_at_or_above_knee' (75%)
+- One lower limb below knee → 'lower_limb_below_knee' (65%)
+- One foot at ankle (Syme) → 'foot_at_ankle_syme' (55%)
+- One midfoot → 'midfoot' (35%)
+- All toes of one foot → 'all_toes_one_foot' (20%)
+
+If no paralysed limbs, pass an empty array [].
 
 ### Visual (Chapter 11) — use assess_visual
 Per-eye: Snellen acuity + visual field loss + functional modifiers + specific conditions. 50% monocular cap per eye. Binocular = left cap + right cap (additive). Diplopia adds globally. Legal blindness (<6/60 both eyes) = 100%.

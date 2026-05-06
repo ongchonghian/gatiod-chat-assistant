@@ -28,7 +28,7 @@ import {
   // Hearing
   calculateHearing, type HearingValue,
   // CNS
-  calculateCns, type CnsValue,
+  calculateCns, defaultCnsValue, type CnsValue,
   // Visual
   calculateVisual, type VisualValue,
   // CVC
@@ -61,9 +61,9 @@ export function handleToolCall(name: string, args: Record<string, unknown>): Too
       case "assess_hearing":
         return wrapCalc(() => calculateHearing(args as unknown as HearingValue), "hearing");
       case "assess_cns":
-        return wrapCalc(() => calculateCns(args as unknown as CnsValue), "cns");
+        return handleAssessCns(args);
       case "assess_visual":
-        return wrapCalc(() => calculateVisual(args as unknown as VisualValue), "visual");
+        return handleAssessVisual(args);
 
       // ─── Global CVC ────────────────────────────────────────────────
       case "assess_global_cvc":
@@ -122,9 +122,53 @@ function extractFinalPercent(result: Record<string, unknown>): number {
 
 function handleAssessSpine(args: Record<string, unknown>): ToolResult {
   const region = args.region as SpinalRegion;
-  const entries = args.categoryEntries as SpineCategoryEntry[];
+  const rawEntries = (args.categoryEntries ?? []) as Record<string, unknown>[];
+
+  // The tool schema uses severityKey/monoparesisHalving/bladderBowelAddOn (boolean);
+  // the engine uses severity/isMonoparesis/bladderBowelSeverity (enum). Map here.
+  const entries = rawEntries.map((e) => ({
+    diagnosisCategory: e.diagnosisCategory,
+    severity: ((e.severityKey ?? e.severity) as string) ?? "",
+    isMonoparesis: Boolean(e.monoparesisHalving ?? e.isMonoparesis ?? false),
+    bladderBowelSeverity: ((e.bladderBowelSeverity as string) ?? "none"),
+    discCordInvolvement: Boolean(e.discCordInvolvement ?? false),
+    spondylolysisPathway: ((e.spondylolysisPathway as string) ?? "acute_traumatic"),
+  })) as SpineCategoryEntry[];
+
   const result = calculateSpineAssessment(region, entries);
   return { success: true, data: { ...result, systemKey: "spine" } };
+}
+
+// ─── CNS (merge with defaults to guard against missing optional fields) ───────
+
+function handleAssessCns(args: Record<string, unknown>): ToolResult {
+  const merged: CnsValue = {
+    ...defaultCnsValue(),
+    ...args,
+    paralysedLimbs: Array.isArray(args.paralysedLimbs)
+      ? (args.paralysedLimbs as string[])
+      : [],
+  };
+  return wrapCalc(() => calculateCns(merged), "cns");
+}
+
+// ─── Visual (guard functionalModifiers/specificConditions against null) ───────
+
+function normaliseEye(raw: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...raw,
+    functionalModifiers: Array.isArray(raw.functionalModifiers) ? raw.functionalModifiers : [],
+    specificConditions: Array.isArray(raw.specificConditions) ? raw.specificConditions : [],
+  };
+}
+
+function handleAssessVisual(args: Record<string, unknown>): ToolResult {
+  const safe = {
+    ...args,
+    leftEye: normaliseEye((args.leftEye ?? {}) as Record<string, unknown>),
+    rightEye: normaliseEye((args.rightEye ?? {}) as Record<string, unknown>),
+  };
+  return wrapCalc(() => calculateVisual(safe as unknown as VisualValue), "visual");
 }
 
 // ─── Global CVC ──────────────────────────────────────────────────────────────

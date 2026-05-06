@@ -63,7 +63,7 @@ export const TOOL_DECLARATIONS: any[] = [
               items: {
                 type: SchemaType.OBJECT,
                 properties: {
-                  nerveKey: { type: SchemaType.STRING, description: "Nerve identifier from GATIOD Chapter 3." },
+                  nerveKey: { type: SchemaType.STRING, description: "Upper limb nerve identifier from GATIOD Chapter 3. Brachial plexus: brachial_c5_t1 (full C5–T1 / 'C5-C8, T1'), upper_trunk_c5_c6, middle_trunk_c7, lower_trunk_c8_t1. Peripheral: axillary, median_above, median_anterior_interosseous, median_below, musculocutaneous, radial_upper, radial_elbow, suprascapular, ulnar_above, ulnar_below. Digital: thumb_radial, thumb_ulnar, index_radial, index_ulnar, middle_radial, middle_ulnar, ring_radial, ring_ulnar, little_radial, little_ulnar. Entrapment: carpal_tunnel, cubital_tunnel, radial_tunnel." },
                   deficitType: { type: SchemaType.STRING, enum: ["sensory", "motor", "combined"] },
                   lossType: { type: SchemaType.STRING, enum: ["total", "partial"] },
                   severityId: { type: SchemaType.STRING, description: "For entrapment syndromes: 'mild', 'moderate', or 'severe'." },
@@ -132,11 +132,11 @@ export const TOOL_DECLARATIONS: any[] = [
   },
   {
     name: "lookup_nerve",
-    description: "Look up the maximum PI% for a nerve deficit.",
+    description: "Look up the maximum PI% for an upper limb nerve deficit.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        nerveKey: { type: SchemaType.STRING, description: "Nerve identifier." },
+        nerveKey: { type: SchemaType.STRING, description: "Upper limb nerve identifier. Brachial plexus: brachial_c5_t1 (full plexus C5–T1), upper_trunk_c5_c6, middle_trunk_c7, lower_trunk_c8_t1. Peripheral: axillary, median_above, median_anterior_interosseous, median_below, musculocutaneous, radial_upper, radial_elbow, suprascapular, ulnar_above, ulnar_below. Digital: thumb_radial, thumb_ulnar, index_radial, index_ulnar, middle_radial, middle_ulnar, ring_radial, ring_ulnar, little_radial, little_ulnar. Entrapment: carpal_tunnel, cubital_tunnel, radial_tunnel." },
         deficitType: { type: SchemaType.STRING, enum: ["sensory", "motor", "combined"] },
         lossType: { type: SchemaType.STRING, enum: ["total", "partial"] },
         severityId: { type: SchemaType.STRING, description: "For entrapment: mild, moderate, or severe." },
@@ -337,8 +337,8 @@ export const MULTI_SYSTEM_TOOL_DECLARATIONS: any[] = [
             properties: {
               diagnosisCategory: { type: SchemaType.STRING, description: "fractures_dislocations | spinal_cord_injury | intervertebral_disc | spondylolysis_spondylolisthesis | chronic_pain_normal_mri" },
               severityKey: { type: SchemaType.STRING, description: "Severity ID for the category. Fractures/cord: mild_sensory_motor | persistent_radicular | asia_d | asia_c | asia_ba | compression_gt25 | compression_lt25. Disc: disc31_residual | disc31_persistent_no_neuro | disc31_persistent_sensory | disc31_persistent_motor_or_motor_sensory | disc32_residual | disc32_persistent_neuro. Spondylolysis: spondy_preexisting_residual | spondy_preexisting_chronic. Chronic pain: chronic_pain_attributable | chronic_pain_not_attributable." },
-              monoparesisHalving: { type: SchemaType.BOOLEAN, description: "Apply 50% reduction for monoparesis (one limb only affected)." },
-              bladderBowelAddOn: { type: SchemaType.BOOLEAN, description: "Add bladder/bowel impairment award on top of base PI." },
+              monoparesisHalving: { type: SchemaType.BOOLEAN, description: "Apply 50% reduction for monoparesis (one limb only affected). Only valid for asia_c and asia_d." },
+              bladderBowelSeverity: { type: SchemaType.STRING, description: "Bladder/bowel impairment add-on severity (only applies to mild_sensory_motor, persistent_radicular, asia_d, asia_c rows). Use 'none' if absent. Values: none | incomplete_single (10%) | incomplete_both (15%) | complete_single (20%) | complete_both (25%)." },
             },
             required: ["diagnosisCategory", "severityKey"],
           },
@@ -398,6 +398,7 @@ export const MULTI_SYSTEM_TOOL_DECLARATIONS: any[] = [
         colonalSubPath: { type: SchemaType.STRING, description: "Required when subSystem is colonicRectalAnal: colonicRectal | anal" },
         liverBiliarySubPath: { type: SchemaType.STRING, description: "Required when subSystem is liverBiliary: liver | biliary" },
         selectedBracketIndex: { type: SchemaType.NUMBER, nullable: true },
+        weightLossPercent: { type: SchemaType.NUMBER, nullable: true, description: "For upperDigestive only: patient's weight loss as a percentage below desirable weight. Engine uses this to auto-classify bracket (>0%=Class I floor, >10%=Class II floor, >20%=Class III floor). Provide if the doctor mentions weight loss." },
         piPercent: { type: SchemaType.NUMBER, nullable: true },
         clinicalJustification: { type: SchemaType.STRING },
       },
