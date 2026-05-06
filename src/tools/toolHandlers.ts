@@ -19,6 +19,7 @@ import {
   type ToeKey,
   // Spine
   calculateSpineAssessment, type SpinalRegion, type SpineCategoryEntry,
+  type SpineAssessmentResult,
   // Respiratory
   calculateRespiratoryAssessment, type RespiratoryValue,
   // Renal
@@ -34,6 +35,7 @@ import {
   // CVC
   combineMultipleValuesChart,
 } from "../engine/index.js";
+import { diagnosisCategories, getSeveritiesForCategory } from "../engine/spineAssessmentData.js";
 import { searchDictionary } from "../rag/dictionaryIndex.js";
 
 export interface ToolResult {
@@ -136,7 +138,26 @@ function handleAssessSpine(args: Record<string, unknown>): ToolResult {
   })) as SpineCategoryEntry[];
 
   const result = calculateSpineAssessment(region, entries);
-  return { success: true, data: { ...result, systemKey: "spine" } };
+  return { success: true, data: { ...sanitizeSpineResult(result), systemKey: "spine" } };
+}
+
+/** Replace raw enum keys in spine results with human-readable labels so the LLM never echoes internal identifiers. */
+function sanitizeSpineResult(result: SpineAssessmentResult): Omit<SpineAssessmentResult, "evaluatedEntries"> & { evaluatedEntries: unknown[] } {
+  const sanitizedEntries = result.evaluatedEntries.map((entry) => {
+    const catLabel = diagnosisCategories.find((c) => c.key === entry.diagnosisCategory)?.label ?? entry.diagnosisCategory;
+    const severityLabel = getSeveritiesForCategory(entry.diagnosisCategory, {
+      spondylolysisPathway: entry.spondylolysisPathway,
+    }).find((s) => s.key === entry.severity)?.label ?? entry.severity;
+
+    const { diagnosisCategory: _cat, severity: _sev, ...rest } = entry;
+    return {
+      ...rest,
+      diagnosisCategory: catLabel,
+      severity: severityLabel,
+    };
+  });
+
+  return { ...result, evaluatedEntries: sanitizedEntries };
 }
 
 // ─── CNS (merge with defaults to guard against missing optional fields) ───────
