@@ -15,7 +15,7 @@ function generateReport(result: Record<string, unknown>): string {
   const now = new Date().toISOString().split("T")[0];
   const pi = result.finalPercent as number;
 
-  lines.push("# GATIOD Upper Limb Assessment Report");
+  lines.push("# GATIOD Assessment Report");
   lines.push(`**Date:** ${now}`);
   lines.push(`**Final PI:** ${pi}%`);
   lines.push("");

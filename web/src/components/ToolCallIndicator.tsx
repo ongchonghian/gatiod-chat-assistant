@@ -8,7 +8,16 @@ interface ToolCall {
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  assess_upper_limb: "Full Assessment",
+  assess_upper_limb: "Upper Limb Assessment",
+  assess_lower_limb: "Lower Limb Assessment",
+  assess_spine: "Spine Assessment",
+  assess_respiratory: "Respiratory Assessment",
+  assess_renal: "Renal Assessment",
+  assess_gastro: "Gastro Assessment",
+  assess_hearing: "Hearing Assessment",
+  assess_cns: "CNS Assessment",
+  assess_visual: "Visual Assessment",
+  assess_global_cvc: "Global CVC",
   lookup_rom_table: "ROM Lookup",
   lookup_amputation_level: "Amputation Lookup",
   lookup_nerve: "Nerve Lookup",

@@ -37,9 +37,27 @@ interface BreakdownViewProps {
   toolCalls?: ToolCall[];
 }
 
-function extractResult(toolCalls?: ToolCall[]): AssessmentResult | null {
-  const call = toolCalls?.find((tc) => tc.name === "assess_upper_limb" && tc.result?.success);
-  return (call?.result?.data as unknown as AssessmentResult) ?? null;
+const SYSTEM_LABELS: Record<string, string> = {
+  assess_upper_limb: "Upper Limb",
+  assess_lower_limb: "Lower Limb",
+  assess_spine: "Spine",
+  assess_respiratory: "Respiratory",
+  assess_renal: "Renal",
+  assess_gastro: "Gastro / Digestive",
+  assess_hearing: "Hearing",
+  assess_cns: "CNS",
+  assess_visual: "Visual",
+};
+
+function extractResult(toolCalls?: ToolCall[]): { result: AssessmentResult; systemLabel: string } | null {
+  const call = toolCalls?.find(
+    (tc) => tc.name.startsWith("assess_") && tc.name !== "assess_global_cvc" && tc.result?.success
+  );
+  if (!call?.result?.data) return null;
+  return {
+    result: call.result.data as unknown as AssessmentResult,
+    systemLabel: SYSTEM_LABELS[call.name] ?? "System",
+  };
 }
 
 function CategorySection({ data, color }: { data: CategoryData; color: string }) {
@@ -74,15 +92,17 @@ function CategorySection({ data, color }: { data: CategoryData; color: string })
 }
 
 export default function BreakdownView({ content, toolCalls }: BreakdownViewProps) {
-  const result = extractResult(toolCalls);
+  const extracted = extractResult(toolCalls);
 
-  if (!result) {
+  if (!extracted) {
     return (
       <Paper sx={{ px: 2.5, py: 1.5, bgcolor: "background.paper", borderRadius: "16px 16px 16px 4px" }}>
         <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>{content}</Typography>
       </Paper>
     );
   }
+
+  const { result, systemLabel } = extracted;
 
   const categories: { data: CategoryData; color: string }[] = [
     { data: result.amputation, color: "#c4342d" },
@@ -98,7 +118,7 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
         <AssessmentIcon sx={{ fontSize: 24, color: "#fff" }} />
         <Box sx={{ flex: 1 }}>
           <Typography variant="subtitle2" sx={{ color: "rgba(255,255,255,0.7)", fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Upper Limb Permanent Incapacity
+            {systemLabel} Permanent Incapacity
           </Typography>
           <Typography variant="h5" sx={{ color: "#fff", fontWeight: 700, letterSpacing: "-0.02em" }}>
             {result.finalPercent}% PI
@@ -108,7 +128,7 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
 
       {/* Categories */}
       <Box sx={{ px: 2.5, py: 1.5 }}>
-        {categories.map((cat, i) => (
+        {categories.map((cat) => (
           <CategorySection key={cat.data.label} data={cat.data} color={cat.color} />
         ))}
       </Box>

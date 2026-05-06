@@ -31,13 +31,13 @@ interface ApiResponse {
   error?: string;
 }
 
-const CONFIRMATION_PATTERN = /\*\*Confirmation\s*[—–-]\s*Upper Limb Assessment/i;
-const RESULT_PATTERN = /Upper Limb.*?Assessment Result.*?(\d+)%\s*PI/i;
+const CONFIRMATION_PATTERN = /\*\*Confirmation\s*[—–-]/i;
+const RESULT_PATTERN = /Assessment Result.*?(\d+)%\s*PI/i;
 
 function detectMessageType(content: string, toolCalls?: ToolCall[]): "confirmation" | "breakdown" | "text" {
   if (CONFIRMATION_PATTERN.test(content)) return "confirmation";
   const hasAssessResult = toolCalls?.some(
-    (tc) => tc.name === "assess_upper_limb" && tc.result?.success
+    (tc) => tc.name.startsWith("assess_") && tc.name !== "assess_global_cvc" && tc.result?.success
   );
   if (hasAssessResult) return "breakdown";
   return "text";
@@ -84,7 +84,7 @@ export default function ChatPanel() {
       if (data.sessionId && !sessionId) setSessionId(data.sessionId);
 
       const assessCall = data.toolCalls?.find(
-        (tc) => tc.name === "assess_upper_limb" && tc.result?.success
+        (tc) => tc.name.startsWith("assess_") && tc.name !== "assess_global_cvc" && tc.result?.success
       );
       if (assessCall?.result?.data) {
         setLastResult(assessCall.result.data as Record<string, unknown>);
@@ -142,18 +142,18 @@ export default function ChatPanel() {
           <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Box sx={{ textAlign: "center", maxWidth: 480 }}>
               <Typography variant="h5" sx={{ color: "primary.main", mb: 1 }}>
-                Upper Limb Assessment
+                GATIOD Assessment
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.7 }}>
-                Describe the clinical findings for your Upper Limb case. Include amputations, ROM measurements,
-                neurological findings, and diagnosis-based conditions in any order.
+                Describe the clinical findings for your case. Covers upper and lower limb, spine, respiratory,
+                renal, gastro, hearing, CNS, and visual systems — enter findings in any order.
               </Typography>
               <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, justifyContent: "center" }}>
                 {[
                   "Left shoulder, flexion 120°, abduction 90°",
-                  "Suprascapular nerve, combined, partial",
-                  "Above elbow amputation, right",
-                  "OA shoulder moderate",
+                  "L4/L5 disc herniation, moderate disability",
+                  "Below knee amputation, right",
+                  "Sensorineural hearing loss, both ears, 40dB",
                 ].map((hint) => (
                   <Button
                     key={hint}
