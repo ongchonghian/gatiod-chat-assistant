@@ -35,13 +35,26 @@ if (existsSync(webDist)) {
 // Initialize database
 getDb();
 
-app.listen(PORT, () => {
-  console.log(`GATIOD Chat Assistant running on http://localhost:${PORT}`);
-  console.log(`  POST /api/chat — send a message`);
-  console.log(`  POST /api/chat/reset — reset a session`);
-  console.log(`  GET  /health — health check`);
+function startServer(port: number): void {
+  const server = app.listen(port, () => {
+    console.log(`GATIOD Chat Assistant running on http://localhost:${port}`);
+    console.log(`  POST /api/chat — send a message`);
+    console.log(`  POST /api/chat/reset — reset a session`);
+    console.log(`  GET  /health — health check`);
 
-  if (!process.env.GEMINI_API_KEY) {
-    console.warn("\n⚠️  GEMINI_API_KEY not set — chat will fail until configured.");
-  }
-});
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn("\n⚠️  GEMINI_API_KEY not set — chat will fail until configured.");
+    }
+  });
+
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`Port ${port} in use, trying ${port + 1}…`);
+      startServer(port + 1);
+    } else {
+      throw err;
+    }
+  });
+}
+
+startServer(PORT);

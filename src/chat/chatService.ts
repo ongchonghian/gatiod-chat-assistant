@@ -96,7 +96,14 @@ export async function processChat(
     }
 
     const candidate = response.response.candidates?.[0];
-    if (!candidate?.content?.parts) break;
+    if (!candidate?.content?.parts) {
+      const reason = candidate?.finishReason ?? (response.response.candidates?.length === 0 ? "no_candidates" : "no_content");
+      console.error(`[GATIOD] No content in response: finishReason=${reason}, iteration=${10 - maxIterations}, tools=${toolCallLog.map((t) => t.name).join(",") || "none"}`);
+      if (reason === "SAFETY") {
+        return { message: "The assessment content was flagged for review. Please try rephrasing the clinical findings.", sessionId };
+      }
+      break;
+    }
 
     const parts = candidate.content.parts;
     const functionCalls = parts.filter(
@@ -120,8 +127,8 @@ export async function processChat(
       };
     }
 
-    // Execute tool calls
-    history.push({ role: "model", parts: functionCalls.map((fc) => ({ functionCall: fc.functionCall })) });
+    // Push full model response to history (includes thought tokens from gemini-2.5 thinking models)
+    history.push({ role: "model", parts });
 
     const functionResponses: Part[] = [];
     for (const fc of functionCalls) {
@@ -142,6 +149,7 @@ export async function processChat(
     saveSession(sessionId, history, { userId: opts?.userId, claimId: opts?.claimId });
   }
 
+  console.error(`[GATIOD] Assessment loop exhausted. Tools called: ${toolCallLog.map((t) => t.name).join(", ") || "none"}`);
   return { message: "I wasn't able to complete the assessment. Please try rephrasing your input.", sessionId };
 }
 
