@@ -31,13 +31,13 @@ interface ApiResponse {
   error?: string;
 }
 
-const CONFIRMATION_PATTERN = /\*\*Confirmation\s*[—–-]\s*Upper Limb Assessment/i;
-const RESULT_PATTERN = /Upper Limb.*?Assessment Result.*?(\d+)%\s*PI/i;
+const CONFIRMATION_PATTERN = /\*\*Confirmation\s*[—–-]\s*(?:Upper|Lower) Limb Assessment/i;
+const ASSESSMENT_TOOLS = new Set(["assess_upper_limb", "assess_lower_limb"]);
 
 function detectMessageType(content: string, toolCalls?: ToolCall[]): "confirmation" | "breakdown" | "text" {
   if (CONFIRMATION_PATTERN.test(content)) return "confirmation";
   const hasAssessResult = toolCalls?.some(
-    (tc) => tc.name === "assess_upper_limb" && tc.result?.success
+    (tc) => ASSESSMENT_TOOLS.has(tc.name) && tc.result?.success
   );
   if (hasAssessResult) return "breakdown";
   return "text";
@@ -84,7 +84,7 @@ export default function ChatPanel() {
       if (data.sessionId && !sessionId) setSessionId(data.sessionId);
 
       const assessCall = data.toolCalls?.find(
-        (tc) => tc.name === "assess_upper_limb" && tc.result?.success
+        (tc) => ASSESSMENT_TOOLS.has(tc.name) && tc.result?.success
       );
       if (assessCall?.result?.data) {
         setLastResult(assessCall.result.data as Record<string, unknown>);

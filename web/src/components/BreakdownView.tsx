@@ -3,16 +3,24 @@ import { Box, Paper, Typography, Collapse, IconButton, Chip, Divider } from "@mu
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 
 interface ToolCall {
   name: string;
   result: { success: boolean; data?: Record<string, unknown> };
 }
 
+interface GatiodReference {
+  chapter: string;
+  section?: string;
+  table?: string;
+}
+
 interface CategoryData {
   label: string;
   rawPercent: number;
   notes: string[];
+  gatiodReference?: GatiodReference;
 }
 
 interface Conflict {
@@ -28,8 +36,16 @@ interface AssessmentResult {
   rom: CategoryData;
   neurological: CategoryData;
   dbe: CategoryData;
+  shortening?: CategoryData; // Lower limb only
   dbeRomConflicts: Conflict[];
   cvcInputs: number[];
+}
+
+type SystemKey = "upper_limb" | "lower_limb";
+
+interface ExtractedResult {
+  systemKey: SystemKey;
+  data: AssessmentResult;
 }
 
 interface BreakdownViewProps {
@@ -37,13 +53,36 @@ interface BreakdownViewProps {
   toolCalls?: ToolCall[];
 }
 
-function extractResult(toolCalls?: ToolCall[]): AssessmentResult | null {
-  const call = toolCalls?.find((tc) => tc.name === "assess_upper_limb" && tc.result?.success);
-  return (call?.result?.data as unknown as AssessmentResult) ?? null;
+const SYSTEM_TITLES: Record<SystemKey, string> = {
+  upper_limb: "Upper Limb Permanent Incapacity",
+  lower_limb: "Lower Limb Permanent Incapacity",
+};
+
+const TOOL_TO_SYSTEM: Record<string, SystemKey> = {
+  assess_upper_limb: "upper_limb",
+  assess_lower_limb: "lower_limb",
+};
+
+function extractResult(toolCalls?: ToolCall[]): ExtractedResult | null {
+  if (!toolCalls) return null;
+  // Pick the latest matching assessment call so subsequent re-runs replace earlier ones.
+  for (let i = toolCalls.length - 1; i >= 0; i--) {
+    const tc = toolCalls[i];
+    const systemKey = TOOL_TO_SYSTEM[tc.name];
+    if (systemKey && tc.result?.success && tc.result.data) {
+      return { systemKey, data: tc.result.data as unknown as AssessmentResult };
+    }
+  }
+  return null;
+}
+
+function isCrossStreamWarning(note: string): boolean {
+  return note.includes("Cross-stream");
 }
 
 function CategorySection({ data, color }: { data: CategoryData; color: string }) {
-  const [open, setOpen] = useState(data.rawPercent > 0);
+  const hasWarning = data.notes.some(isCrossStreamWarning);
+  const [open, setOpen] = useState(data.rawPercent > 0 || hasWarning);
 
   if (data.rawPercent === 0 && data.notes.length === 0) return null;
 
@@ -55,6 +94,9 @@ function CategorySection({ data, color }: { data: CategoryData; color: string })
       >
         <Box sx={{ width: 4, height: 28, borderRadius: 2, bgcolor: color, flexShrink: 0 }} />
         <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 600 }}>{data.label}</Typography>
+        {hasWarning && (
+          <WarningAmberIcon sx={{ fontSize: 18, color: "warning.main" }} titleAccess="Cross-stream warning" />
+        )}
         <Chip label={`${data.rawPercent}%`} size="small" sx={{ fontWeight: 700, bgcolor: data.rawPercent > 0 ? color : "action.disabledBackground", color: data.rawPercent > 0 ? "#fff" : "text.disabled", fontSize: "0.8rem", height: 24, minWidth: 48 }} />
         <IconButton size="small" sx={{ ml: -0.5 }}>
           {open ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
@@ -62,11 +104,41 @@ function CategorySection({ data, color }: { data: CategoryData; color: string })
       </Box>
       <Collapse in={open}>
         <Box sx={{ pl: 2.5, pb: 1 }}>
-          {data.notes.map((note, i) => (
-            <Typography key={i} variant="body2" color="text.secondary" sx={{ fontSize: "0.82rem", lineHeight: 1.6, "&::before": { content: '"•"', mr: 1, color: "text.disabled" } }}>
-              {note}
+          {data.notes.map((note, i) => {
+            const warn = isCrossStreamWarning(note);
+            return (
+              <Typography
+                key={i}
+                variant="body2"
+                sx={{
+                  fontSize: "0.82rem",
+                  lineHeight: 1.6,
+                  color: warn ? "warning.dark" : "text.secondary",
+                  fontWeight: warn ? 600 : 400,
+                  "&::before": { content: warn ? '"⚠"' : '"•"', mr: 1, color: warn ? "warning.main" : "text.disabled" },
+                }}
+              >
+                {note}
+              </Typography>
+            );
+          })}
+          {data.gatiodReference && (
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                mt: 0.5,
+                fontSize: "0.72rem",
+                color: "text.disabled",
+                fontStyle: "italic",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {[data.gatiodReference.chapter, data.gatiodReference.section, data.gatiodReference.table]
+                .filter(Boolean)
+                .join(" · ")}
             </Typography>
-          ))}
+          )}
         </Box>
       </Collapse>
     </Box>
@@ -74,9 +146,9 @@ function CategorySection({ data, color }: { data: CategoryData; color: string })
 }
 
 export default function BreakdownView({ content, toolCalls }: BreakdownViewProps) {
-  const result = extractResult(toolCalls);
+  const extracted = extractResult(toolCalls);
 
-  if (!result) {
+  if (!extracted) {
     return (
       <Paper sx={{ px: 2.5, py: 1.5, bgcolor: "background.paper", borderRadius: "16px 16px 16px 4px" }}>
         <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>{content}</Typography>
@@ -84,12 +156,19 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
     );
   }
 
+  const { systemKey, data: result } = extracted;
+
   const categories: { data: CategoryData; color: string }[] = [
     { data: result.amputation, color: "#c4342d" },
     { data: result.rom, color: "#1a3a5c" },
     { data: result.neurological, color: "#7b2d8e" },
     { data: result.dbe, color: "#d4880f" },
   ];
+  if (systemKey === "lower_limb" && result.shortening) {
+    // Insert Shortening between Neurological and DBE so the visual order
+    // matches GATIOD Chapter 4's stream ordering.
+    categories.splice(3, 0, { data: result.shortening, color: "#0f7b5c" });
+  }
 
   return (
     <Paper sx={{ overflow: "hidden", border: "2px solid", borderColor: "primary.main", borderRadius: 3 }}>
@@ -98,7 +177,7 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
         <AssessmentIcon sx={{ fontSize: 24, color: "#fff" }} />
         <Box sx={{ flex: 1 }}>
           <Typography variant="subtitle2" sx={{ color: "rgba(255,255,255,0.7)", fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Upper Limb Permanent Incapacity
+            {SYSTEM_TITLES[systemKey]}
           </Typography>
           <Typography variant="h5" sx={{ color: "#fff", fontWeight: 700, letterSpacing: "-0.02em" }}>
             {result.finalPercent}% PI
@@ -108,7 +187,7 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
 
       {/* Categories */}
       <Box sx={{ px: 2.5, py: 1.5 }}>
-        {categories.map((cat, i) => (
+        {categories.map((cat) => (
           <CategorySection key={cat.data.label} data={cat.data} color={cat.color} />
         ))}
       </Box>

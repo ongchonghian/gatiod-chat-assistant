@@ -8,6 +8,8 @@
  * The doctor then assigns a specific PI% within that bracket.
  */
 
+import { z } from "zod";
+
 // ─── Sub-system Definitions ─────────────────────────────────────────────────
 
 export type GastroSubSystem =
@@ -118,6 +120,16 @@ export interface GastroDigestiveValue {
   piPercent: number | null;
   clinicalJustification?: string;
 }
+
+export const GastroDigestiveValueSchema = z.object({
+  subSystem: z.enum(["upperDigestive", "colonicRectalAnal", "liverBiliary", "herniation"]).nullable(),
+  colonalSubPath: z.enum(["colonicRectal", "anal"]).optional(),
+  liverBiliarySubPath: z.enum(["liver", "biliary"]).optional(),
+  selectedBracketIndex: z.number().int().min(0).max(10).nullable(),
+  weightLossPercent: z.number().min(0).max(100).optional(),
+  piPercent: z.number().min(0).max(100).nullable(),
+  clinicalJustification: z.string().optional(),
+});
 
 export interface GastroDigestiveResult {
   subSystemLabel: string;
