@@ -109,7 +109,7 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
     { data: result.rom, color: "#1a3a5c" },
     { data: result.neurological, color: "#7b2d8e" },
     { data: result.dbe, color: "#d4880f" },
-  ];
+  ].filter((cat) => cat.data != null);
 
   return (
     <Paper sx={{ overflow: "hidden", border: "2px solid", borderColor: "primary.main", borderRadius: 3 }}>
