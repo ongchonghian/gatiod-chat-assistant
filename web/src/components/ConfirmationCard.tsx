@@ -11,13 +11,15 @@ interface ConfirmationCardProps {
 }
 
 interface ParsedConfirmation {
+  system: string;
   side: string;
   sections: { label: string; value: string }[];
 }
 
 function parseConfirmation(content: string): ParsedConfirmation {
-  const sideMatch = content.match(/Assessment\s*\((\w+)\)/i);
-  const side = sideMatch?.[1] ?? "unknown";
+  const headerMatch = content.match(/Confirmation\s*[—–-]\s*([^([\n*]+?)(?:\s*\((\w+)\))?(?:\s*\*\*)?$/im);
+  const system = headerMatch?.[1]?.trim() ?? "Assessment";
+  const side = headerMatch?.[2] ?? "";
 
   const sections: { label: string; value: string }[] = [];
   const lines = content.split("\n");
@@ -39,7 +41,7 @@ function parseConfirmation(content: string): ParsedConfirmation {
     }
   }
 
-  return { side, sections };
+  return { system, side, sections };
 }
 
 export default function ConfirmationCard({ content, onConfirm, onEdit }: ConfirmationCardProps) {
@@ -68,7 +70,7 @@ export default function ConfirmationCard({ content, onConfirm, onEdit }: Confirm
       <Box sx={{ px: 2.5, py: 1.5, bgcolor: "secondary.main", display: "flex", alignItems: "center", gap: 1 }}>
         <VerifiedIcon sx={{ fontSize: 20, color: "#fff" }} />
         <Typography variant="subtitle1" sx={{ color: "#fff", fontWeight: 600, flex: 1 }}>
-          Confirmation — Upper Limb ({parsed.side})
+          Confirmation — {parsed.system}{parsed.side ? ` (${parsed.side})` : ""}
         </Typography>
         <Chip label="Review required" size="small" sx={{ bgcolor: "rgba(255,255,255,0.2)", color: "#fff", fontSize: "0.7rem", fontWeight: 600, height: 22 }} />
       </Box>
