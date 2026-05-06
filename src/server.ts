@@ -4,8 +4,9 @@
 
 import express from "express";
 import cors from "cors";
+import { existsSync } from "fs";
+import { join } from "path";
 import { chatRouter } from "./api/chatRoutes.js";
-
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
@@ -19,6 +20,15 @@ app.use("/api", chatRouter);
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "gatiod-chat-assistant" });
 });
+
+// Serve frontend in production
+const webDist = join(process.cwd(), "web", "dist");
+if (existsSync(webDist)) {
+  app.use(express.static(webDist));
+  app.get("*", (_req, res) => {
+    res.sendFile(join(webDist, "index.html"));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`GATIOD Chat Assistant running on http://localhost:${PORT}`);
