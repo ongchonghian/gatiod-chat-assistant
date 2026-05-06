@@ -134,7 +134,7 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
       </Box>
 
       {/* Conflicts */}
-      {result.dbeRomConflicts.length > 0 && (
+      {(result.dbeRomConflicts?.length ?? 0) > 0 && (
         <>
           <Divider />
           <Box sx={{ px: 2.5, py: 1.5 }}>
@@ -154,7 +154,7 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
       )}
 
       {/* CVC Sequence */}
-      {result.cvcInputs.length > 1 && (
+      {(result.cvcInputs?.length ?? 0) > 1 && (
         <>
           <Divider />
           <Box sx={{ px: 2.5, py: 1.5 }}>
