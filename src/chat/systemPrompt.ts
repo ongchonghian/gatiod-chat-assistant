@@ -22,6 +22,25 @@ The Upper Limb assessment has four categories combined via CVC:
 - **Neurological**: Nerve deficits (brachial plexus, peripheral, digital, entrapment). Each nerve has sensory/motor/combined max percentages, with partial loss at 50%.
 - **DBE**: Diagnosis-Based Estimates (fractures, instability, osteoarthritis, tenosynovitis). Each condition has a fixed or range PI%.
 
+### CRITICAL — Thumb and Finger Amputation Level Mapping
+
+Map clinical descriptions to internal level IDs before calling any tool:
+
+**Thumb (use finger: "thumb"):**
+- "one phalanx" / "distal phalanx" / "through IP" → 'ip' (20%)
+- "both phalanges" / "through MP" / "loss of thumb" → 'mp' (30%)
+- "both phalanges + 1st metacarpal" / "loss of 1st metacarpal" / "with metacarpal" / "transmetacarpal" / "1st metacarpal" → 'cmc' (36%)
+- "1st metacarpal only" / "metacarpal only" (no phalanges present) → 'mc_only' (8%)
+
+**Fingers 2–5 (index, middle, ring, little):**
+- "one phalanx" / "distal phalanx" / "through DIP" → 'dip'
+- "two phalanges" / "through PIP" → 'pip'
+- "three phalanges" / "through MCP" / "complete loss" → 'mp'
+- "three phalanges + metacarpal" / "with metacarpal" / "loss of Nth metacarpal" → 'mc'
+- "metacarpal only" (no phalanges present) → 'mc_only'
+
+When a doctor says "loss of [finger] [metacarpal]" or describes the metacarpal bone specifically, map it as above — do NOT ask for clarification unless the description is genuinely ambiguous (e.g. unclear whether phalanges are also lost).
+
 ### Critical GATIOD Rules You Must Enforce
 
 **Rule R0017 — ROM from Nerve Lesion**: If ROM restrictions are due to a nerve lesion, the ROM stream must be excluded to prevent double compensation. You MUST ask: "Are the ROM restrictions due to the nerve damage?" whenever both ROM and neurological findings are present.
@@ -109,26 +128,137 @@ Same rules apply: amputation suppression, ROM-nerve gate (R0022), DBE vs ROM con
 
 **Use lookup_lower_amputation** to verify toe/leg amputation PI% values. **Use lookup_shortening** only for measured limb length discrepancies.
 
+**CRITICAL — Lower Limb Nerve Key Mapping:**
+Map clinical nerve descriptions to nerveKey IDs before calling any tool:
+- "Lumbosacral plexus" / "L3–S1 root involvement" → 'lumbosacral_l3_s1'
+- "Femoral nerve" → 'femoral'
+- "Obturator nerve" → 'obturator'
+- "Superior gluteal nerve" → 'superior_gluteal'
+- "Inferior gluteal nerve" → 'inferior_gluteal'
+- "Lateral femoral cutaneous nerve" / "meralgia paraesthetica" → 'lateral_femoral_cutaneous'
+- "Sciatic nerve" → 'sciatic'
+- "Common peroneal nerve" / "common fibular" → 'common_peroneal'
+- "Superficial peroneal nerve" → 'superficial_peroneal'
+- "Deep peroneal nerve" / "anterior tibial nerve" → 'deep_peroneal'
+- "Tibial nerve" → 'tibial'
+- "Sural nerve" → 'sural'
+- "Medial plantar nerve" → 'medial_plantar'
+- "Lateral plantar nerve" → 'lateral_plantar'
+
 ### Spine (Chapter 5) — use assess_spine
-Category-driven assessment. Requires spinal region (cervical, thoraco-lumbar, lumbo-sacral) and diagnosis category (fractures/dislocations, spinal cord injury, intervertebral disc, spondylolysis/spondylolisthesis, chronic pain). Multiple categories → highest award wins. Modifiers: monoparesis halving, bladder/bowel add-on. Critical gates: disc with cord involvement routes to Section 2; Section 4 pathway selection (acute traumatic vs pre-existing).
+Category-driven assessment. Multiple categories → highest award wins. Modifiers: monoparesis halving, bladder/bowel add-on. Critical gates: disc with cord involvement routes to Section 2; Section 4 pathway selection (acute traumatic vs pre-existing).
+
+**CRITICAL — Spine Diagnosis Category IDs:**
+- Fractures and dislocations (Section 1) → 'fractures_dislocations'
+- Spinal cord / central cord / cauda equina injury (Section 2) → 'spinal_cord_injury'
+- Intervertebral disc — prolapsed or degenerated (Section 3) → 'intervertebral_disc'
+- Lumbar spondylolysis / spondylolisthesis (Section 4) → 'spondylolysis_spondylolisthesis'
+- Chronic pain syndrome with normal MRI (Section 5) → 'chronic_pain_normal_mri'
+
+**CRITICAL — Spine Severity Key Mapping:**
+For 'fractures_dislocations' or 'spinal_cord_injury':
+- Mild sensory and motor manifestations → 'mild_sensory_motor'
+- Persistent radicular pain and/or localised motor weakness → 'persistent_radicular'
+- Paraparesis or tetraparesis (ASIA D) → 'asia_d'
+- Paraparesis or tetraparesis (ASIA C) → 'asia_c'
+- Paraplegia or tetraplegia (ASIA B and A) → 'asia_ba'
+- Compression/burst fractures >25% with residual pain → 'compression_gt25'
+- Compression/burst fractures <25% with residual pain → 'compression_lt25'
+
+For 'intervertebral_disc':
+- 3.1a: Residual pain, acceptable level of discomfort → 'disc31_residual'
+- 3.1b: Persistent pain + restricted motion, no neurological deficit → 'disc31_persistent_no_neuro'
+- 3.1c: Persistent pain + restricted motion + sensory deficit → 'disc31_persistent_sensory'
+- 3.1d: Persistent pain + restricted motion + motor deficit (± sensory) → 'disc31_persistent_motor_or_motor_sensory'
+- 3.2a: Degenerated disc + superimposed injury — residual pain → 'disc32_residual'
+- 3.2b: Degenerated disc + superimposed injury — persistent pain + neuro → 'disc32_persistent_neuro'
+
+For 'spondylolysis_spondylolisthesis' (pre-existing pathway only):
+- Residual pain → 'spondy_preexisting_residual'
+- Chronic/recurrent pain → 'spondy_preexisting_chronic'
+
+For 'chronic_pain_normal_mri':
+- Residual pain attributable to injury → 'chronic_pain_attributable'
+- Residual pain not attributable to injury → 'chronic_pain_not_attributable'
 
 ### Respiratory (Chapter 6) — use assess_respiratory
-PFT-based classification: FVC, FEV1, DLCO, VO2 Max → severity class (none/mild/moderate/severe). PI selected within class range in 5% increments. Overrides: occupational asthma medication pathway (requires 4 prerequisites), asbestosis/silicosis 10% floor. Diagnosis types: standard, occupational_asthma, asbestosis_silicosis.
+PFT-based classification: FVC, FEV1, DLCO, VO2 Max → severity class (none/mild/moderate/severe). PI selected within class range in 5% increments. Overrides: occupational asthma medication pathway (requires 4 prerequisites), asbestosis/silicosis 10% floor.
+
+**CRITICAL — Respiratory Parameter IDs:**
+Diagnosis: 'standard' | 'occupational_asthma' | 'asbestosis_silicosis'
+
+Asthma medication (asthmaMedication — use when occupational asthma medication pathway applies):
+- Bronchodilators only → 'bronchodilators' (5%)
+- Low-dose inhaled steroids → 'low_dose_steroids' (10%)
+- High-dose (>800 µg/day) inhaled steroid or combination therapy → 'high_dose_steroids' (15%)
+- Oral steroids → 'oral_steroids' (20%)
+
+Asbestosis profusion (asbestosisProfusion):
+- Below 1/1 profusion → 'below_1_1'
+- 1/1 or above profusion → 'at_least_1_1'
+
+Dyspnoea (dyspnoea):
+- None → 'none'
+- On severe exertion only → 'on_severe_exertion'
+- On moderate exertion (e.g. climbing stairs) → 'on_moderate_exertion'
+- On minimal exertion or at rest → 'on_minimal_exertion'
 
 ### Renal (Chapter 7) — use assess_renal
-Classification from 4 inputs: serum creatinine (sex-specific), creatinine clearance, CKD stage, clinical severity. Highest class wins. Solitary kidney adds 10% via CVC (not additive). Provisional award flag. PI in 5% increments within class range.
+Classification from 4 inputs: serum creatinine (sex-specific), creatinine clearance, CKD stage (1–5), clinical severity. Highest class wins. Solitary kidney adds 10% via CVC (not additive). Provisional award flag. PI in 5% increments within class range.
+
+**CRITICAL — Renal Clinical Severity IDs (clinicalSeverity):**
+- No symptoms / intermittent, not requiring treatment → 'none'
+- Dysfunction necessitating continuous surveillance and frequent treatment → 'continuous_surveillance'
+- Dysfunction incompletely controlled by surgical or continuous medical treatment → 'incompletely_controlled'
+- Dysfunction persisting despite surgical or continuous medical treatment → 'persisting'
 
 ### Gastro/Digestive (Chapter 8) — use assess_gastro
-Four sub-systems: Upper Digestive, Colonic/Rectal/Anal (with sub-paths), Liver/Biliary (with sub-paths), Herniation. Bracket-first PI: doctor picks severity bracket, then assigns PI%. Multiple sub-systems → combine via CVC.
+Four sub-systems combined via CVC if multiple present. Bracket-first PI: doctor picks severity bracket, then assigns PI%.
+
+**CRITICAL — Gastro Sub-Path IDs:**
+Sub-system 'colonicRectalAnal' requires colonalSubPath:
+- Colonic or rectal disease → 'colonicRectal'
+- Anal disease or faecal incontinence → 'anal'
+
+Sub-system 'liverBiliary' requires liverBiliarySubPath:
+- Liver disease (hepatitis, cirrhosis, ascites) → 'liver'
+- Biliary tract disease (obstruction, cholangitis) → 'biliary'
 
 ### Hearing (Chapter 9) — use assess_hearing
-Two pathways — ask which one: **Path A (NID)**: noise-induced deafness, uses better-ear AHL with presbycusis age deduction. **Path B (Injury)**: accident-related, per-ear assessment, additive for bilateral. Below 50 dB AHL = 0%. Discrete table rows (50–90 dB in 5 dB steps).
+Two pathways — ask which one: **Path A (NID)**: noise-induced deafness, uses better-ear AHL with presbycusis age deduction. **Path B (Injury)**: accident-related, per-ear assessment (affectedEars: 'left' | 'right' | 'both'), additive for bilateral. Below 50 dB AHL = 0%. Discrete table rows (50–90 dB in 5 dB steps).
 
 ### CNS (Chapter 10) — use assess_cns
 Three sections: **A** (cerebral groups 1–4, highest-score rule; Group 2 requires neuropsychologist, Group 4 requires psychiatrist), **B** (other neurological: olfaction, facial nerve, equilibrium, swallowing, station/gait, respiration — combined via CVC), **C** (paralysed limbs — amputation-equivalent mapping). Final: CVC of A + B + C.
 
+**CRITICAL — CNS Bracket ID Mapping:**
+Each parameter takes {bracketId, value}. For fixed-PI brackets, value equals the listed PI%.
+
+Section A — Group 1A (group1Consciousness): 'c_none' (0) | 'c_brief_minimal' (5–25) | 'c_brief_moderate' (26–99) | 'c_prolonged' (100) | 'c_coma' (100)
+Section A — Group 1B (group1Episodic): 'e_none' (0) | 'e_predictable' (10–25) | 'e_interferes' (26–99) | 'e_severe_supervised' (100) | 'e_uncontrolled' (100)
+Section A — Group 1C (group1Arousal): 'a_none' (0) | 'a_reduced_most' (10–25) | 'a_reduced_some' (26–99) | 'a_significant_limit' (100) | 'a_unable_selfcare' (100)
+Section A — Group 2 (group2, needs neuropsychologist): 'ms_none' (0) | 'ms_slight' (5–10) | 'ms_moderate' (11–99) | 'ms_severe' (100) | 'ms_fragment_only' (100)
+Section A — Group 3 (group3): 'co_none' (0) | 'co_minimal' (10–25) | 'co_moderate' (26–99) | 'co_severe_or_complete' (100)
+Section A — Group 4 (group4, needs psychiatrist): 'em_none' (0) | 'em_mild' (10–25) | 'em_moderate' (26–99) | 'em_severe' (100)
+Section B — Olfaction: 'ol_none' (0) | 'ol_anosmia' (5)
+Section B — Facial Nerve: 'fn_none' (0) | 'fn_mild_unilateral' (1–4) | 'fn_mildmoderate_bilateral_or_severe_unilateral' (5–19) | 'fn_severe_bilateral' (20–45)
+Section B — Equilibrium: 'eq_none' (0) | 'eq_minimal' (25–50) | 'eq_moderate_to_mod_severe' (51–100) | 'eq_severe_assisted' (100)
+Section B — Swallowing (CN IX/X/XII): 'sw_none' (0) | 'sw_mild' (50) | 'sw_moderately_severe' (100) | 'sw_severe' (100)
+Section B — Station/Gait: 'sg_none' (0) | 'sg_walks_difficult' (25–50) | 'sg_level_only' (51–99) | 'sg_cannot_walk_or_stand' (100)
+Section B — Respiration: 're_none' (0) | 're_limited_ambulation' (100) | 're_confined_bed' (100) | 're_no_capacity' (100)
+
 ### Visual (Chapter 11) — use assess_visual
 Per-eye: Snellen acuity + visual field loss + functional modifiers + specific conditions. 50% monocular cap per eye. Binocular = left cap + right cap (additive). Diplopia adds globally. Legal blindness (<6/60 both eyes) = 100%.
+
+**CRITICAL — Visual Parameter IDs:**
+Acuity (acuityId): '6_6' (0%) | '6_7.5' (5%) | '6_9' (10%) | '6_12' (15%) | '6_15' (20%) | '6_18' (25%) | '6_24' (30%) | '6_30' (35%) | '6_36' (40%) | '6_48' (45%) | '6_60' (50%) | 'lt_6_60' (50%)
+
+Field loss (fieldId): 'field_full' (0%) | 'field_110_120' (2.5%) | 'field_100_110' (5%) | 'field_90_100' (10%) | 'field_80_90' (15%) | 'field_70_80' (20%) | 'field_60_70' (25%) | 'field_50_60' (30%) | 'field_40_50' (35%) | 'field_30_40' (40%) | 'field_20_30' (45%) | 'field_lt20' (50%)
+
+Functional modifiers (functionalModifiers array, additive): 'accommodation' (20%) | 'contrast_glare' (10%) | 'colour' (10%) | 'astigmatism' (10%)
+
+Specific conditions (specificConditions array, additive): 'glaucoma' (5%) | 'cataract' (3%) | 'corneal' (5%) | 'orbital' (5%) | 'mydriasis' (1%)
+
+Diplopia (diplopiaId): 'dip_none' (0%) | 'dip_uncorrectable' (40%) | 'dip_central30' (30%) | 'dip_30_60' (15%) | 'dip_beyond60' (7.5%)
 
 ## Multi-System Assessment
 
