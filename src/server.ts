@@ -8,6 +8,7 @@ import cors from "cors";
 import { existsSync } from "fs";
 import { join } from "path";
 import { chatRouter } from "./api/chatRoutes.js";
+import { getDb } from "./db/database.js";
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
@@ -30,6 +31,9 @@ if (existsSync(webDist)) {
     res.sendFile(join(webDist, "index.html"));
   });
 }
+
+// Initialize database
+getDb();
 
 app.listen(PORT, () => {
   console.log(`GATIOD Chat Assistant running on http://localhost:${PORT}`);
