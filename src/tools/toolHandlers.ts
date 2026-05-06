@@ -149,6 +149,16 @@ function handleAssessCns(args: Record<string, unknown>): ToolResult {
       ? (args.paralysedLimbs as string[])
       : [],
   };
+
+  // The engine gates these three fields to 0 when the corresponding confirmation
+  // boolean is false. In this system the doctor IS the specialist — if they supply
+  // a non-zero value the finding is already confirmed. Auto-confirm so the LLM
+  // never receives a silent 0 back when it submitted a value.
+  const sel = (k: keyof CnsValue) => (merged[k] as { value?: number })?.value ?? 0;
+  if (sel("equilibrium") > 0 && !merged.equilibriumEntConfirmed) merged.equilibriumEntConfirmed = true;
+  if (sel("group2") > 0 && !merged.group2NeuropsychologistConfirmed) merged.group2NeuropsychologistConfirmed = true;
+  if (sel("group4") > 0 && !merged.group4PsychiatristConfirmed) merged.group4PsychiatristConfirmed = true;
+
   return wrapCalc(() => calculateCns(merged), "cns");
 }
 
