@@ -19,12 +19,14 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   toolCalls?: ToolCall[];
+  suggestedChips?: string[];
   timestamp: number;
 }
 
 interface ApiResponse {
   message: string;
   toolCalls?: ToolCall[];
+  suggestedChips?: string[];
   sessionId: string;
   error?: string;
 }
@@ -93,6 +95,7 @@ export default function ChatPanel() {
         role: "assistant",
         content: data.message,
         toolCalls: data.toolCalls as ToolCall[],
+        suggestedChips: data.suggestedChips,
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
@@ -199,6 +202,39 @@ export default function ChatPanel() {
                       />
                     </Paper>
                     {msg.toolCalls && msg.toolCalls.length > 0 && <ToolCallIndicator toolCalls={msg.toolCalls} />}
+                  </Box>
+                )}
+                {/* Smart contextual chips — shown for the last assistant message only */}
+                {msg.role === "assistant" && msg.suggestedChips && msg.suggestedChips.length > 0 && msg.id === messages[messages.length - 1]?.id && !loading && (
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 0.5 }}>
+                    {msg.suggestedChips.map((chip) => (
+                      <Button
+                        key={chip}
+                        size="small"
+                        variant="outlined"
+                        onClick={() => sendMessage(chip)}
+                        sx={{
+                          fontSize: "0.78rem",
+                          borderColor: "divider",
+                          color: "text.secondary",
+                          borderRadius: "16px",
+                          px: 1.5,
+                          py: 0.25,
+                          minHeight: 28,
+                          textTransform: "none",
+                          fontWeight: 500,
+                          lineHeight: 1.3,
+                          "&:hover": {
+                            borderColor: "secondary.main",
+                            color: "secondary.main",
+                            bgcolor: "rgba(46,125,111,0.04)",
+                          },
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        {chip}
+                      </Button>
+                    ))}
                   </Box>
                 )}
               </Box>

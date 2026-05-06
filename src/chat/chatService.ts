@@ -19,7 +19,17 @@ import { logAuditEvent } from "../db/auditLog.js";
 export interface ChatResponse {
   message: string;
   toolCalls?: { name: string; result: unknown }[];
+  suggestedChips?: string[];
   sessionId: string;
+}
+
+/** Extract [CHIPS: ...] from LLM response text. Returns cleaned text and chips array. */
+function extractChips(text: string): { cleanText: string; chips: string[] } {
+  const match = text.match(/\[CHIPS:\s*(.+?)\]\s*$/);
+  if (!match) return { cleanText: text, chips: [] };
+  const cleanText = text.slice(0, match.index).trimEnd();
+  const chips = match[1].split("|").map((c) => c.trim()).filter(Boolean);
+  return { cleanText, chips };
 }
 
 const MAX_RETRIES = 2;
@@ -94,14 +104,20 @@ export async function processChat(
     );
 
     if (functionCalls.length === 0) {
-      // Final text response
-      const text = parts.filter((p): p is Part & { text: string } => "text" in p).map((p) => p.text).join("");
-      history.push({ role: "model", parts: [{ text }] });
+      // Final text response — extract chips before storing
+      const rawText = parts.filter((p): p is Part & { text: string } => "text" in p).map((p) => p.text).join("");
+      const { cleanText, chips } = extractChips(rawText);
+      history.push({ role: "model", parts: [{ text: cleanText }] });
 
-      logAuditEvent({ sessionId, userId: opts?.userId, eventType: "assistant_message", eventData: { message: text.substring(0, 500), toolCallCount: toolCallLog.length } });
+      logAuditEvent({ sessionId, userId: opts?.userId, eventType: "assistant_message", eventData: { message: cleanText.substring(0, 500), toolCallCount: toolCallLog.length, chipCount: chips.length } });
       saveSession(sessionId, history, { userId: opts?.userId, claimId: opts?.claimId });
 
-      return { message: text, toolCalls: toolCallLog.length > 0 ? toolCallLog : undefined, sessionId };
+      return {
+        message: cleanText,
+        toolCalls: toolCallLog.length > 0 ? toolCallLog : undefined,
+        suggestedChips: chips.length > 0 ? chips : undefined,
+        sessionId,
+      };
     }
 
     // Execute tool calls

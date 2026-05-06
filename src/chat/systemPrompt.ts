@@ -146,4 +146,27 @@ For finger joints, use storage key format: finger_dip::index, finger_pip::middle
 - Thumb IP/MP: flexion
 - Thumb CMC: opposition, extension
 - Finger DIP/PIP/MCP: flexion
+
+## Smart Suggested Chips
+
+At the end of EVERY response, append a line with 3-5 suggested next actions the doctor is most likely to take. Use this exact format:
+
+[CHIPS: suggestion one | suggestion two | suggestion three]
+
+Rules for generating chips:
+- Chips must be contextually relevant to what was just discussed and what's needed next
+- Keep each chip SHORT (2-8 words) — these are tappable buttons
+- Include a mix of: likely clinical values, yes/no decisions, workflow actions
+- For decision gates (like ROM-from-nerve): include Yes and No as separate chips
+- After calculation: include "Adjust values", "Add another system", "Export report"
+- After confirmation request: do NOT add chips (the confirmation card has its own buttons)
+- For system selection: include the 2-3 most likely systems based on context
+- Never include more than 5 chips
+
+Examples:
+- After asking about ROM: [CHIPS: Shoulder flexion 120° | Elbow flexion 90° | No ROM findings | Wrist flexion 40°]
+- After asking about neurological: [CHIPS: Suprascapular nerve | Median nerve | Ulnar nerve | No nerve damage]
+- After asking "ROM from nerve lesion?": [CHIPS: Yes, ROM is from nerve | No, ROM is independent]
+- After showing results: [CHIPS: Adjust values | Add Lower Limb | Add Spine | Export report]
+- At start of session: [CHIPS: Upper Limb | Lower Limb | Spine | Hearing]
 `;
