@@ -1,0 +1,144 @@
+{
+  "policy_version": "0.1.0",
+  "default_state": "COLLECTING_FACTS",
+  "global_rules": [
+    "Ask the smallest next necessary question.",
+    "Extract and confirm facts before calculation.",
+    "Never render final PI% unless the assess_* tool succeeds.",
+    "Keep internal IDs out of user-facing messages.",
+    "When user corrects facts, patch the structured state and reconfirm."
+  ],
+  "system_key": "gastro",
+  "title": "Gastro-Digestive Tract Function",
+  "chapter": 8,
+  "calculation_tool": "assess_gastro",
+  "lookup_tools": [
+    "search_dictionary"
+  ],
+  "activation_terms": [
+    "gastro",
+    "digestive",
+    "oesophagus",
+    "esophagus",
+    "stomach",
+    "bowel",
+    "colon",
+    "rectum",
+    "anus",
+    "liver",
+    "biliary",
+    "hernia",
+    "pancreas"
+  ],
+  "assessment_paths": [
+    {
+      "key": "upperDigestive",
+      "label": "Upper digestive tract"
+    },
+    {
+      "key": "colonicRectalAnal",
+      "label": "Colonic, rectal, or anal disease"
+    },
+    {
+      "key": "liverBiliary",
+      "label": "Liver or biliary tract disease"
+    },
+    {
+      "key": "herniation",
+      "label": "Herniation"
+    }
+  ],
+  "slots": [
+    {
+      "key": "subSystem",
+      "required_when": "always",
+      "question": "Which gastro-digestive subsystem is involved: upper digestive tract, colon/rectum/anus, liver/biliary tract, or hernia?",
+      "chips": [
+        "Upper GI",
+        "Colon/rectum/anus",
+        "Liver/biliary",
+        "Hernia"
+      ]
+    },
+    {
+      "key": "colonalSubPath",
+      "required_when": "subSystem == colonicRectalAnal",
+      "question": "For colon/rectum/anus, is this colonic/rectal disease or anal disease/faecal incontinence?",
+      "chips": [
+        "Colonic/rectal",
+        "Anal/incontinence"
+      ]
+    },
+    {
+      "key": "liverBiliarySubPath",
+      "required_when": "subSystem == liverBiliary",
+      "question": "For liver/biliary, is this liver disease or biliary tract disease?",
+      "chips": [
+        "Liver",
+        "Biliary tract"
+      ]
+    },
+    {
+      "key": "selectedBracketIndex",
+      "required_when": "subSystem_present AND bracket_missing",
+      "question": "Which severity bracket applies based on symptoms, treatment dependence, weight loss, and objective complications?",
+      "chips": [
+        "Mild bracket",
+        "Moderate bracket",
+        "Severe bracket"
+      ]
+    },
+    {
+      "key": "piPercent",
+      "required_when": "bracket_range_selected",
+      "question": "Which PI% within the selected severity bracket should be used?",
+      "chips": [
+        "Lowest in bracket",
+        "Midpoint",
+        "Highest in bracket"
+      ]
+    },
+    {
+      "key": "clinicalJustification",
+      "required_when": "piPercent_selected",
+      "question": "Please provide the clinical justification for the selected bracket and PI%.",
+      "chips": [
+        "Symptoms",
+        "Treatment",
+        "Objective findings"
+      ]
+    },
+    {
+      "key": "confirmation",
+      "required_when": "ready_to_calculate",
+      "question": "Please confirm the extracted gastro-digestive findings before I calculate the system-generated PI%.",
+      "chips": [
+        "Confirm and calculate",
+        "Edit findings"
+      ]
+    }
+  ],
+  "conversation_rules": [
+    {
+      "id": "GASTRO_BRACKET_FIRST",
+      "rule": "Select the severity bracket first; then select a PI% within the bracket."
+    },
+    {
+      "id": "GASTRO_CVC_MULTIPLE_SUBSYSTEMS",
+      "rule": "If multiple gastro sub-systems are separately present, score each component first and combine as applicable."
+    }
+  ],
+  "confirmation_sections": [
+    "subSystem",
+    "subPath",
+    "severity_bracket",
+    "piPercent",
+    "clinicalJustification"
+  ],
+  "post_result_actions": [
+    "Adjust findings",
+    "Add another system",
+    "Record doctor PI%",
+    "Export report"
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/gatiod/conversation-policy.schema.json",
+  "title": "GATIOD Conversation Policy",
+  "type": "object",
+  "required": [
+    "system_key",
+    "title",
+    "chapter",
+    "calculation_tool",
+    "activation_terms",
+    "assessment_paths",
+    "slots",
+    "conversation_rules"
+  ],
+  "properties": {
+    "policy_version": {
+      "type": "string"
+    },
+    "system_key": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "chapter": {
+      "type": "integer"
+    },
+    "calculation_tool": {
+      "type": "string"
+    },
+    "lookup_tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "activation_terms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "assessment_paths": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "required_when",
+          "question"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "required_when": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "chips": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "conversation_rules": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "confirmation_sections": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "post_result_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "gatiod-conversation-policy-data",
+  "version": "0.1.0",
+  "generated_at": "2026-05-08T01:18:23Z",
+  "target_repo": "ongchonghian/gatiod-chat-assistant",
+  "purpose": "Drive a deterministic, slot-based conversation layer for GATIOD PI% assessment.",
+  "design_principles": [
+    "LLM extracts facts and proposes patches only; deterministic policy decides the next action.",
+    "No PI% is shown unless a successful assess_* calculation tool produced it.",
+    "Ask the smallest next necessary question.",
+    "Confirm extracted facts before calculation.",
+    "Use structured state, slots, chips and response templates instead of prompt-generated flow.",
+    "Fail closed when a diagnosis, measurement, pathway, or required confirmation is missing."
+  ],
+  "source_alignment": {
+    "chat_assistant_readme": "RAG + deterministic engine architecture; LLM should not do math.",
+    "system_prompt": "Existing prompt already requires confirmation, tool calling, and multi-system flow; this data externalises those rules.",
+    "tool_schemas": "System policies map to assess_* and lookup_* tool schemas.",
+    "engine_index": "Policies cover the 9 exported GATIOD systems plus global CVC."
+  }
+}

@@ -1,0 +1,131 @@
+{
+  "version": "0.1.0",
+  "states": [
+    "START",
+    "CLASSIFYING",
+    "COLLECTING_FACTS",
+    "CLARIFICATION_REQUIRED",
+    "READY_TO_CONFIRM",
+    "AWAITING_CONFIRMATION",
+    "CALCULATING",
+    "SHOWING_RESULT",
+    "REVISING_FACTS",
+    "ADDING_SYSTEM",
+    "OUT_OF_SCOPE"
+  ],
+  "default_initial_state": "START",
+  "transition_rules": [
+    {
+      "from": "START",
+      "to": "CLASSIFYING",
+      "when": "user_message_received",
+      "action": "detect_systems_and_assessment_intent"
+    },
+    {
+      "from": "CLASSIFYING",
+      "to": "OUT_OF_SCOPE",
+      "when": "no_gatiod_system_detected AND not_guide_scope_question",
+      "action": "render_out_of_scope_redirect"
+    },
+    {
+      "from": "CLASSIFYING",
+      "to": "COLLECTING_FACTS",
+      "when": "single_system_detected",
+      "action": "extract_facts_and_compute_missing_slots"
+    },
+    {
+      "from": "CLASSIFYING",
+      "to": "ADDING_SYSTEM",
+      "when": "multiple_systems_detected",
+      "action": "create_or_update_per_system_assessment_threads"
+    },
+    {
+      "from": "COLLECTING_FACTS",
+      "to": "CLARIFICATION_REQUIRED",
+      "when": "conflicting_or_ambiguous_fact_detected",
+      "action": "ask_clarification_for_highest_risk_conflict"
+    },
+    {
+      "from": "COLLECTING_FACTS",
+      "to": "READY_TO_CONFIRM",
+      "when": "missing_slots.empty AND at_least_one_assessable_finding",
+      "action": "build_confirmation_summary"
+    },
+    {
+      "from": "COLLECTING_FACTS",
+      "to": "COLLECTING_FACTS",
+      "when": "missing_slots.not_empty",
+      "action": "ask_next_smallest_question"
+    },
+    {
+      "from": "READY_TO_CONFIRM",
+      "to": "AWAITING_CONFIRMATION",
+      "when": "confirmation_summary_rendered",
+      "action": "wait_for_confirm_or_correction"
+    },
+    {
+      "from": "AWAITING_CONFIRMATION",
+      "to": "CALCULATING",
+      "when": "user_confirms AND readiness_validator_passes",
+      "action": "call_assessment_tool"
+    },
+    {
+      "from": "AWAITING_CONFIRMATION",
+      "to": "REVISING_FACTS",
+      "when": "user_corrects_or_adds_facts",
+      "action": "apply_validated_fact_patches"
+    },
+    {
+      "from": "REVISING_FACTS",
+      "to": "READY_TO_CONFIRM",
+      "when": "patches_applied",
+      "action": "rebuild_confirmation_summary"
+    },
+    {
+      "from": "CALCULATING",
+      "to": "SHOWING_RESULT",
+      "when": "assess_tool_success",
+      "action": "render_deterministic_result_template"
+    },
+    {
+      "from": "CALCULATING",
+      "to": "CLARIFICATION_REQUIRED",
+      "when": "assess_tool_error OR validator_error",
+      "action": "show_blocking_error_and_missing_fields"
+    },
+    {
+      "from": "SHOWING_RESULT",
+      "to": "REVISING_FACTS",
+      "when": "user_requests_adjustment",
+      "action": "apply_validated_fact_patches"
+    },
+    {
+      "from": "SHOWING_RESULT",
+      "to": "ADDING_SYSTEM",
+      "when": "user_adds_another_system",
+      "action": "start_new_system_thread"
+    }
+  ],
+  "hard_guards": [
+    {
+      "id": "NO_TOOL_NO_PI",
+      "rule": "Do not render a numeric PI%, incapacity percentage, award percentage, or final total unless the latest response includes a successful assess_* tool result."
+    },
+    {
+      "id": "CONFIRM_BEFORE_CALCULATION",
+      "rule": "Do not call assess_* until user confirms the structured facts for that system."
+    },
+    {
+      "id": "ONE_NEXT_QUESTION",
+      "rule": "When collecting facts, ask only the highest-priority missing slot unless the user explicitly asks for a checklist."
+    },
+    {
+      "id": "NO_INTERNAL_IDS_IN_USER_TEXT",
+      "rule": "Never expose internal keys such as disc31_persistent_sensory unless the user is debugging the application."
+    },
+    {
+      "id": "FAIL_CLOSED",
+      "rule": "If a diagnosis or measurement cannot be mapped to a calculation path with confidence, ask a clarification question instead of calculating."
+    }
+  ]
+}

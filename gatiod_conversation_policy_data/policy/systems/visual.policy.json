@@ -1,0 +1,147 @@
+{
+  "policy_version": "0.1.0",
+  "default_state": "COLLECTING_FACTS",
+  "global_rules": [
+    "Ask the smallest next necessary question.",
+    "Extract and confirm facts before calculation.",
+    "Never render final PI% unless the assess_* tool succeeds.",
+    "Keep internal IDs out of user-facing messages.",
+    "When user corrects facts, patch the structured state and reconfirm."
+  ],
+  "system_key": "visual",
+  "title": "Visual Function",
+  "chapter": 11,
+  "calculation_tool": "assess_visual",
+  "lookup_tools": [
+    "search_dictionary"
+  ],
+  "activation_terms": [
+    "eye",
+    "vision",
+    "visual",
+    "acuity",
+    "field",
+    "diplopia",
+    "glaucoma",
+    "cataract",
+    "corneal",
+    "mydriasis",
+    "blindness"
+  ],
+  "assessment_paths": [
+    {
+      "key": "per_eye",
+      "label": "Per-eye acuity, visual field, modifiers, specific conditions"
+    },
+    {
+      "key": "binocular_diplopia",
+      "label": "Diplopia add-on"
+    },
+    {
+      "key": "legal_blindness",
+      "label": "Legal blindness override"
+    }
+  ],
+  "slots": [
+    {
+      "key": "leftEye",
+      "required_when": "always",
+      "question": "What are the left-eye findings: best-corrected visual acuity, visual field, modifiers, and specific conditions?",
+      "chips": [
+        "Left eye normal",
+        "Add left acuity",
+        "Add left field loss"
+      ]
+    },
+    {
+      "key": "rightEye",
+      "required_when": "always",
+      "question": "What are the right-eye findings: best-corrected visual acuity, visual field, modifiers, and specific conditions?",
+      "chips": [
+        "Right eye normal",
+        "Add right acuity",
+        "Add right field loss"
+      ]
+    },
+    {
+      "key": "acuity",
+      "required_when": "eye_present AND acuity_missing",
+      "question": "What is the best-corrected visual acuity for the affected eye?",
+      "chips": [
+        "6/6",
+        "6/12",
+        "6/60",
+        "<6/60"
+      ]
+    },
+    {
+      "key": "field",
+      "required_when": "eye_present AND field_missing",
+      "question": "What is the retained visual field range for the affected eye?",
+      "chips": [
+        "Full field",
+        "90-100°",
+        "50-60°",
+        "<20°"
+      ]
+    },
+    {
+      "key": "diplopiaId",
+      "required_when": "always",
+      "question": "Is there diplopia, and if so which zone applies?",
+      "chips": [
+        "No diplopia",
+        "Central 30°",
+        "30-60°",
+        "Beyond 60°"
+      ]
+    },
+    {
+      "key": "modifiers",
+      "required_when": "functional_or_specific_condition_mentioned",
+      "question": "Which functional modifiers or specific ophthalmic conditions should be included?",
+      "chips": [
+        "Colour loss",
+        "Contrast/glare",
+        "Cataract",
+        "Mydriasis"
+      ]
+    },
+    {
+      "key": "confirmation",
+      "required_when": "ready_to_calculate",
+      "question": "Please confirm the extracted visual findings before I calculate the system-generated PI%.",
+      "chips": [
+        "Confirm and calculate",
+        "Edit findings"
+      ]
+    }
+  ],
+  "conversation_rules": [
+    {
+      "id": "VISUAL_MONOCULAR_CAP",
+      "rule": "Apply the per-eye monocular cap where relevant."
+    },
+    {
+      "id": "VISUAL_BINOCULAR_ADD",
+      "rule": "Combine left eye, right eye, and diplopia according to visual assessment rules."
+    },
+    {
+      "id": "VISUAL_LEGAL_BLINDNESS",
+      "rule": "Legal blindness override may apply when both eyes meet the threshold."
+    }
+  ],
+  "confirmation_sections": [
+    "leftEye",
+    "rightEye",
+    "diplopia",
+    "modifiers",
+    "specific_conditions"
+  ],
+  "post_result_actions": [
+    "Adjust findings",
+    "Add another system",
+    "Record doctor PI%",
+    "Export report"
+  ]
+}

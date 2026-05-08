@@ -25,7 +25,7 @@ import { buildConfirmationMessage } from "../v2/confirmationBuilder.js";
 import { V2_SYSTEM_REGISTRY } from "../v2/systemRegistry.js";
 import { tryResolvePendingObservation } from "../v2/pendingObservationResolver.js";
 import { renderV2Failure } from "../v2/failureRenderer.js";
-import { setConfirmationConfirmed } from "../v2/stateMachine.js";
+import { setConfirmationConfirmed, setConfirmationPending } from "../v2/stateMachine.js";
 
 interface ProcessChatV2Options {
   userId?: string;
@@ -163,15 +163,14 @@ export async function processChatV2(
       };
     }
     if (resolution.resolved) {
-      // Observation resolved — continue with updated state
-      // Fall through with the graduated state
       const grounding = retrieveGrounding(normalized.normalizedText);
       const route = routeUtterance(normalized, grounding, resolution.state);
-      const enveloped = toSystemStateEnvelope(resolution.state, raw);
-      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
-      // If there are still pending observations, re-ask the next one
+
+      // If there are still pending observations, re-ask the next one.
       const remaining = resolution.state.systems[pendingSystem].pendingObservations;
       if (remaining.length > 0) {
+        const enveloped = toSystemStateEnvelope(resolution.state, raw);
+        saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
         const next = remaining[0];
         return {
           sessionId,
@@ -186,21 +185,63 @@ export async function processChatV2(
           shadowMode: shadow,
         };
       }
-      // No more pending — continue normally from the updated state below
-      // (re-enter the main flow with the resolved state)
-      // We pass through by overwriting loadedState reference inline is not possible,
-      // so we finish the response here and let the doctor's next turn continue normally.
-      logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_shadow_result", eventData: { shadow, proposed: [], actual: [], needsClarification: false } });
+
+      // No more pending observations — run the readiness validator before presenting confirmation.
+      // This branch MUST set pendingConfirmation so the next "confirm" reply is intercepted by
+      // the policy engine's confirmation-handling block (policyEngine.ts:80). Without it the
+      // router produces operation:"clarify" for a bare "confirm" message and the policy falls
+      // through to the generic "which system?" question.
+      const pendingCap = V2_SYSTEM_REGISTRY[pendingSystem];
+      let resolvedState = resolution.state;
+
+      if (pendingCap.mode === "structured_live" && pendingCap.readinessValidator) {
+        const readiness = pendingCap.readinessValidator(resolvedState.systems[pendingSystem]);
+        if (!readiness.ready) {
+          const clarification = readiness.clarificationQuestion ?? "Additional information is required before calculating.";
+          resolvedState = { ...resolvedState, pendingClarification: clarification, pendingConfirmation: null };
+          const enveloped = toSystemStateEnvelope(resolvedState, raw);
+          saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+          logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_shadow_result", eventData: { shadow, proposed: [], actual: [], needsClarification: true } });
+          return {
+            sessionId,
+            message: clarification,
+            route,
+            grounding,
+            needsClarification: true,
+            clarificationQuestion: clarification,
+            suggestedChips: readiness.candidateAnswers,
+            toolPlan: { proposed: [], actual: [] },
+            policy: { action: "clarify", reason: "readiness_check_failed_after_obs_resolve", requiresConfirmation: false, clarificationQuestion: clarification, chips: readiness.candidateAnswers, proposedTools: [] },
+            shadowMode: shadow,
+          };
+        }
+      }
+
+      // Readiness passed — present structured confirmation and commit pendingConfirmation to
+      // session state so the doctor's "confirm" reply is handled by the policy engine.
+      const sysStateForConfirm = resolvedState.systems[pendingSystem];
+      const confirmMsg = buildConfirmationMessage(pendingSystem, sysStateForConfirm.extractedValues, sysStateForConfirm.slotSignals);
+      resolvedState = setConfirmationPending(resolvedState, pendingSystem, confirmMsg);
+      resolvedState = setPendingConfirmation(resolvedState, {
+        system: pendingSystem,
+        summary: confirmMsg,
+        createdAt: new Date().toISOString(),
+      });
+      resolvedState = { ...resolvedState, pendingClarification: null };
+
+      const enveloped = toSystemStateEnvelope(resolvedState, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_shadow_result", eventData: { shadow, proposed: [], actual: [], needsClarification: true } });
       return {
         sessionId,
-        message: "Got it. " + (resolution.state.systems[pendingSystem].pendingObservations.length === 0
-          ? "All clarifications resolved — please confirm when you're ready to calculate."
-          : ""),
+        message: confirmMsg,
         route,
         grounding,
-        needsClarification: false,
+        needsClarification: true,
+        clarificationQuestion: confirmMsg,
+        suggestedChips: ["Confirm and calculate", "Edit findings"],
         toolPlan: { proposed: [], actual: [] },
-        policy: { action: "clarify", reason: "observation_resolved", requiresConfirmation: false, proposedTools: [] },
+        policy: { action: "clarify", reason: "observation_resolved_pending_confirmation", requiresConfirmation: true, clarificationQuestion: confirmMsg, chips: ["Confirm and calculate", "Edit findings"], proposedTools: [] },
         shadowMode: shadow,
       };
     }
