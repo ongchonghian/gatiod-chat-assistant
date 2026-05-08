@@ -21,7 +21,13 @@ export type AuditEventType =
   | "v2_route"
   | "v2_policy"
   | "v2_tool_plan"
-  | "v2_shadow_result";
+  | "v2_shadow_result"
+  | "v2_pending_observation"
+  | "v2_extraction_warning"
+  | "v2_failure"
+  | "v2_failure_user_choice"
+  | "v2_legacy_fallback_requested"
+  | "v2_legacy_fallback_result";
 
 export interface AuditEntry {
   sessionId: string;

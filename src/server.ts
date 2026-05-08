@@ -9,6 +9,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { chatRouter } from "./api/chatRoutes.js";
 import { getDb } from "./db/database.js";
+import { validateSystemRegistry } from "./v2/systemRegistry.js";
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
@@ -37,6 +38,9 @@ if (existsSync(webDist)) {
 
 // Initialize database
 getDb();
+
+// Verify V2 system registry integrity before accepting requests.
+validateSystemRegistry();
 
 function startServer(port: number): void {
   const server = app.listen(port, () => {

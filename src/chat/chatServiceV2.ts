@@ -8,6 +8,7 @@ import { retrieveGrounding } from "../v2/hybridRetriever.js";
 import { routeUtterance } from "../v2/router.js";
 import { makePolicyDecision } from "../v2/policyEngine.js";
 import {
+  applyStructuredExtraction,
   applyToolResults,
   coerceV2State,
   defaultV2SessionState,
@@ -19,8 +20,12 @@ import {
   withRoute,
 } from "../v2/stateMachine.js";
 import { extractSignals, extractValues, mergeSignals } from "../v2/slotEvaluator.js";
-import { applySignalClear, buildFactPatch } from "../v2/factPatch.js";
+import { applySignalClear, buildFactPatch, isConfirmation } from "../v2/factPatch.js";
 import { buildConfirmationMessage } from "../v2/confirmationBuilder.js";
+import { V2_SYSTEM_REGISTRY } from "../v2/systemRegistry.js";
+import { tryResolvePendingObservation } from "../v2/pendingObservationResolver.js";
+import { renderV2Failure } from "../v2/failureRenderer.js";
+import { setConfirmationConfirmed } from "../v2/stateMachine.js";
 
 interface ProcessChatV2Options {
   userId?: string;
@@ -124,6 +129,83 @@ export async function processChatV2(
     },
   });
 
+  // ── V2-007a: pending-observation resolver gate ─────────────────────────────
+  // Must run before grounding/route — short replies like "Flexion" lack context
+  // to route correctly. Resolve against the pending observation first.
+  const pendingSystem: GatiodSystemKey | undefined =
+    loadedState.pendingConfirmation?.system ??
+    (Object.entries(loadedState.systems) as [GatiodSystemKey, typeof loadedState.systems[GatiodSystemKey]][])
+      .find(([, s]) => s.pendingObservations.length > 0)?.[0];
+
+  if (pendingSystem && loadedState.systems[pendingSystem].pendingObservations.length > 0) {
+    const resolution = tryResolvePendingObservation(loadedState, pendingSystem, normalized);
+    if (resolution.auditEvent) {
+      logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_pending_observation", eventData: resolution.auditEvent });
+    }
+    if (resolution.blocked) {
+      // Re-ask with chips — don't proceed to grounding/route
+      const clarification = resolution.clarificationQuestion ?? "Please answer the clarification to continue.";
+      const enveloped = toSystemStateEnvelope(loadedState, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      const grounding = retrieveGrounding(normalized.normalizedText);
+      const route = routeUtterance(normalized, grounding, loadedState);
+      return {
+        sessionId,
+        message: clarification,
+        route,
+        grounding,
+        needsClarification: true,
+        clarificationQuestion: clarification,
+        suggestedChips: resolution.candidateAnswers,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "pending_observation_unresolved", requiresConfirmation: false, clarificationQuestion: clarification, chips: resolution.candidateAnswers, proposedTools: [] },
+        shadowMode: shadow,
+      };
+    }
+    if (resolution.resolved) {
+      // Observation resolved — continue with updated state
+      // Fall through with the graduated state
+      const grounding = retrieveGrounding(normalized.normalizedText);
+      const route = routeUtterance(normalized, grounding, resolution.state);
+      const enveloped = toSystemStateEnvelope(resolution.state, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      // If there are still pending observations, re-ask the next one
+      const remaining = resolution.state.systems[pendingSystem].pendingObservations;
+      if (remaining.length > 0) {
+        const next = remaining[0];
+        return {
+          sessionId,
+          message: next.clarificationQuestion,
+          route,
+          grounding,
+          needsClarification: true,
+          clarificationQuestion: next.clarificationQuestion,
+          suggestedChips: next.candidateAnswers,
+          toolPlan: { proposed: [], actual: [] },
+          policy: { action: "clarify", reason: "next_pending_observation", requiresConfirmation: false, clarificationQuestion: next.clarificationQuestion, chips: next.candidateAnswers, proposedTools: [] },
+          shadowMode: shadow,
+        };
+      }
+      // No more pending — continue normally from the updated state below
+      // (re-enter the main flow with the resolved state)
+      // We pass through by overwriting loadedState reference inline is not possible,
+      // so we finish the response here and let the doctor's next turn continue normally.
+      logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_shadow_result", eventData: { shadow, proposed: [], actual: [], needsClarification: false } });
+      return {
+        sessionId,
+        message: "Got it. " + (resolution.state.systems[pendingSystem].pendingObservations.length === 0
+          ? "All clarifications resolved — please confirm when you're ready to calculate."
+          : ""),
+        route,
+        grounding,
+        needsClarification: false,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "observation_resolved", requiresConfirmation: false, proposedTools: [] },
+        shadowMode: shadow,
+      };
+    }
+  }
+
   const grounding = retrieveGrounding(normalized.normalizedText);
   const route = routeUtterance(normalized, grounding, loadedState);
   logAuditEvent({
@@ -144,8 +226,31 @@ export async function processChatV2(
   const primarySystem: GatiodSystemKey | undefined =
     loadedState.pendingConfirmation?.system ?? route.systems[0];
 
-  // Accumulate slot signals and extracted values for the primary system.
-  if (primarySystem) {
+  // ── V2-007b: extraction-skip on confirmation reply ─────────────────────────
+  const confirmationReply = Boolean(loadedState.pendingConfirmation) && isConfirmation(normalized);
+
+  if (primarySystem && !confirmationReply) {
+    const cap = V2_SYSTEM_REGISTRY[primarySystem];
+    if ((cap.mode === "structured_live" || cap.mode === "structured_shadow") && cap.extractor) {
+      // Structured path: use the V2 extractor
+      const extractionResult = cap.extractor(normalized, nextState.systems[primarySystem], grounding.ontologyMatches);
+      if (extractionResult.warnings.length > 0) {
+        logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_extraction_warning", eventData: { warnings: extractionResult.warnings } });
+      }
+      nextState = applyStructuredExtraction(nextState, primarySystem, extractionResult);
+    } else {
+      // Legacy path: use the signal/value extractors
+      const incoming = extractSignals(normalized);
+      const incomingValues = extractValues(normalized);
+      const existing = nextState.systems[primarySystem].slotSignals ?? {};
+      const merged = mergeSignals(existing, incoming);
+      nextState = updateSlotSignals(nextState, primarySystem, merged);
+      nextState = updateExtractedValues(nextState, primarySystem, incomingValues);
+    }
+  } else if (primarySystem && confirmationReply) {
+    // Confirmation reply — skip extraction entirely (D8)
+  } else if (primarySystem) {
+    // No primary system branch — legacy extraction
     const incoming = extractSignals(normalized);
     const incomingValues = extractValues(normalized);
     const existing = nextState.systems[primarySystem].slotSignals ?? {};
@@ -227,12 +332,37 @@ export async function processChatV2(
     }
 
     nextState = applyToolResults(nextState, actual);
-    message = formatLookupExecutionMessage(actual, formatV2Message({
-      policyReason: policy.reason,
-      needsClarification: false,
-      toolPlan: proposed,
-      routeSummary: `${route.operation} (${route.systems.join(", ") || "none"})`,
-    }));
+
+    // For structured_live assess_* calls: use the deterministic renderer
+    const assessCall = actual.find((c) => /^assess_(?!global_cvc)/.test(c.name) && c.status === "executed");
+    if (assessCall && primarySystem) {
+      const cap = V2_SYSTEM_REGISTRY[primarySystem];
+      if (cap.mode === "structured_live" && cap.resultRenderer) {
+        if (!assessCall.validation.ok) {
+          const failure = renderV2Failure("tool_execution_failed", assessCall.validation.message);
+          logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_failure", eventData: { failureKind: "tool_execution_failed" } });
+          message = failure.message;
+        } else {
+          nextState = setConfirmationConfirmed(nextState, primarySystem, opts?.userId);
+          const rendered = cap.resultRenderer(assessCall.result, nextState.systems[primarySystem]);
+          message = rendered.message;
+        }
+      } else {
+        message = formatLookupExecutionMessage(actual, formatV2Message({
+          policyReason: policy.reason,
+          needsClarification: false,
+          toolPlan: proposed,
+          routeSummary: `${route.operation} (${route.systems.join(", ") || "none"})`,
+        }));
+      }
+    } else {
+      message = formatLookupExecutionMessage(actual, formatV2Message({
+        policyReason: policy.reason,
+        needsClarification: false,
+        toolPlan: proposed,
+        routeSummary: `${route.operation} (${route.systems.join(", ") || "none"})`,
+      }));
+    }
 
   } else {
     // delegate_legacy: clear pending confirmation (doctor confirmed; legacy will calculate).

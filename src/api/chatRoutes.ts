@@ -53,7 +53,11 @@ chatRouter.post("/chat/v2", async (req: Request, res: Response) => {
 
     const sid = sessionId || uuidv4();
     const result = await processChatV2(sid, message, { userId, claimId, shadow: false });
-    res.json(result);
+    const debugMode = process.env.GATIOD_DEBUG_RESPONSES === "true";
+    const response = debugMode
+      ? result
+      : { sessionId: result.sessionId, message: result.message, needsClarification: result.needsClarification, clarificationQuestion: result.clarificationQuestion, suggestedChips: result.suggestedChips, shadowMode: result.shadowMode };
+    res.json(response);
   } catch (err) {
     console.error("Chat v2 error:", err);
     const message = err instanceof Error ? err.message : "Internal server error";

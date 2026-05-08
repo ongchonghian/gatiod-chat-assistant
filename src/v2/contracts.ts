@@ -156,6 +156,50 @@ export interface PolicyDecision {
 
 export type V2SystemStatus = "idle" | "collecting" | "needs_confirmation" | "calculated";
 
+// D4 — per-fact provenance. No confirmed flag; confirmation is system-level.
+export interface ExtractedFact<T> {
+  value: T;
+  sourceText: string;
+  confidence: number;
+  extractionMethod: "regex" | "llm_proposed_validated" | "user_selected";
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Calculation-grade structured facts keyed by slot name.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type V2SystemFacts = Record<string, ExtractedFact<any>>;
+
+// D3 — unresolved observation waiting for a missing clinical field.
+export interface PendingObservation {
+  id: string;
+  system: GatiodSystemKey;
+  type:
+    | "rom_measurement"
+    | "nerve_deficit"
+    | "dbe_condition"
+    | "severity_bracket"
+    | "hearing_value"
+    | "visual_value"
+    | "other";
+  sourceText: string;
+  parsed: Record<string, unknown>;
+  missingFields: string[];
+  clarificationQuestion: string;
+  candidateAnswers?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// D4 — system-level confirmation with a facts-hash snapshot.
+export interface V2SystemConfirmation {
+  status: "not_confirmed" | "pending" | "confirmed" | "stale";
+  confirmedAt?: string;
+  confirmedBy?: string;
+  confirmationSummary?: string;
+  factsHash?: string;
+}
+
 export interface V2SystemState {
   status: V2SystemStatus;
   completeness: number;
@@ -163,6 +207,12 @@ export interface V2SystemState {
   slotSignals: Partial<SlotSignals>;
   /** Human-readable extracted values per slot key, accumulated across turns. */
   extractedValues: Record<string, string>;
+  /** Calculation-grade structured facts (D3). Only resolved, complete values. */
+  extractedFacts: V2SystemFacts;
+  /** Observations not yet calculable — missing one or more clinical fields (D3). */
+  pendingObservations: PendingObservation[];
+  /** System-level confirmation with factsHash snapshot (D4). */
+  confirmation: V2SystemConfirmation;
   piPercent: number | null;
   updatedAt: string;
 }
@@ -191,4 +241,104 @@ export interface ChatV2Response {
   toolPlan: ToolPlan;
   policy: PolicyDecision;
   shadowMode: boolean;
+}
+
+// ── Component result types (shared across extractor / readiness / arg-builder / renderer) ──
+
+export interface StructuredExtractionResult {
+  extractedFactsPatch: V2SystemFacts;
+  pendingObservationsToAdd: PendingObservation[];
+  pendingObservationsToResolve: string[];
+  slotSignalsPatch: Partial<SlotSignals>;
+  displayValuesPatch: Record<string, string>;
+  warnings: string[];
+}
+
+export interface ReadinessResult {
+  ready: boolean;
+  reason?: string;
+  missingFields?: string[];
+  clarificationQuestion?: string;
+  candidateAnswers?: string[];
+}
+
+export interface BuildProvenance {
+  userSupplied: string[];
+  builderZeroFilled: string[];
+  factsHash: string;
+}
+
+export type BuildResult<T> =
+  | { ok: true; toolName: string; args: T; warnings: string[]; provenance: BuildProvenance }
+  | { ok: false; warnings: string[]; zodErrors?: string[] };
+
+// D9 — assessment render result
+export interface AssessmentRenderResult {
+  message: string;
+  suggestedChips: string[];
+  resultSummary: {
+    system: GatiodSystemKey;
+    side?: "left" | "right";
+    finalPercent: number;
+    categoryPercents: Record<string, number>;
+  };
+  fullBreakdown: {
+    inputFacts: string[];
+    categoryResults: { label: string; rawPercent: number; notes: string[] }[];
+    dbeRomConflicts: { joint: string; romPercent: number; dbePercent: number; winner: string }[];
+    cvcInputs: number[];
+    cvcTrace: string[];
+    capsApplied: string[];
+    rulesApplied: string[];
+    finalPercent: number;
+  };
+  displayMode: "summary" | "expanded";
+}
+
+// D6 — pending-observation resolution result
+export interface PendingObservationResolutionResult {
+  resolved: boolean;
+  blocked: boolean;
+  state: V2SessionState;
+  system?: GatiodSystemKey;
+  observationId?: string;
+  clarificationQuestion?: string;
+  candidateAnswers?: string[];
+  auditEvent?: Record<string, unknown>;
+}
+
+// D10 — no-tool-no-PI guard types
+export type V2ResponseKind =
+  | "clarification"
+  | "confirmation"
+  | "lookup_only"
+  | "assessment_result"
+  | "global_result"
+  | "error";
+
+export interface V2RenderedResponse {
+  kind: V2ResponseKind;
+  message: string;
+  suggestedChips?: string[];
+  toolEvidence?: { toolName: string; status: "executed" | "failed"; success: boolean; resultHash?: string };
+  numericClaims: Array<{ label: string; value: number; unit: "%"; authority: "lookup_only" | "assessment_result" }>;
+}
+
+// D11 — V2 failure types
+export type V2FailureKind =
+  | "readiness_failed"
+  | "stale_confirmation"
+  | "arg_builder_failed"
+  | "schema_validation_failed"
+  | "tool_execution_failed"
+  | "renderer_failed"
+  | "guard_failed";
+
+export interface V2FailureResponse {
+  kind: "v2_failure";
+  failureKind: V2FailureKind;
+  message: string;
+  suggestedChips: string[];
+  allowLegacyFallback: boolean;
+  auditRef?: string;
 }

@@ -2,14 +2,16 @@ import type {
   GroundingResult,
   NormalizedUtterance,
   PolicyDecision,
+  ReadinessResult,
   RouteDecision,
   ToolPlanCall,
   V2SessionState,
 } from "./contracts.js";
-import { collectCalculatedSubtotals } from "./stateMachine.js";
+import { collectCalculatedSubtotals, hashExtractedFacts } from "./stateMachine.js";
 import { decideSlotAction } from "./dialoguePolicy.js";
 import { isConfirmation, isEditRequest } from "./factPatch.js";
 import { buildConfirmationMessage } from "./confirmationBuilder.js";
+import { isStructuredLiveSystem, requireStructuredCapability } from "./systemRegistry.js";
 
 const SYSTEM_SELECTION_PATTERN = /\b(spine|upper\s+limb|lower\s+limb|respiratory|renal|gastro|digestive|hearing|cns|visual)\b/i;
 const CONTINUATION_REPLY_PATTERN = /^(no|yes|y|n|ok|okay|confirmed|proceed|continue|none)$/i;
@@ -79,7 +81,65 @@ export function makePolicyDecision(
     const primary = state.pendingConfirmation.system;
 
     if (isConfirmation(normalized)) {
-      // User confirmed — delegate to legacy which will call assess_* from conversation history.
+      // For structured_live systems: run readiness → hash check → arg builder → execute_tools (D8)
+      if (isStructuredLiveSystem(primary)) {
+        const cap = requireStructuredCapability(primary);
+        const systemState = state.systems[primary];
+
+        const readiness: ReadinessResult = cap.readinessValidator(systemState);
+        if (!readiness.ready) {
+          return {
+            action: "clarify",
+            reason: `Readiness check failed: ${readiness.reason}`,
+            requiresConfirmation: false,
+            clarificationQuestion: readiness.clarificationQuestion ?? "Additional information is required before calculating.",
+            chips: readiness.candidateAnswers,
+            proposedTools: [],
+          };
+        }
+
+        const pendingHash = state.pendingConfirmation.system
+          ? systemState.confirmation.factsHash
+          : undefined;
+        const currentHash = hashExtractedFacts(systemState.extractedFacts);
+        if (pendingHash && pendingHash !== currentHash) {
+          return {
+            action: "clarify",
+            reason: "Facts changed since confirmation was presented; confirmation is stale.",
+            requiresConfirmation: true,
+            clarificationQuestion: "__REBUILD_CONFIRMATION__",
+            chips: [],
+            proposedTools: [],
+          };
+        }
+
+        const built = cap.argBuilder(systemState.extractedFacts);
+        if (!built.ok) {
+          return {
+            action: "clarify",
+            reason: `Arg builder failed: ${built.warnings.join("; ")}`,
+            requiresConfirmation: false,
+            clarificationQuestion: `I could not build the assessment arguments: ${built.warnings.join("; ")}. Please review the entered findings.`,
+            chips: ["Review findings"],
+            proposedTools: [],
+          };
+        }
+
+        const toolCall: ToolPlanCall = {
+          name: built.toolName,
+          args: built.args as Record<string, unknown>,
+          status: "proposed",
+          validation: { ok: true, message: "Validated structured V2 payload." },
+        };
+        return {
+          action: "execute_tools",
+          reason: "Confirmed structured V2 assessment; executing deterministic tool.",
+          requiresConfirmation: false,
+          proposedTools: [toolCall],
+        };
+      }
+
+      // Unmigrated system — delegate to legacy which calls assess_* from conversation history.
       return {
         action: "delegate_legacy",
         reason: "Doctor confirmed extracted findings; delegating to legacy assessor to call assess_* tool.",

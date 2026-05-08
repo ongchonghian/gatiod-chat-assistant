@@ -1,10 +1,15 @@
+import { createHash } from "crypto";
 import type {
   GatiodSystemKey,
   PendingConfirmation,
+  PendingObservation,
   RouteDecision,
   SlotSignals,
+  StructuredExtractionResult,
   ToolPlanCall,
   V2SessionState,
+  V2SystemConfirmation,
+  V2SystemFacts,
   V2SystemState,
 } from "./contracts.js";
 
@@ -24,6 +29,10 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function emptyConfirmation(): V2SystemConfirmation {
+  return { status: "not_confirmed" };
+}
+
 function emptySystemState(): V2SystemState {
   return {
     status: "idle",
@@ -31,6 +40,9 @@ function emptySystemState(): V2SystemState {
     pendingFields: [],
     slotSignals: {},
     extractedValues: {},
+    extractedFacts: {},
+    pendingObservations: [],
+    confirmation: emptyConfirmation(),
     piPercent: null,
     updatedAt: nowIso(),
   };
@@ -58,12 +70,31 @@ export function coerceV2State(raw: unknown): V2SessionState {
   for (const key of SYSTEM_KEYS) {
     const current = candidate.systems?.[key];
     if (!current) continue;
+
+    // Migration-safe: treat missing V2-001 fields as empty defaults.
+    const extractedFacts: V2SystemFacts =
+      current.extractedFacts && typeof current.extractedFacts === "object"
+        ? (current.extractedFacts as V2SystemFacts)
+        : {};
+
+    const pendingObservations: PendingObservation[] =
+      Array.isArray(current.pendingObservations) ? (current.pendingObservations as PendingObservation[]) : [];
+
+    const rawConfirmation = current.confirmation as V2SystemConfirmation | undefined;
+    const confirmation: V2SystemConfirmation =
+      rawConfirmation && typeof rawConfirmation === "object" && rawConfirmation.status
+        ? rawConfirmation
+        : { status: "not_confirmed" };
+
     merged.systems[key] = {
       status: current.status,
       completeness: Number.isFinite(current.completeness) ? current.completeness : 0,
       pendingFields: Array.isArray(current.pendingFields) ? current.pendingFields : [],
       slotSignals: (current.slotSignals && typeof current.slotSignals === "object") ? current.slotSignals : {},
       extractedValues: (current.extractedValues && typeof current.extractedValues === "object") ? current.extractedValues as Record<string, string> : {},
+      extractedFacts,
+      pendingObservations,
+      confirmation,
       piPercent: typeof current.piPercent === "number" ? current.piPercent : null,
       updatedAt: current.updatedAt || nowIso(),
     };
@@ -199,4 +230,166 @@ export function collectCalculatedSubtotals(state: V2SessionState): { system: str
     }
   }
   return rows;
+}
+
+// ── V2-001 / V2-004 helpers ───────────────────────────────────────────────────
+
+export function hashExtractedFacts(facts: V2SystemFacts): string {
+  const sorted = Object.fromEntries(Object.entries(facts).sort(([a], [b]) => a.localeCompare(b)));
+  return createHash("sha256").update(JSON.stringify(sorted)).digest("hex").slice(0, 16);
+}
+
+export function applyStructuredExtraction(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+  result: StructuredExtractionResult
+): V2SessionState {
+  const prev = state.systems[system];
+
+  // Merge ROM joints fact instead of replacing — new direction measurements accumulate
+  const mergedFactsPatch = { ...result.extractedFactsPatch };
+  if (mergedFactsPatch["rom_joints"] && prev.extractedFacts["rom_joints"]) {
+    const existing = prev.extractedFacts["rom_joints"].value as Record<string, unknown>;
+    const incoming = mergedFactsPatch["rom_joints"].value as Record<string, unknown>;
+    mergedFactsPatch["rom_joints"] = {
+      ...mergedFactsPatch["rom_joints"],
+      value: { ...existing, ...incoming },
+    };
+  }
+  if (mergedFactsPatch["nerve_selections"] && prev.extractedFacts["nerve_selections"]) {
+    // Incoming already deduplicated by extractor; use incoming as authoritative
+  }
+
+  const newFacts: V2SystemFacts = { ...prev.extractedFacts, ...mergedFactsPatch };
+
+  // Add new pending observations (de-dup by ID is not needed; IDs are fresh UUIDs)
+  const keepObs = prev.pendingObservations.filter(
+    (o) => !result.pendingObservationsToResolve.includes(o.id)
+  );
+  const newPending: PendingObservation[] = [...keepObs, ...result.pendingObservationsToAdd];
+
+  // Any fact change makes confirmation stale
+  const hasFacts = Object.keys(mergedFactsPatch).length > 0;
+  const newConfirmation: V2SystemConfirmation =
+    hasFacts && prev.confirmation.status !== "not_confirmed"
+      ? { ...prev.confirmation, status: "stale" }
+      : prev.confirmation;
+
+  const piPercent = hasFacts && newConfirmation.status === "stale" ? null : prev.piPercent;
+
+  const mergedSignals = { ...prev.slotSignals, ...result.slotSignalsPatch };
+  const mergedValues = { ...prev.extractedValues, ...result.displayValuesPatch };
+
+  return {
+    ...state,
+    systems: {
+      ...state.systems,
+      [system]: {
+        ...prev,
+        extractedFacts: newFacts,
+        pendingObservations: newPending,
+        confirmation: newConfirmation,
+        slotSignals: mergedSignals,
+        extractedValues: mergedValues,
+        piPercent,
+        updatedAt: nowIso(),
+      },
+    },
+  };
+}
+
+export function invalidateConfirmation(state: V2SessionState, system: GatiodSystemKey): V2SessionState {
+  const prev = state.systems[system];
+  if (prev.confirmation.status === "not_confirmed") return state;
+  return {
+    ...state,
+    systems: {
+      ...state.systems,
+      [system]: {
+        ...prev,
+        confirmation: { ...prev.confirmation, status: "stale" },
+        piPercent: null,
+        updatedAt: nowIso(),
+      },
+    },
+  };
+}
+
+export function setConfirmationPending(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+  summary: string
+): V2SessionState {
+  const prev = state.systems[system];
+  const factsHash = hashExtractedFacts(prev.extractedFacts);
+  return {
+    ...state,
+    systems: {
+      ...state.systems,
+      [system]: {
+        ...prev,
+        confirmation: {
+          status: "pending",
+          confirmationSummary: summary,
+          factsHash,
+        },
+        updatedAt: nowIso(),
+      },
+    },
+  };
+}
+
+export function setConfirmationConfirmed(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+  confirmedBy?: string
+): V2SessionState {
+  const prev = state.systems[system];
+  return {
+    ...state,
+    systems: {
+      ...state.systems,
+      [system]: {
+        ...prev,
+        confirmation: {
+          ...prev.confirmation,
+          status: "confirmed",
+          confirmedAt: nowIso(),
+          confirmedBy,
+          factsHash: hashExtractedFacts(prev.extractedFacts),
+        },
+        updatedAt: nowIso(),
+      },
+    },
+  };
+}
+
+export function graduateObservation(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+  observationId: string,
+  factsPatch: V2SystemFacts
+): V2SessionState {
+  const prev = state.systems[system];
+  const newPending = prev.pendingObservations.filter((o) => o.id !== observationId);
+  const newFacts = { ...prev.extractedFacts, ...factsPatch };
+  const hasFacts = Object.keys(factsPatch).length > 0;
+  const newConfirmation: V2SystemConfirmation =
+    hasFacts && prev.confirmation.status !== "not_confirmed"
+      ? { ...prev.confirmation, status: "stale" }
+      : prev.confirmation;
+  return {
+    ...state,
+    systems: {
+      ...state.systems,
+      [system]: {
+        ...prev,
+        extractedFacts: newFacts,
+        pendingObservations: newPending,
+        confirmation: newConfirmation,
+        piPercent: hasFacts && newConfirmation.status === "stale" ? null : prev.piPercent,
+        updatedAt: nowIso(),
+      },
+    },
+  };
 }
