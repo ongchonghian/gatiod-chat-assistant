@@ -17,6 +17,9 @@ app.use(express.json());
 
 // API routes
 app.use("/api", chatRouter);
+app.use("/api", (_req, res) => {
+  res.status(404).json({ error: "Unknown API route" });
+});
 
 // Health check
 app.get("/health", (_req, res) => {

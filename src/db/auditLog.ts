@@ -16,7 +16,12 @@ export type AuditEventType =
   | "calculation_result"
   | "report_downloaded"
   | "session_reset"
-  | "error";
+  | "error"
+  | "v2_normalization"
+  | "v2_route"
+  | "v2_policy"
+  | "v2_tool_plan"
+  | "v2_shadow_result";
 
 export interface AuditEntry {
   sessionId: string;

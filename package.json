@@ -2,11 +2,11 @@
   "name": "gatiod-chat-assistant",
   "version": "0.1.0",
   "description": "GATIOD assessment chat assistant — conversational front-end to AcuScore calculation engine",
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:engine": "vitest run tests/engine",

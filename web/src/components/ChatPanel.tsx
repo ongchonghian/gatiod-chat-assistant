@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Box, Paper, TextField, IconButton, Typography, CircularProgress, Button, Tooltip,
+  Box, Paper, TextField, IconButton, Typography, CircularProgress, Button, Tooltip, ToggleButtonGroup, ToggleButton,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
@@ -33,6 +33,9 @@ interface ApiResponse {
 
 const CONFIRMATION_PATTERN = /\*\*Confirmation\s*[—–-]/i;
 const RESULT_PATTERN = /Assessment Result.*?(\d+)%\s*PI/i;
+const API_MODE_STORAGE_KEY = "gatiod_chat_api_mode";
+
+type ApiMode = "legacy" | "v2";
 
 function detectMessageType(content: string, toolCalls?: ToolCall[]): "confirmation" | "breakdown" | "text" {
   if (CONFIRMATION_PATTERN.test(content)) return "confirmation";
@@ -47,6 +50,10 @@ export default function ChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [apiMode, setApiMode] = useState<ApiMode>(() => {
+    const fromStorage = localStorage.getItem(API_MODE_STORAGE_KEY);
+    return fromStorage === "v2" ? "v2" : "legacy";
+  });
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<Record<string, unknown> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -57,6 +64,7 @@ export default function ChatPanel() {
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
+  useEffect(() => { localStorage.setItem(API_MODE_STORAGE_KEY, apiMode); }, [apiMode]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loading) return;
@@ -72,14 +80,34 @@ export default function ChatPanel() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/chat", {
+      const endpoint = apiMode === "v2" ? "/api/chat/v2" : "/api/chat";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text.trim(), sessionId }),
       });
-      const data: ApiResponse = await res.json();
+      const contentType = res.headers.get("content-type") ?? "";
+      let data: ApiResponse | null = null;
 
+      if (contentType.includes("application/json")) {
+        data = (await res.json()) as ApiResponse;
+      } else {
+        const rawText = await res.text();
+        const short = rawText.slice(0, 120).replace(/\s+/g, " ").trim();
+        throw new Error(
+          `Unexpected non-JSON response from ${endpoint}. ` +
+          `This usually means the API route is unavailable on the backend. ` +
+          `Status ${res.status}. Body starts with: ${short}`
+        );
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? `Request failed with status ${res.status}`);
+      }
       if (data.error) throw new Error(data.error);
+      if (!data.sessionId || typeof data.message !== "string") {
+        throw new Error(`Invalid response payload from ${endpoint}.`);
+      }
 
       if (data.sessionId && !sessionId) setSessionId(data.sessionId);
 
@@ -111,7 +139,7 @@ export default function ChatPanel() {
       setLoading(false);
       inputRef.current?.focus();
     }
-  }, [loading, sessionId]);
+  }, [apiMode, loading, sessionId]);
 
   const handleReset = useCallback(async () => {
     if (sessionId) {
@@ -134,8 +162,43 @@ export default function ChatPanel() {
     }
   };
 
+  const handleApiModeChange = useCallback(async (_event: React.MouseEvent<HTMLElement>, nextMode: ApiMode | null) => {
+    if (!nextMode || nextMode === apiMode || loading) return;
+
+    if (sessionId) {
+      await fetch("/api/chat/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      }).catch(() => {});
+    }
+
+    setApiMode(nextMode);
+    setMessages([]);
+    setSessionId(null);
+    setLastResult(null);
+    setInput("");
+  }, [apiMode, loading, sessionId]);
+
   return (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column", maxWidth: 900, mx: "auto", px: 2, py: 2 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5, gap: 1 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: "0.02em" }}>
+          Chat API Mode
+        </Typography>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={apiMode}
+          onChange={handleApiModeChange}
+          color="primary"
+          disabled={loading}
+        >
+          <ToggleButton value="legacy">Legacy</ToggleButton>
+          <ToggleButton value="v2">V2</ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
+
       {/* Messages */}
       <Box sx={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 1.5, pb: 2 }}>
         {messages.length === 0 && (
@@ -245,7 +308,9 @@ export default function ChatPanel() {
         {loading && (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, pl: 1 }}>
             <CircularProgress size={18} thickness={5} />
-            <Typography variant="body2" color="text.secondary">Analysing findings…</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Analysing findings ({apiMode.toUpperCase()})…
+            </Typography>
           </Box>
         )}
 
