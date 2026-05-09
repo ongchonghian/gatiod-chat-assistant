@@ -22,11 +22,13 @@ import { renderSpineResult } from "../../../src/v2/renderers/spineResult.js";
 import { buildStructuredConfirmationMessage } from "../../../src/v2/confirmationBuilder.js";
 import type { V2SessionState } from "../../../src/v2/contracts.js";
 
-describe("Spine end-to-end flow (reproduces live failure)", () => {
-  it("scaffold collapse → severity chip → confirm → assess → render does not crash", () => {
+describe("Spine end-to-end flow (post-shared-parser)", () => {
+  it("scaffold collapse extracts severity directly → confirm → assess → render does not crash", () => {
     let state: V2SessionState = defaultV2SessionState();
 
-    // Turn 1 — initial multi-system input
+    // Turn 1 — initial multi-system input.
+    // The shared severity parser now matches "compression/burst fracture
+    // <25%" on the first pass, so no chip clarification round-trip is needed.
     const t1 = normalizeClinicalUtterance(
       "Scaffold collapse: Thoraco-lumbar compression/burst fracture <25% height loss with residual pain; Right ear sudden hearing loss after accident; AHL 90 dB."
     );
@@ -37,17 +39,11 @@ describe("Spine end-to-end flow (reproduces live failure)", () => {
     const ext1 = extractSpine(t1, state.systems.spine, grounding1.ontologyMatches);
     state = applyStructuredExtraction(state, "spine", ext1);
 
-    // Spine extractor should have created a severity-bracket pending obs
-    expect(state.systems.spine.pendingObservations.length).toBeGreaterThan(0);
-    const obs = state.systems.spine.pendingObservations[0];
-    expect(obs.type).toBe("severity_bracket");
-
-    // Turn 2 — user picks the severity chip
-    const t2 = normalizeClinicalUtterance("Compression or burst fractures of <25% with residual pain");
-    const resolution = tryResolvePendingObservation(state, "spine", t2);
-    expect(resolution.resolved).toBe(true);
-    state = resolution.state;
+    // Severity should be extracted up front — no pending observation.
     expect(state.systems.spine.pendingObservations.length).toBe(0);
+    const entries = (state.systems.spine.extractedFacts[SP_FK_ENTRIES]?.value ?? []) as Array<{ severityKey: string }>;
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries[0].severityKey).toBe("compression_lt25");
 
     // Confirmation should render WITHOUT [Object Object]
     const confirmMsg = buildStructuredConfirmationMessage("spine", state.systems.spine.extractedFacts);

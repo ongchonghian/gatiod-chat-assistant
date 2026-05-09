@@ -59,6 +59,13 @@ const SYNONYM_CASES: Record<GatiodSystemKey, SynonymCase[]> = {
     { query: "colitis after occupational exposure", expected: "gastro_digestive" },
     { query: "bowel resection with ileostomy", expected: "gastro_digestive" },
     { query: "pancreatic insufficiency", expected: "gastro_digestive" },
+    // Slice-13 regression cases — these workbook rows were misrouting to
+    // spine / upper_limb / lower_limb / no system before colorectal
+    // synonyms were added.
+    { query: "Colon and rectum: signs of colonic disease", expected: "gastro_digestive" },
+    { query: "Anus: organic anal disease", expected: "gastro_digestive" },
+    { query: "Anus: complete faecal incontinence", expected: "gastro_digestive" },
+    { query: "Palpable defect in supporting structures of abdominal wall", expected: "gastro_digestive" },
   ],
   hearing: [
     { query: "tinnitus with hearing loss", expected: "hearing" },

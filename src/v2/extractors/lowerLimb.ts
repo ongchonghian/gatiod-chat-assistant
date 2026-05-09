@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { DBE_CONDITIONS as LOWER_DBE_CONDITIONS } from "../../engine/lowerLimbData.js";
 import type {
   ExtractedFact,
   GatiodSystemKey,
@@ -47,6 +48,19 @@ const DIRECTION_MAP: Record<string, string> = {
   adduction: "adduction",
   "internal rotation": "internal_rotation",
   "external rotation": "external_rotation",
+  // Slice-19 — workbook uses "malrotation" as an umbrella term for
+  // internal/external rotation ankylosis; e.g. "Right knee ankylosed in
+  // internal or external malrotation: 10°". Map both to the corresponding
+  // rotation direction.
+  "internal malrotation": "internal_rotation",
+  "external malrotation": "external_rotation",
+  malrotation: "internal_rotation",
+  // Slice-30 — knee varus/valgus deformity. Engine treats these as
+  // angular deformities; map to flexion as a fallback so ROM tables
+  // can match. (Knee engine doesn't have a separate varus/valgus
+  // direction yet — open follow-up if engine table grows.)
+  varus: "flexion",
+  valgus: "flexion",
   "flexion contracture": "flexion_contracture",
   dorsiflexion: "dorsiflexion",
   plantarflexion: "plantarflexion",
@@ -56,6 +70,16 @@ const DIRECTION_MAP: Record<string, string> = {
 
 const DIRECTION_RE = new RegExp(
   `\\b(${Object.keys(DIRECTION_MAP).join("|")})\\s+(\\d+)(?:\\s*[°º]|\\s+degrees?)`,
+  "gi"
+);
+
+// Slice-18 — workbook ROM phrasings put text between the direction word
+// and the angle, e.g. "active forward flexion from neutral / arc: 40°" or
+// "ankylosed in flexion: 25° }position of function". Mirror of the upper-
+// limb loose fallback. Used only when the strict pattern produces no
+// matches.
+const DIRECTION_LOOSE_RE = new RegExp(
+  `\\b(${Object.keys(DIRECTION_MAP).join("|")})\\b[^°º\\d]{0,80}?(\\d+)\\s*[°º]`,
   "gi"
 );
 
@@ -69,6 +93,8 @@ const JOINT_MAP: Record<string, string> = {
   subtalar: "subtalar",
   "great toe mtp": "great_toe_mtp",
   "great toe ip": "great_toe_ip",
+  "great toe metatarsophalangeal": "great_toe_mtp",
+  "great toe interphalangeal": "great_toe_ip",
   "great toe": "great_toe_mtp",
   "big toe": "great_toe_mtp",
   hallux: "great_toe_mtp",
@@ -78,7 +104,10 @@ const JOINT_MAP: Record<string, string> = {
   "second toe": "lesser_toes_mtp",
 };
 
-const JOINT_RE = /\b(hip|knee|ankle|subtalar|great\s+toe(?:\s+(?:mtp|ip))?|big\s+toe|hallux|lesser\s+toes?(?:\s+mtp)?|2nd\s+toe|second\s+toe)\b/gi;
+// Slice-28 — long-form anatomical names for great toe joints. Workbook uses
+// "great toe interphalangeal joint" / "great toe metatarsophalangeal joint"
+// in addition to the short forms.
+const JOINT_RE = /\b(hip|knee|ankle|subtalar|great\s+toe\s+(?:metatarsophalangeal|interphalangeal)|great\s+toe(?:\s+(?:mtp|ip))?|big\s+toe|hallux|lesser\s+toes?(?:\s+mtp)?|2nd\s+toe|second\s+toe)\b/gi;
 
 const NERVE_MAP: Record<string, string> = {
   "lumbosacral plexus": "lumbosacral_l3_s1",
@@ -98,7 +127,10 @@ const NERVE_MAP: Record<string, string> = {
   "lateral plantar": "lateral_plantar",
 };
 
-const NERVE_RE = /\b(lumbosacral(?:\s+plexus)?|femoral|obturator|superior\s+gluteal|inferior\s+gluteal|lateral\s+femoral\s+cutaneous|sciatic|common\s+peroneal|superficial\s+peroneal|deep\s+peroneal|tibial|sural|medial\s+plantar|lateral\s+plantar)\b/i;
+// Slice-25 — `tibial plateau` is a knee bone, not the tibial nerve.
+// `femoral neck/head/condyle` is a femur location, not the femoral nerve.
+// Negative lookahead excludes these so DBE auto-population can run.
+const NERVE_RE = /\b(lumbosacral(?:\s+plexus)?|femoral(?!\s+(?:neck|head|condyle|shaft))|obturator|superior\s+gluteal|inferior\s+gluteal|lateral\s+femoral\s+cutaneous|sciatic|common\s+peroneal|superficial\s+peroneal|deep\s+peroneal|tibial(?!\s+(?:plateau|shaft|condyle))|sural|medial\s+plantar|lateral\s+plantar)\b/i;
 
 const DEFICIT_RE = /\b(sensory|motor|combined)\b/i;
 const LOSS_RE = /\b(total|partial)\b/i;
@@ -110,8 +142,11 @@ const NO_OTHER_FINDINGS_RE = /\bno\s+other\s+findings?\b/i;
 const NEGATE_NERVE_RE = /\b(no|without|absent|negative)\s+(?:nerve|neurological|neuropathy|palsy)\b/i;
 const NEGATE_AMP_RE = /\b(no|without)\s+(?:amputation|amp\b)/i;
 const NEGATE_DBE_RE = /\b(no|without|negative)\s+(?:dbe|diagnosis.?based|fracture|instability|oa|osteoarthritis)\b/i;
-const SHORTENING_KEYWORD_RE = /\bshorten(?:ing)?\b/i;
+const SHORTENING_KEYWORD_RE = /\bshorten(?:ing)?\b|\blimb\s+length\s+discrepancy\b|\bleg\s+length\s+discrepancy\b/i;
 const SHORTENING_CM_RE = /\b(\d+(?:\.\d+)?)\s*cm\b/i;
+// Slice-30 — workbook "Lower limb length: Left limb length discrepancy: 1.5"
+// uses bare numbers without "cm" suffix. Match a number after the keyword.
+const SHORTENING_BARE_NUMBER_RE = /\b(?:length\s+)?discrepancy[^:]*:\s*(\d+(?:\.\d+)?)\b/i;
 
 const LEG_AMP_RE = /\b(above[\s-](?:the\s+)?knee|ak\s+amp(?:utation)?|trans[\s-]?femoral|through\s+(?:the\s+)?femur|below[\s-](?:the\s+)?knee|bk\s+amp(?:utation)?|trans[\s-]?tibial|syme['s]*(?:\s+amp(?:utation)?)?|midtarsal|chopart(?:'s)?|transmetatarsal|trans[\s-]?metatarsal)\b/i;
 
@@ -162,6 +197,35 @@ const TOE_NAME_RE = /\b(great\s+toe|big\s+toe|hallux|1st\s+toe|first\s+toe|2nd\s
 
 const GREAT_TOE_AMP_LEVEL_RE = /\b(through\s+ip|ip\s+joint|through\s+mtp|mtp\s+joint|with\s+(?:1st\s+)?metatarsal|metatarsal\s+level)\b/i;
 const LESSER_TOE_AMP_LEVEL_RE = /\b(through\s+dip|dip\s+joint|through\s+pip|pip\s+joint|through\s+mtp|mtp\s+joint|with\s+metatarsal|metatarsal\s+level)\b/i;
+
+// Slice-21 — workbook uses lay-language phalanx counts. For each toe + count
+// + optional metatarsal, we map to the engine's level codes.
+//   Great toe (2 phalanges total):
+//     "one phalanx"   → ip (3%)
+//     "both phalanges" or "two phalanges" → mtp (14%)
+//     "...and 1st metatarsal" → metatarsal (23%)
+//   Other toes (3 phalanges total):
+//     "one phalanx"   → dip (1%)
+//     "two phalanges" → pip (2%)
+//     "three phalanges" → mtp (3%)
+//     "...and Nth metatarsal" → metatarsal (7%)
+const TOE_PHALANX_AMP_RE =
+  /\bloss\s+of\s+(?:(?:the\s+)?(left|right)\s+)?(great\s+toe|big\s+toe|hallux|1st\s+toe|first\s+toe|2nd\s+toe|second\s+toe|3rd\s+toe|third\s+toe|4th\s+toe|fourth\s+toe|5th\s+toe|fifth\s+toe|little\s+toe)\s*[-–—]\s*(one|two|three|both)\s+(phalanx|phalanges)(?:\s+and\s+(?:\d+(?:st|nd|rd|th)?\s+)?metatarsal)?/i;
+// "Loss of all toes of one foot" / "Loss of left all toes"
+const ALL_TOES_AMP_RE = /\bloss\s+of\s+(?:(?:the\s+)?(left|right)\s+)?all\s+toes\b/i;
+
+// Slice-31 — "Loss of left first metatarsal" / "Loss of right 2nd metatarsal".
+// Bare-metatarsal amputation (no associated phalanx loss). Maps to the
+// engine's per-toe `metatarsal` level for the corresponding toe.
+const METATARSAL_AMP_RE =
+  /\bloss\s+of\s+(?:(?:the\s+)?(left|right)\s+)?(1st|first|2nd|second|3rd|third|4th|fourth|5th|fifth)\s+metatarsal\b/i;
+const METATARSAL_TO_TOE: Record<string, ToeKey> = {
+  "1st": "great", first: "great",
+  "2nd": "second", second: "second",
+  "3rd": "third", third: "third",
+  "4th": "fourth", fourth: "fourth",
+  "5th": "fifth", fifth: "fifth",
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -254,10 +318,44 @@ export function extractLowerLimb(
       jointMatches.push(jm[0].toLowerCase().trim().replace(/\s+/g, " "));
     }
   }
+  // Slice-25 — prefer longest joint match. Same shape as upper_limb fix.
+  // Slice-28 — also consider position: when both "ankle" and "subtalar"
+  // appear (workbook prefix "Ankle/subtalar:" then "Right ankle ankylosed"),
+  // the actual joint being assessed is the one closest to the angle word,
+  // not the longest. Strategy: if there's an angle in the text, prefer
+  // joint occurrences nearest to the angle; otherwise fall back to longest.
+  const angleMatch = /\d+\s*[°º]/.exec(text);
+  let longestLowerJoint = "";
+  if (angleMatch) {
+    const anglePos = angleMatch.index;
+    // Find joint occurrences with positions.
+    const jointOccurrences: { word: string; pos: number }[] = [];
+    const jrSearch = new RegExp(JOINT_RE.source, "gi");
+    let jrm: RegExpExecArray | null;
+    while ((jrm = jrSearch.exec(text)) !== null) {
+      jointOccurrences.push({ word: jrm[0].toLowerCase().trim().replace(/\s+/g, " "), pos: jrm.index });
+    }
+    // Closest to angle wins; ties broken by longest word.
+    jointOccurrences.sort((a, b) => {
+      const distA = Math.abs(anglePos - a.pos);
+      const distB = Math.abs(anglePos - b.pos);
+      if (distA !== distB) return distA - distB;
+      return b.word.length - a.word.length;
+    });
+    longestLowerJoint = jointOccurrences[0]?.word ?? "";
+  }
+  if (!longestLowerJoint) {
+    longestLowerJoint = jointMatches.reduce(
+      (best, cur) => (cur.length > best.length ? cur : best),
+      jointMatches[0] ?? "",
+    );
+  }
   const canonicalJoint: string | undefined =
-    jointMatches.length > 0 ? (JOINT_MAP[jointMatches[0]] ?? jointMatches[0].replace(/\s+/g, "_")) : undefined;
+    longestLowerJoint
+      ? (JOINT_MAP[longestLowerJoint] ?? longestLowerJoint.replace(/\s+/g, "_"))
+      : undefined;
 
-  // Parse direction+angle pairs
+  // Parse direction+angle pairs (strict: direction immediately followed by angle)
   const directionPairs: { direction: string; angle: number }[] = [];
   {
     const dirRe = new RegExp(DIRECTION_RE.source, "gi");
@@ -265,6 +363,62 @@ export function extractLowerLimb(
     while ((dm = dirRe.exec(text)) !== null) {
       const dirKey = DIRECTION_MAP[dm[1].toLowerCase()] ?? dm[1].toLowerCase();
       directionPairs.push({ direction: dirKey, angle: Number(dm[2]) });
+    }
+  }
+  // Slice-28 — joint-context-aware direction aliasing. Engine uses
+  // "dorsiflexion" / "plantarflexion" for ankle (anatomical names);
+  // workbook clinical descriptions say "extension" / "flexion" instead.
+  // For the ankle joint, normalize these aliases so the angle lands in
+  // the engine's actual table.
+  const ANKLE_DIRECTION_ALIASES: Record<string, string> = {
+    extension: "dorsiflexion",
+    flexion: "plantarflexion",
+  };
+  const aliasDirectionForJoint = (dirKey: string): string => {
+    if (canonicalJoint === "ankle" && ANKLE_DIRECTION_ALIASES[dirKey]) {
+      return ANKLE_DIRECTION_ALIASES[dirKey];
+    }
+    return dirKey;
+  };
+
+  // Slice-27 — pair direction words and angles by proximity, preferring
+  // the LONGEST direction word that appears within ~80 chars before the
+  // angle. Workbook phrasings like "extension to / flexion contracture:
+  // 90°" contain two candidate direction words; the longer ("flexion
+  // contracture") is the intended one. The earlier slice-18 strategy
+  // (regex with intervening-text wildcard) matched the first direction
+  // greedily and produced a knee.extension measurement that doesn't
+  // exist in the engine, returning 0%.
+  if (directionPairs.length === 0) {
+    // Find all direction word occurrences with their positions.
+    const dirOccurrences: { word: string; pos: number }[] = [];
+    const dirWords = Object.keys(DIRECTION_MAP);
+    for (const word of dirWords) {
+      const re = new RegExp(`\\b${word.replace(/\s+/g, "\\s+")}\\b`, "gi");
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) {
+        dirOccurrences.push({ word: word.toLowerCase(), pos: m.index });
+      }
+    }
+    // Find all angle occurrences with their positions.
+    const angleRe = /(\d+)\s*[°º]/g;
+    const angleOccurrences: { angle: number; pos: number }[] = [];
+    let am: RegExpExecArray | null;
+    while ((am = angleRe.exec(text)) !== null) {
+      angleOccurrences.push({ angle: Number(am[1]), pos: am.index });
+    }
+    // For each angle, pick the longest direction word within 80 chars before it.
+    const seenDirections = new Set<string>();
+    for (const { angle, pos: angleP } of angleOccurrences) {
+      const candidates = dirOccurrences.filter((d) => d.pos < angleP && angleP - d.pos <= 80);
+      if (candidates.length === 0) continue;
+      candidates.sort((a, b) => b.word.length - a.word.length || a.pos - b.pos);
+      const chosen = candidates[0];
+      const baseKey = DIRECTION_MAP[chosen.word] ?? chosen.word;
+      const dirKey = aliasDirectionForJoint(baseKey);
+      if (seenDirections.has(dirKey)) continue;
+      seenDirections.add(dirKey);
+      directionPairs.push({ direction: dirKey, angle });
     }
   }
 
@@ -386,9 +540,17 @@ export function extractLowerLimb(
 
   // ── Shortening ────────────────────────────────────────────────────────────
   if (SHORTENING_KEYWORD_RE.test(text)) {
+    // Try "X cm" first; fall back to bare number after "discrepancy:"
+    // (workbook style: "Left limb length discrepancy: 1.5"). Treat the
+    // bare number as cm — workbook uses cm consistently.
     const cmMatch = SHORTENING_CM_RE.exec(text);
-    if (cmMatch) {
-      const discrepancyCm = parseFloat(cmMatch[1]);
+    const bareMatch = !cmMatch ? SHORTENING_BARE_NUMBER_RE.exec(text) : null;
+    const discrepancyCm = cmMatch
+      ? parseFloat(cmMatch[1])
+      : bareMatch
+      ? parseFloat(bareMatch[1])
+      : null;
+    if (discrepancyCm !== null) {
       factsPatch[LL_FK_SHORTENING_CM] = makeFact(discrepancyCm, raw);
       displayValuesPatch.shortening_cm = `${discrepancyCm}cm`;
     } else {
@@ -421,9 +583,81 @@ export function extractLowerLimb(
     }
   }
 
-  // ── Toe amputations ───────────────────────────────────────────────────────
-  const toeMatches: { toe: ToeKey; rawText: string }[] = [];
+  // ── Slice-21 phalanx-count toe amputation ─────────────────────────────────
+  // Workbook uses "one phalanx" / "two phalanges" / "both phalanges" with an
+  // optional metatarsal suffix. Map to engine level codes before falling
+  // back to the medical-shorthand path below.
+  let toePhalanxConsumed = false;
   {
+    const m = TOE_PHALANX_AMP_RE.exec(text);
+    if (m) {
+      const toeKey = TOE_NAME_MAP[m[2].toLowerCase().replace(/\s+/g, " ")];
+      const phalCount = m[3].toLowerCase();
+      const hasMetatarsal = /and\s+(?:\d+(?:st|nd|rd|th)?\s+)?metatarsal/i.test(m[0]);
+      let level: string | undefined;
+      if (toeKey === "great") {
+        if (phalCount === "one") level = "ip";
+        else if (phalCount === "two" || phalCount === "both") {
+          level = hasMetatarsal ? "metatarsal" : "mtp";
+        }
+      } else if (toeKey) {
+        if (phalCount === "one") level = "dip";
+        else if (phalCount === "two") level = "pip";
+        else if (phalCount === "three") level = hasMetatarsal ? "metatarsal" : "mtp";
+      }
+      if (toeKey && level) {
+        const existingToes = (existingFacts[LL_FK_TOE_AMPUTATIONS]?.value ?? {}) as LlToeAmputations;
+        const updatedToes: LlToeAmputations = { ...existingToes } as LlToeAmputations;
+        updatedToes[toeKey] = level;
+        factsPatch[LL_FK_TOE_AMPUTATIONS] = makeFact(updatedToes, raw);
+        slotSignalsPatch.amputation_present = true;
+        displayValuesPatch[`toe_amp_${toeKey}`] = level;
+        toePhalanxConsumed = true;
+      }
+    }
+  }
+
+  // ── Slice-31 bare-metatarsal amputation ───────────────────────────────────
+  if (!toePhalanxConsumed) {
+    const mm = METATARSAL_AMP_RE.exec(text);
+    if (mm) {
+      const toeKey = METATARSAL_TO_TOE[mm[2].toLowerCase()];
+      if (toeKey) {
+        const existingToes = (existingFacts[LL_FK_TOE_AMPUTATIONS]?.value ?? {}) as LlToeAmputations;
+        const updatedToes: LlToeAmputations = { ...existingToes } as LlToeAmputations;
+        updatedToes[toeKey] = "metatarsal";
+        factsPatch[LL_FK_TOE_AMPUTATIONS] = makeFact(updatedToes, raw);
+        slotSignalsPatch.amputation_present = true;
+        displayValuesPatch[`toe_amp_${toeKey}`] = "metatarsal";
+        toePhalanxConsumed = true;
+      }
+    }
+  }
+
+  // ── Slice-21 "all toes" pattern ───────────────────────────────────────────
+  // "Loss of left all toes of one foot" → all five toes at MTP (whole-toe
+  // loss). Engine treats this as the foot-loss equivalent at the toe level;
+  // the FOOT_AMPUTATION_CAP handles the upper bound.
+  if (!toePhalanxConsumed && ALL_TOES_AMP_RE.test(text)) {
+    const allMtp: LlToeAmputations = {
+      great: "mtp", second: "mtp", third: "mtp", fourth: "mtp", fifth: "mtp",
+    };
+    factsPatch[LL_FK_TOE_AMPUTATIONS] = makeFact(allMtp, raw);
+    slotSignalsPatch.amputation_present = true;
+    displayValuesPatch.toe_amp_all = "all_mtp";
+    toePhalanxConsumed = true;
+  }
+
+  // ── Toe amputations ───────────────────────────────────────────────────────
+  // Slice-28 — only treat toe-name mentions as amputation candidates when
+  // the text has an amputation-marker verb. The previous fall-through
+  // defaulted "great toe" / "2nd toe" to MTP-level amputation even for
+  // ankylosis rows like "Great toe MTP joint: Right great toe ... ankylosed
+  // in flexion: 30°" — the toe_amputations fact was added on top of the
+  // ankylosis ROM, doubling the engine output (10% expected, 14% observed).
+  const HAS_AMP_MARKER = /\b(loss\s+of|amputation|amputated|disarticulation|amputee)\b/i;
+  const toeMatches: { toe: ToeKey; rawText: string }[] = [];
+  if (!toePhalanxConsumed && HAS_AMP_MARKER.test(text)) {
     const toeRe = new RegExp(TOE_NAME_RE.source, "gi");
     let tm: RegExpExecArray | null;
     while ((tm = toeRe.exec(text)) !== null) {
@@ -466,9 +700,31 @@ export function extractLowerLimb(
   }
 
   // ── DBE conditions from ontology matches ──────────────────────────────────
+  // Slice-23 — auto-populate FK_DBE_SELECTIONS when the doctor's
+  // description has a single dominant high-confidence ontology match.
   const dbeMatches = ontologyMatches.filter((m) => m.type === "dbe" && m.system === "lower_limb");
   if (dbeMatches.length > 0) {
     slotSignalsPatch.dbe_condition = true;
+    const top = dbeMatches[0];
+    const next = dbeMatches[1];
+    // Slice-26 — accept dominance when EITHER (a) gap ≥ 0.1 OR (b) top
+    // is high-confidence (≥0.55) absolute even with a smaller gap.
+    // Workbook DBE rows often have multiple variants of a fracture
+    // (displaced/undisplaced/comminuted) scoring within 0.05-0.1 of
+    // each other, but the top match is unambiguous when the description
+    // includes the distinguishing token ("sacrum", "5th metatarsal").
+    const dominantEnough =
+      top.score >= 0.4 &&
+      (!next || top.score - next.score >= 0.1 || top.score >= 0.55);
+    if (dominantEnough && !factsPatch[LL_FK_DBE_SELECTIONS] && !existingFacts[LL_FK_DBE_SELECTIONS]) {
+      const cond = LOWER_DBE_CONDITIONS.find((c) => c.id === top.canonicalId);
+      if (cond) {
+        const updated: LlDbeSelectionEntry[] = [{ conditionId: cond.id, selectedPercent: cond.minPercent }];
+        factsPatch[LL_FK_DBE_SELECTIONS] = makeFact(updated, raw);
+        slotSignalsPatch.dbe_present = true;
+        displayValuesPatch.dbe_condition = `${cond.label} (${cond.minPercent}%)`;
+      }
+    }
   }
 
   // ── DBE negation ──────────────────────────────────────────────────────────

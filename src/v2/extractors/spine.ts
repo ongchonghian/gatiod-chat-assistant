@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type {
   ExtractedFact,
+  ExtractionAuditEvent,
   GatiodSystemKey,
   NormalizedUtterance,
   OntologyMatch,
@@ -39,11 +40,44 @@ export interface SpineCategoryEntryFact {
 
 const REGION_CERVICAL_RE = /\b(cervical|c[\s-]?spine|neck\s+spine|c[1-7](?:\s*[-–]\s*c[1-7])?)\b/i;
 const REGION_THORACO_RE  = /\b(thorac(?:ic|o[-\s]?lumbar)|thoracolumbar|t[1-9]|t1[0-2]|t[\s-]?l\b)\b/i;
-const REGION_LUMBO_RE    = /\b(lumbo?[-\s]?sacral|lumbosacral|lumbar|l[2-5]|l[\s-]?s\b|lower\s+back)\b/i;
+// Negative lookbehind excludes "lumbar" matches that are part of "thoraco-lumbar"
+// or "thoracolumbar" — those belong to thoraco_lumbar, not lumbo_sacral.
+const REGION_LUMBO_RE    = /(?<!thoraco[-\s]?)\b(lumbo?[-\s]?sacral|lumbosacral|lumbar|l[2-5]|l[\s-]?s\b|lower\s+back)\b/i;
+
+/**
+ * Detect every spinal region mentioned in the text. Used by the multi-region
+ * guard so a sentence describing both cervical and lumbo-sacral findings
+ * surfaces both, instead of silently picking the first one and dropping the
+ * rest.
+ *
+ * The three region regexes are designed to be mutually exclusive: the
+ * lumbo-sacral pattern excludes matches that are part of "thoraco-lumbar",
+ * so detecting "thoraco-lumbar compression" returns only `thoraco_lumbar`.
+ */
+export function detectSpineRegions(text: string): SpinalRegion[] {
+  const regions: SpinalRegion[] = [];
+  if (REGION_CERVICAL_RE.test(text)) regions.push("cervical");
+  if (REGION_THORACO_RE.test(text))  regions.push("thoraco_lumbar");
+  if (REGION_LUMBO_RE.test(text))    regions.push("lumbo_sacral");
+  return regions;
+}
+
+const REGION_LABELS: Record<SpinalRegion, string> = {
+  cervical: "Cervical",
+  thoraco_lumbar: "Thoraco-Lumbar",
+  lumbo_sacral: "Lumbo-Sacral",
+};
+
+export const SPINE_MULTI_REGION_AUDIT_EVENT = "spine_multi_region_unsupported";
 
 const CATEGORY_FRACTURE_RE    = /\b(fracture|dislocation|fracture[-\s]?dislocation|burst\s+fracture|compression\s+fracture|vertebral\s+fracture)\b/i;
 const CATEGORY_CORD_RE        = /\b(spinal\s+cord|cord\s+injury|cauda\s+equina|myelopathy|central\s+cord|neurogenic)\b/i;
-const CATEGORY_DISC_RE        = /\b(intervertebral\s+disc|disc\s+(?:prolapse|herniation|protrusion|degeneration|lesion)|prolapsed\s+disc|herniated\s+disc|disc\s+disease|ivd\b)\b/i;
+// Slice-16 — also match the bare "degenerated/degenerating disc" form, which
+// the workbook uses for section 3.2 rows (e.g. "Degenerated disc with
+// documented superimposed injury - residual pain"). Without this, the
+// extractor doesn't even detect the disc category and asks the doctor
+// "what is the spinal diagnosis?" despite the input being unambiguous.
+const CATEGORY_DISC_RE        = /\b(intervertebral\s+disc|disc\s+(?:prolapse|herniation|protrusion|degeneration|lesion)|prolapsed\s+disc|herniated\s+disc|disc\s+disease|ivd\b|degenerat(?:ed|ing)\s+disc)\b/i;
 const CATEGORY_SPONDY_RE      = /\b(spondylol[iy]s[iy]s|spondylolisthesis|spondy\b)\b/i;
 const CATEGORY_CHRONIC_RE     = /\b(chronic\s+pain\s+(?:syndrome\s+)?(?:with\s+normal\s+mri|normal\s+mri)|normal\s+mri\s+chronic|chronic\s+spinal\s+pain)\b/i;
 
@@ -53,8 +87,35 @@ const ASIA_C_RE    = /\b(asia\s*c\b|incomplete\s+(?:paraparesis|tetraparesis).*a
 const ASIA_D_RE    = /\b(asia\s*d\b|(?:paraparesis|tetraparesis)(?!\s+asia\s*[abc]))\b/i;
 const MILD_NEURO_RE        = /\b(mild\s+(?:sensory|motor|neurological)|mild\s+sensory\s+(?:and\s+)?motor|mild\s+neuro)\b/i;
 const PERSISTENT_RADICULAR_RE = /\b(persistent\s+radicular|radicular\s+pain|radiculopathy|localised?\s+motor\s+weakness|local(?:ised?)?\s+motor\s+weakness)\b/i;
-const COMPRESSION_GT25_RE  = /\b(?:compression|burst)\s+fracture[^.]*(?:>25%|greater\s+than\s+25|more\s+than\s+25|≥25%)\b/i;
-const COMPRESSION_LT25_RE  = /\b(?:compression|burst)\s+fracture[^.]*(?:<25%|less\s+than\s+25|under\s+25|≤25%)\b/i;
+
+// Compression / burst fracture severity — decomposed into independent checks
+// rather than a single brittle regex. The previous combined pattern failed on
+// natural phrasings like "compression/burst fracture <25% height loss" because
+// (a) the slash broke the (compression|burst)\s+fracture sequence, and
+// (b) the trailing \b after "%" never matched (% and following space are both
+// non-word, no boundary transition).
+function hasFractureMention(text: string): boolean {
+  const t = text.toLowerCase();
+  // Either (compression|burst) AND fracture appear in any order/separator,
+  // or "compression fracture" / "burst fracture" appear as a phrase.
+  const hasFractureWord = /\bfractures?\b/.test(t);
+  const hasType = /\b(?:compression|burst)\b/.test(t);
+  return hasFractureWord && hasType;
+}
+function hasLt25(text: string): boolean {
+  const t = text.toLowerCase();
+  return /<\s*25\s*%?/.test(t)
+    || /\bless\s+than\s+25\b/.test(t)
+    || /\bunder\s+25\b/.test(t)
+    || /≤\s*25\s*%?/.test(t);
+}
+function hasGt25(text: string): boolean {
+  const t = text.toLowerCase();
+  return />\s*25\s*%?/.test(t)
+    || /\bgreater\s+than\s+25\b/.test(t)
+    || /\bmore\s+than\s+25\b/.test(t)
+    || /≥\s*25\s*%?/.test(t);
+}
 // Disc severity patterns
 const DISC_RESIDUAL_RE          = /\b(residual\s+pain|residual\s+(?:acceptable|minimal)\b|3\.1a\b)\b/i;
 const DISC_PERSISTENT_NO_NEURO_RE = /\b(persistent\s+(?:pain|restricted)(?!\s+(?:sensory|motor|neuro))[^.]*(?:restricted\s+motion|no\s+neurological)|3\.1b\b)\b/i;
@@ -130,8 +191,20 @@ function makeDefaultEntry(diagnosisCategory: DiagnosisCategory): SpineCategoryEn
   };
 }
 
-/** Extract severity key from text for a given category. Returns undefined if none matched. */
-function extractSeverityKey(text: string, category: DiagnosisCategory): SeverityKey | undefined {
+/**
+ * Resolve a spine SeverityKey from free-form text for a given category.
+ *
+ * SHARED parser: used by both the spine extractor (initial parse from the
+ * doctor's first utterance) and the pendingObservationResolver (resolving
+ * a chip reply). Maintaining a single matcher prevents the two paths from
+ * drifting and creating two distinct ways for the same severity phrasing
+ * to fail.
+ */
+export function resolveSpineSeverityKeyFromText(
+  text: string,
+  category: DiagnosisCategory,
+  _pathway?: SpondylolysisPathway
+): SeverityKey | undefined {
   // Section 1/2 shared rows
   if (ASIA_BA_RE.test(text)) return "asia_ba";
   if (ASIA_C_RE.test(text)) return "asia_c";
@@ -140,8 +213,19 @@ function extractSeverityKey(text: string, category: DiagnosisCategory): Severity
   if (MILD_NEURO_RE.test(text)) return "mild_sensory_motor";
 
   if (category === "fractures_dislocations" || category === "spinal_cord_injury") {
-    if (COMPRESSION_GT25_RE.test(text)) return "compression_gt25";
-    if (COMPRESSION_LT25_RE.test(text)) return "compression_lt25";
+    // Decomposed: presence of fracture mention + size threshold.
+    // Either order ("compression/burst fracture <25%" or "<25% height loss
+    // with residual pain") is accepted as long as both signals appear.
+    if (hasFractureMention(text)) {
+      if (hasGt25(text)) return "compression_gt25";
+      if (hasLt25(text)) return "compression_lt25";
+    } else {
+      // Fallback: "<25% height loss with residual pain" without the literal
+      // word "fracture" — common chip phrasing. The category gate above
+      // already restricts this to fracture/cord-injury contexts.
+      if (hasGt25(text) && /residual\s+pain|height\s+loss/i.test(text)) return "compression_gt25";
+      if (hasLt25(text) && /residual\s+pain|height\s+loss/i.test(text)) return "compression_lt25";
+    }
   }
 
   if (category === "intervertebral_disc") {
@@ -167,6 +251,11 @@ function extractSeverityKey(text: string, category: DiagnosisCategory): Severity
   return undefined;
 }
 
+/** @deprecated kept for internal callers; prefer resolveSpineSeverityKeyFromText. */
+function extractSeverityKey(text: string, category: DiagnosisCategory): SeverityKey | undefined {
+  return resolveSpineSeverityKeyFromText(text, category);
+}
+
 function severityChipsForCategory(category: DiagnosisCategory, pathway?: SpondylolysisPathway): string[] {
   const opts = getSeveritiesForCategory(category, { spondylolysisPathway: pathway ?? "acute_traumatic" });
   return opts.map((o) => o.label);
@@ -189,6 +278,92 @@ export function extractSpine(
   const slotSignalsPatch: Partial<SlotSignals> = {};
   const displayValuesPatch: Record<string, string> = {};
   const warnings: string[] = [];
+  const auditEvents: ExtractionAuditEvent[] = [];
+
+  // ── Multi-region safe-fail guard (ADR-0001) ───────────────────────────────
+  // Spine v1 supports a single region per assessment. If the doctor mentions
+  // findings in more than one region in the same utterance, OR mentions a
+  // different region than the one already captured, refuse to write region
+  // or entry facts and surface a clarification. Silently overwriting the
+  // existing region (or picking the first match and dropping the rest) is a
+  // zero-tolerance failure under ADR-0001.
+  const detectedRegions = detectSpineRegions(text);
+  const existingRegion = (existingFacts[SP_FK_REGION]?.value ?? undefined) as SpinalRegion | undefined;
+
+  const multiRegionInUtterance = detectedRegions.length > 1;
+  const crossUtteranceConflict =
+    !!existingRegion && detectedRegions.length === 1 && detectedRegions[0] !== existingRegion;
+
+  if (multiRegionInUtterance || crossUtteranceConflict) {
+    const action = multiRegionInUtterance ? "blocked_multi_region_utterance" : "blocked_overwrite";
+    const allDetected = multiRegionInUtterance
+      ? detectedRegions
+      : (existingRegion ? [existingRegion, detectedRegions[0]] : detectedRegions);
+    const labelList = allDetected.map((r) => `- ${REGION_LABELS[r]}`).join("\n");
+
+    let clarificationQuestion: string;
+    let candidateAnswers: string[];
+    if (multiRegionInUtterance) {
+      clarificationQuestion =
+        `I detected spine findings in more than one spinal region:\n${labelList}\n\n` +
+        `Multi-region spine assessment is not yet supported in V2. ` +
+        `Please assess one spine region at a time. Which region should I assess first?`;
+      candidateAnswers = detectedRegions.map((r) => REGION_LABELS[r]);
+    } else {
+      const existingLabel = REGION_LABELS[existingRegion!];
+      const newLabel = REGION_LABELS[detectedRegions[0]];
+      clarificationQuestion =
+        `You already have an active ${existingLabel} spine assessment. ` +
+        `I also detected a ${newLabel} spine finding. ` +
+        `Multi-region spine assessment is not yet supported in V2. ` +
+        `Please complete or clear the current spine assessment before assessing another spine region.`;
+      // Only offer a chip that preserves existing work — the doctor can clear
+      // the current assessment manually if they want to switch regions.
+      candidateAnswers = [`Continue with ${existingLabel} assessment`];
+    }
+
+    pendingToAdd.push(
+      makeObservation(
+        "spine",
+        "other",
+        raw,
+        {
+          subtype: SPINE_MULTI_REGION_AUDIT_EVENT,
+          existingRegion,
+          detectedRegions,
+          action,
+        },
+        ["spine_region_choice"],
+        clarificationQuestion,
+        candidateAnswers,
+      ),
+    );
+
+    auditEvents.push({
+      eventType: SPINE_MULTI_REGION_AUDIT_EVENT,
+      payload: {
+        existingRegion,
+        detectedRegions,
+        sourceText: raw,
+        action,
+        userFacingMessage: clarificationQuestion,
+      },
+    });
+
+    warnings.push(
+      `${SPINE_MULTI_REGION_AUDIT_EVENT}: ${action} (existing=${existingRegion ?? "none"}, detected=[${detectedRegions.join(",")}])`,
+    );
+
+    return {
+      extractedFactsPatch: factsPatch,        // empty — do NOT write region or entries
+      pendingObservationsToAdd: pendingToAdd,
+      pendingObservationsToResolve: pendingToResolve,
+      slotSignalsPatch,
+      displayValuesPatch,
+      warnings,
+      auditEvents,
+    };
+  }
 
   // ── Region ────────────────────────────────────────────────────────────────
   let detectedRegion: SpinalRegion | undefined;

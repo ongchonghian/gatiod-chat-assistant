@@ -4,6 +4,7 @@ import {
   FK_NERVE_SELECTIONS,
   FK_SIDE,
   FK_ROM_FROM_NERVE,
+  FK_FINGER_AMPUTATIONS,
   type RomJointEntry,
   type NerveSelectionEntry,
 } from "../extractors/upperLimb.js";
@@ -39,9 +40,19 @@ export function validateUpperLimbReadiness(systemState: V2SystemState): Readines
     Object.keys(facts[FK_ROM_JOINTS].value as Record<string, RomJointEntry>).length > 0);
   const hasNerve = Boolean(facts[FK_NERVE_SELECTIONS] &&
     (facts[FK_NERVE_SELECTIONS].value as NerveSelectionEntry[]).length > 0);
-  const hasAmputation = Boolean(
+  const hasArmAmp = Boolean(
     facts["arm_amputation"] && facts["arm_amputation"].value !== "none"
   );
+  // Slice-20 — finger amputations also count as an assessable finding.
+  // Without this check, "Loss of right index finger - two phalanges"
+  // extracts a finger_amputations fact but readiness still asks
+  // "what type of upper-limb finding should I assess?".
+  const hasFingerAmp = Boolean(
+    facts[FK_FINGER_AMPUTATIONS] &&
+    Object.values((facts[FK_FINGER_AMPUTATIONS].value as Record<string, string>) ?? {})
+      .some((lvl) => lvl && lvl !== "none"),
+  );
+  const hasAmputation = hasArmAmp || hasFingerAmp;
   const hasDbe = Boolean(
     facts["dbe_selections"] &&
     (facts["dbe_selections"].value as unknown[]).length > 0

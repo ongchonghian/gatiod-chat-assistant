@@ -42,7 +42,13 @@ describe("makePolicyDecision", () => {
     expect(decision.action).toBe("clarify");
   });
 
-  it("uses lookup-first for high-confidence DBE assessment match", () => {
+  it("skips lookup-first for high-confidence DBE match on structured_live systems (slice 24)", () => {
+    // Slice-24 — when the primary system is structured_live, the
+    // extractor's slice-23 DBE auto-population already wrote the fact;
+    // running a lookup-first tool would lose the doctor's "Confirmed"
+    // reply because the lookup result doesn't set pendingConfirmation.
+    // Now: lookup-first is skipped for structured_live, the structured
+    // readiness path runs instead.
     const route: RouteDecision = {
       operation: "assessment",
       systems: ["lower_limb"],
@@ -65,9 +71,8 @@ describe("makePolicyDecision", () => {
     };
 
     const decision = makePolicyDecision(route, baseUtterance, grounding, defaultV2SessionState());
-    expect(decision.action).toBe("execute_tools");
-    expect(decision.proposedTools[0]?.name).toBe("lookup_lower_dbe_condition");
-    expect(decision.proposedTools[0]?.args).toEqual({ conditionId: "femoral_neck_head_avascular_necrosis" });
+    // Should NOT propose a lookup tool; structured readiness handles it.
+    expect(decision.proposedTools.find((t) => t.name === "lookup_lower_dbe_condition")).toBeUndefined();
   });
 
   it("does not re-clarify explicit system selection after a clarify prompt", () => {

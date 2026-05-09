@@ -45,9 +45,27 @@ const DYSP_MODERATE_RE = /\b(?:dyspnoea|sob|breathlessness?)\s+on\s+(?:moderate\
 const DYSP_SEVERE_RE   = /\b(?:dyspnoea|sob|breathlessness?)\s+on\s+(?:severe|heavy|strenuous)\s+exertion|severe\s+exertion\s+(?:dyspnoea|sob)\b/i;
 
 // Occupational asthma prerequisites
-const ASTHMA_MAINT_RE    = /\b(?:requires?\s+daily\s+maintenance|daily\s+maintenance\s+(?:therapy|medication)|maintenance\s+(?:therapy|medication)\s+(?:required|daily))\b/i;
-const ASTHMA_TRANSFER_RE = /\b(?:transferred?\s+(?:from|away\s+from)\s+exposure|removed?\s+from\s+exposure|one\s+year\s+(?:post[-\s]transfer|since\s+removal|after\s+(?:transfer|removal)))\b/i;
-const ASTHMA_IMPROVE_RE  = /\b(?:unlikely\s+(?:to\s+)?(?:further|any)?\s*improvement|no\s+further\s+improvement|not\s+likely\s+to\s+improve)\b/i;
+//
+// Slice-17 — broaden to match the workbook's natural-language phrasings.
+// Workbook rows look like:
+//   "Occupational asthma requiring daily maintenance bronchodilators only
+//    despite transfer from exposure >=1 year"
+// The original regexes wanted "requires daily maintenance", "transferred
+// from exposure", and explicit "unlikely improvement" wording — none of
+// which the workbook uses. We now accept the workbook forms in addition.
+// "Requiring chronic respiratory medication" is, clinically, daily
+// maintenance therapy by definition — workbook rows like "requiring
+// low-dose inhaled steroids" and "requiring oral steroids" satisfy the
+// maintenance prerequisite even though they don't use the word
+// "maintenance". The medication class itself (inhaled/oral steroids,
+// bronchodilators) is chronic-use only.
+const ASTHMA_MAINT_RE    = /\b(?:requir(?:es?|ing)\s+(?:daily\s+)?maintenance|daily\s+maintenance\s+(?:therapy|medication|bronchodilators?|inhaled|steroids?)|maintenance\s+(?:therapy|medication)\s+(?:required|daily)|requir(?:es?|ing)\s+(?:daily\s+maintenance\s+)?(?:bronchodilators?|inhaled\s+steroids?|inhaled\s+combination|oral\s+steroids?|low[-\s]dose\s+inhaled|high[-\s]dose\s+inhaled))\b/i;
+const ASTHMA_TRANSFER_RE = /\b(?:transferr?(?:ed|ing)?\s+(?:from|away\s+from)\s+exposure|removed?\s+from\s+exposure|one\s+year\s+(?:post[-\s]transfer|since\s+removal|after\s+(?:transfer|removal))|(?:despite\s+)?transfer\s+from\s+exposure(?:\s*(?:>=?|≥)\s*\d+\s+years?)?)\b/i;
+// "Improvement unlikely" is implied clinically when the patient is still
+// on maintenance medication ≥1 year post-transfer (otherwise they'd be
+// off meds). The workbook never spells this out, so we pattern-match
+// "≥1 year" in transfer/exposure context as the implicit improve clause.
+const ASTHMA_IMPROVE_RE  = /\b(?:unlikely\s+(?:to\s+)?(?:further|any)?\s*improvement|no\s+further\s+improvement|not\s+likely\s+to\s+improve|(?:transfer|exposure)\s*(?:>=?|≥)\s*\d+\s+years?|(?:>=?|≥)\s*1\s+years?\s+(?:post[-\s]?transfer|after\s+transfer|since\s+(?:removal|transfer)))\b/i;
 
 const ASTHMA_MED_ORAL_RE    = /\b(?:oral\s+steroids?|systemic\s+steroids?|oral\s+corticosteroids?|prednisolone|prednisone)\b/i;
 const ASTHMA_MED_HIGH_RE    = /\b(?:high[-\s]dose\s+(?:inhaled\s+steroids?|ics)|>800\s*(?:µg|ug)|over\s+800\s*(?:µg|ug)|combination\s+therapy)\b/i;

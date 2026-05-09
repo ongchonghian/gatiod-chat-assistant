@@ -19,47 +19,129 @@ import {
 } from "../engine/spineAssessmentData.js";
 
 /**
- * Builds a human-readable structured confirmation message for a system, given
- * the accumulated extracted values and slot signals.
+ * Typed confirmation-build outcome (slice 4 / delta-audit follow-up).
  *
- * The message is shown to the doctor before calculation is triggered.
- * Values come from extractedValues (actual text parsed from utterances).
- * Signals govern which sections are included (e.g. nerve section only if detected).
+ * Replaces the soft-string return of `buildStructuredConfirmationMessage`,
+ * which leaked messages like "Findings collected — confirm to calculate" or
+ * "(none extracted yet — please describe the diagnosis)" when required
+ * facts were absent. Under the new contract, an insufficient-facts state
+ * returns `{ ok: false, reason, missingFields }` so callers must surface
+ * a clarification rather than presenting a confirmation card.
+ *
+ * This is defense-in-depth — system readiness validators already block
+ * confirmation when facts are missing — but the contract enforces
+ * consistency at the boundary.
+ */
+export type ConfirmationBuildResult =
+  | { ok: true; message: string }
+  | { ok: false; reason: string; missingFields: string[] };
+
+/**
+ * Build a doctor-facing confirmation message from confirmed structured facts,
+ * or refuse with the missing fields if the facts are insufficient.
+ */
+export function buildStructuredConfirmation(
+  system: GatiodSystemKey,
+  facts: V2SystemFacts,
+): ConfirmationBuildResult {
+  const body = buildStructuredBody(system, facts);
+  if (!body.ok) return body;
+
+  const header = `**Confirmation — ${SYSTEM_LABELS[system] ?? system}**\n\nPlease confirm the extracted findings before I calculate the system-generated PI%:\n`;
+  const footer = "\nConfirm and calculate?";
+  return { ok: true, message: header + body.message + footer };
+}
+
+/**
+ * Backward-compatible string-returning wrapper. Throws on `ok: false` so
+ * callers that haven't migrated still hit a clear failure rather than
+ * silently rendering a soft message. Production call sites use the typed
+ * `buildStructuredConfirmation` and handle the failure gracefully.
+ */
+export function buildStructuredConfirmationMessage(
+  system: GatiodSystemKey,
+  facts: V2SystemFacts,
+): string {
+  const result = buildStructuredConfirmation(system, facts);
+  if (!result.ok) {
+    throw new Error(
+      `buildStructuredConfirmationMessage(${system}): cannot render confirmation — ${result.reason} (missing: ${result.missingFields.join(", ")})`,
+    );
+  }
+  return result.message;
+}
+
+/**
+ * Build a confirmation message for legacy / shadow systems from extracted
+ * display values + slot signals. Returns a typed result so callers can
+ * distinguish "render this card" from "we have no facts yet".
+ *
+ * Fail-closed semantics here are deliberately weaker than `buildStructuredConfirmation`:
+ * legacy paths use display-value-driven extraction whose required-fields
+ * profile is system-dependent and not centrally enforced. The minimum bar
+ * is "at least one fact extracted"; richer per-system fail-closed rules
+ * land once each demoted system gathers Excel-shadow evidence under ADR-0001.
+ */
+export function buildLegacyConfirmation(
+  system: GatiodSystemKey,
+  values: Record<string, string>,
+  signals: Partial<SlotSignals>,
+): ConfirmationBuildResult {
+  const body = buildBody(system, values, signals);
+
+  // The soft-message branches currently emit phrases like
+  // "Findings collected — confirm to calculate." when no facts are present.
+  // Fail-closed when we recognize one of those sentinel phrases — the
+  // assistant should ask for findings rather than presenting an empty card.
+  if (/findings collected — confirm to calculate/i.test(body) && body.split("\n").length === 1) {
+    return {
+      ok: false,
+      reason: "no_facts_present",
+      missingFields: ["any"],
+    };
+  }
+
+  const header = `**Confirmation — ${SYSTEM_LABELS[system] ?? system}**\n\nPlease confirm the extracted findings before I calculate the system-generated PI%:\n`;
+  const footer = "\nConfirm and calculate?";
+  return { ok: true, message: header + body + footer };
+}
+
+/**
+ * Backward-compatible string-returning wrapper for legacy confirmation.
+ * Throws on `ok: false` so callers that haven't migrated still hit a clear
+ * failure rather than rendering an empty confirmation card.
  */
 export function buildConfirmationMessage(
   system: GatiodSystemKey,
   values: Record<string, string>,
   signals: Partial<SlotSignals>
 ): string {
-  const header = `**Confirmation — ${SYSTEM_LABELS[system] ?? system}**\n\nPlease confirm the extracted findings before I calculate the system-generated PI%:\n`;
-  const body = buildBody(system, values, signals);
-  const footer = "\nConfirm and calculate?";
-  return header + body + footer;
+  const result = buildLegacyConfirmation(system, values, signals);
+  if (!result.ok) {
+    throw new Error(
+      `buildConfirmationMessage(${system}): cannot render confirmation — ${result.reason} (missing: ${result.missingFields.join(", ")})`,
+    );
+  }
+  return result.message;
 }
 
-/**
- * Builds a confirmation message for structured_live systems directly from
- * extractedFacts, not from the display-key map in extractedValues.
- * Prevents mismatches caused by snake_case vs camelCase display key names.
- */
-export function buildStructuredConfirmationMessage(
-  system: GatiodSystemKey,
-  facts: V2SystemFacts
-): string {
-  const header = `**Confirmation — ${SYSTEM_LABELS[system] ?? system}**\n\nPlease confirm the extracted findings before I calculate the system-generated PI%:\n`;
-  const body = buildStructuredBody(system, facts);
-  const footer = "\nConfirm and calculate?";
-  return header + body + footer;
-}
-
-function buildStructuredBody(system: GatiodSystemKey, facts: V2SystemFacts): string {
+function buildStructuredBody(system: GatiodSystemKey, facts: V2SystemFacts): ConfirmationBuildResult {
   switch (system) {
     case "hearing": return buildHearingFromFacts(facts);
     case "spine":   return buildSpineFromFacts(facts);
     default: {
       const entries = Object.entries(facts).filter(([, f]) => f?.value != null);
-      if (entries.length === 0) return "Findings collected — confirm to calculate.";
-      return entries.map(([k, f]) => line(formatKey(k), titleCase(String(f!.value)))).join("\n");
+      if (entries.length === 0) {
+        return {
+          ok: false,
+          reason: "no_facts_present",
+          missingFields: ["any"],
+        };
+      }
+      return {
+        ok: true,
+        message: entries.map(([k, f]) => line(formatKey(k), titleCase(String(f!.value)))).join("\n"),
+      };
     }
   }
 }
@@ -84,8 +166,6 @@ function spineCategoryLabel(key: string): string {
 
 function spineSeverityLabel(category: string, severityKey: string, pathway?: string): string {
   if (!severityKey) return "(severity not yet selected)";
-  // Defensive: if `category` is already a human label rather than an enum key,
-  // getSeveritiesForCategory's switch returns undefined → .find() would crash.
   const validCategories = new Set([
     "fractures_dislocations", "spinal_cord_injury", "intervertebral_disc",
     "spondylolysis_spondylolisthesis", "chronic_pain_normal_mri",
@@ -98,54 +178,108 @@ function spineSeverityLabel(category: string, severityKey: string, pathway?: str
   return opts.find((o) => o.key === severityKey)?.label ?? severityKey;
 }
 
-function buildSpineFromFacts(facts: V2SystemFacts): string {
-  const rows: string[] = [];
-  const region = facts[SP_FK_REGION]?.value as string | undefined;
-  if (region) {
-    rows.push(line("Region", SPINE_REGION_LABELS[region] ?? titleCase(region)));
+function formatSpineEntry(entry: SpineCategoryEntryFact): string {
+  const cat = spineCategoryLabel(entry.diagnosisCategory);
+  const sev = spineSeverityLabel(entry.diagnosisCategory, entry.severityKey, entry.spondylolysisPathway);
+  const modifiers: string[] = [];
+  if (entry.monoparesisHalving) modifiers.push("monoparesis halving");
+  if (entry.bladderBowelSeverity && entry.bladderBowelSeverity !== "none") {
+    modifiers.push(`bladder/bowel: ${SPINE_BLADDER_BOWEL_LABELS[entry.bladderBowelSeverity] ?? entry.bladderBowelSeverity}`);
   }
-
-  const entries = (facts[SP_FK_ENTRIES]?.value ?? []) as SpineCategoryEntryFact[];
-  if (entries.length === 0) {
-    rows.push(line("Findings", "(no diagnosis entries captured yet)"));
-    return rows.join("\n");
+  if (entry.discCordInvolvement) modifiers.push("disc cord involvement");
+  if (entry.spondylolysisPathway === "pre_existing_superimposed") {
+    modifiers.push("pre-existing/superimposed pathway");
   }
-
-  rows.push(`- **Entries:**`);
-  for (const entry of entries) {
-    const cat = spineCategoryLabel(entry.diagnosisCategory);
-    const sev = spineSeverityLabel(entry.diagnosisCategory, entry.severityKey, entry.spondylolysisPathway);
-    const modifiers: string[] = [];
-    if (entry.monoparesisHalving) modifiers.push("monoparesis halving");
-    if (entry.bladderBowelSeverity && entry.bladderBowelSeverity !== "none") {
-      modifiers.push(`bladder/bowel: ${SPINE_BLADDER_BOWEL_LABELS[entry.bladderBowelSeverity] ?? entry.bladderBowelSeverity}`);
-    }
-    if (entry.discCordInvolvement) modifiers.push("disc cord involvement");
-    if (entry.spondylolysisPathway === "pre_existing_superimposed") {
-      modifiers.push("pre-existing/superimposed pathway");
-    }
-    const modifierStr = modifiers.length > 0 ? ` (${modifiers.join("; ")})` : "";
-    rows.push(`  - ${cat}: ${sev}${modifierStr}`);
-  }
-
-  return rows.join("\n");
+  const modifierStr = modifiers.length > 0 ? ` (${modifiers.join("; ")})` : "";
+  return `${cat}: ${sev}${modifierStr}`;
 }
 
-function buildHearingFromFacts(facts: V2SystemFacts): string {
-  const rows: string[] = [];
-  const path         = facts[HEARING_FK_PATH]?.value as string | undefined;
-  const affectedEars = facts[HEARING_FK_AFFECTED_EARS]?.value as string | undefined;
-  const rightAhl     = facts[HEARING_FK_RIGHT_EAR_AHL]?.value as number | undefined;
-  const leftAhl      = facts[HEARING_FK_LEFT_EAR_AHL]?.value as number | undefined;
-  const age          = facts[HEARING_FK_AGE]?.value as number | undefined;
+/**
+ * Spine fail-closed: require region AND ≥1 entry with a non-empty severityKey.
+ * Mirrors `validateSpineReadiness` so a confirmation can only be presented
+ * when the calculator can actually run.
+ */
+function buildSpineFromFacts(facts: V2SystemFacts): ConfirmationBuildResult {
+  const missing: string[] = [];
+  const region = facts[SP_FK_REGION]?.value as string | undefined;
+  if (!region) missing.push("spine_region");
 
-  if (path) rows.push(line("Assessment pathway", path === "nid" ? "Noise-Induced Deafness (NID)" : "Injury/Accident"));
+  const entries = (facts[SP_FK_ENTRIES]?.value ?? []) as SpineCategoryEntryFact[];
+  const calculableEntries = entries.filter((e) => e.severityKey !== "");
+  if (calculableEntries.length === 0) missing.push("spine_entries");
+
+  if (missing.length > 0) {
+    // Region is the more fundamental fact — surface its absence first.
+    return {
+      ok: false,
+      reason: missing.includes("spine_region")
+        ? "spine_missing_region"
+        : "spine_no_calculable_entries",
+      missingFields: missing,
+    };
+  }
+
+  const rows: string[] = [];
+  rows.push(line("Region", SPINE_REGION_LABELS[region!] ?? titleCase(region!)));
+
+  if (calculableEntries.length === 1) {
+    rows.push(line("Entry", formatSpineEntry(calculableEntries[0])));
+  } else {
+    calculableEntries.forEach((entry, idx) => {
+      rows.push(line(`Entry ${idx + 1}`, formatSpineEntry(entry)));
+    });
+  }
+
+  return { ok: true, message: rows.join("\n") };
+}
+
+/**
+ * Hearing fail-closed: require pathway AND, depending on path:
+ *   - NID: both ear AHLs AND age
+ *   - Injury: affectedEars AND the AHL for that ear
+ * Mirrors `validateHearingCore`.
+ */
+function buildHearingFromFacts(facts: V2SystemFacts): ConfirmationBuildResult {
+  const missing: string[] = [];
+
+  const path = facts[HEARING_FK_PATH]?.value as "nid" | "injury" | undefined;
+  if (!path) missing.push("hearing_path");
+
+  const affectedEars = facts[HEARING_FK_AFFECTED_EARS]?.value as "left" | "right" | undefined;
+  const rightAhl = facts[HEARING_FK_RIGHT_EAR_AHL]?.value as number | undefined;
+  const leftAhl  = facts[HEARING_FK_LEFT_EAR_AHL]?.value as number | undefined;
+  const age      = facts[HEARING_FK_AGE]?.value as number | undefined;
+
+  if (path === "nid") {
+    if (rightAhl === undefined) missing.push("right_ear_ahl");
+    if (leftAhl === undefined) missing.push("left_ear_ahl");
+    if (age === undefined) missing.push("age");
+  } else if (path === "injury") {
+    if (!affectedEars) {
+      missing.push("affected_ears");
+    } else if (affectedEars === "left" && leftAhl === undefined) {
+      missing.push("left_ear_ahl");
+    } else if (affectedEars === "right" && rightAhl === undefined) {
+      missing.push("right_ear_ahl");
+    }
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      reason: "hearing_required_facts_missing",
+      missingFields: missing,
+    };
+  }
+
+  const rows: string[] = [];
+  rows.push(line("Assessment pathway", path === "nid" ? "Noise-Induced Deafness (NID)" : "Injury/Accident"));
   if (affectedEars) rows.push(line("Affected ear", titleCase(affectedEars)));
   if (rightAhl !== undefined) rows.push(line("Right ear AHL", `${rightAhl} dB`));
   if (leftAhl  !== undefined) rows.push(line("Left ear AHL",  `${leftAhl} dB`));
   if (age      !== undefined) rows.push(line("Age", String(age)));
 
-  return rows.join("\n") || "Hearing findings collected — confirm to calculate.";
+  return { ok: true, message: rows.join("\n") };
 }
 
 const SYSTEM_LABELS: Partial<Record<GatiodSystemKey, string>> = {
@@ -339,7 +473,6 @@ function buildGastro(v: Record<string, string>, _s: Partial<SlotSignals>): strin
 
 function buildHearing(v: Record<string, string>, _s: Partial<SlotSignals>): string {
   const rows: string[] = [];
-  // Display keys use snake_case as written by the hearing extractor's displayValuesPatch.
   if (v.path) rows.push(line("Assessment pathway", v.path === "nid" ? "Noise-Induced Deafness (NID)" : "Injury/Accident"));
   if (v.affected_ears) rows.push(line("Affected ear", titleCase(v.affected_ears)));
   if (v.right_ear_ahl) rows.push(line("Right ear AHL", v.right_ear_ahl));

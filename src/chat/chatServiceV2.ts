@@ -17,6 +17,7 @@ import {
   getInstances,
   setPendingClarification,
   setPendingConfirmation,
+  setPendingGlobalCvcConfirmation,
   toSystemStateEnvelope,
   updateExtractedValues,
   updateSlotSignals,
@@ -30,7 +31,8 @@ import {
 import type { V2AssessmentInstance } from "../v2/contracts.js";
 import { extractSignals, extractValues, mergeSignals } from "../v2/slotEvaluator.js";
 import { applySignalClear, buildFactPatch, isConfirmation } from "../v2/factPatch.js";
-import { buildConfirmationMessage, buildStructuredConfirmationMessage } from "../v2/confirmationBuilder.js";
+import { buildGlobalCvcOffer, renderGlobalCvcResult, shouldOfferGlobalCvc } from "../v2/globalCvc.js";
+import { buildLegacyConfirmation, buildStructuredConfirmation } from "../v2/confirmationBuilder.js";
 import { V2_SYSTEM_REGISTRY, isStructuredLiveSystem } from "../v2/systemRegistry.js";
 import { tryResolvePendingObservation } from "../v2/pendingObservationResolver.js";
 import { renderV2Failure } from "../v2/failureRenderer.js";
@@ -90,9 +92,14 @@ function buildNextSystemHandoff(
       if (readiness.ready) {
         // System is ready — present its confirmation right now so the doctor
         // can either confirm or edit without re-typing the original case.
-        const confirmMsg = buildStructuredConfirmationMessage(sys, sysState.extractedFacts);
+        const confirmResult = buildStructuredConfirmation(sys, sysState.extractedFacts);
+        if (!confirmResult.ok) {
+          // Defense: readiness said ready but builder refused. Skip handoff for
+          // this system rather than present a half-formed confirmation.
+          continue;
+        }
         const append =
-          `**Continuing with ${displayName}.** I captured these findings from your earlier message:\n\n${confirmMsg}`;
+          `**Continuing with ${displayName}.** I captured these findings from your earlier message:\n\n${confirmResult.message}`;
         return {
           system: sys,
           appendMessage: append,
@@ -340,9 +347,59 @@ export async function processChatV2(
       const sysStateForConfirm = resolvedState.systems[pendingSystem];
       // For structured_live systems read directly from extractedFacts so display keys
       // (right_ear_ahl, left_ear_ahl, etc.) don't mismatch the confirmation builder.
-      const confirmMsg = isStructuredLiveSystem(pendingSystem)
-        ? buildStructuredConfirmationMessage(pendingSystem, sysStateForConfirm.extractedFacts)
-        : buildConfirmationMessage(pendingSystem, sysStateForConfirm.extractedValues, sysStateForConfirm.slotSignals);
+      let confirmMsg: string;
+      if (isStructuredLiveSystem(pendingSystem)) {
+        const built = buildStructuredConfirmation(pendingSystem, sysStateForConfirm.extractedFacts);
+        if (!built.ok) {
+          // Fail-closed: surface the missing fields rather than presenting a card.
+          const fallback =
+            `I cannot present a confirmation yet — required fields are missing: ${built.missingFields.join(", ")}. ` +
+            `Please provide the missing details.`;
+          resolvedState = setPendingClarification(resolvedState, fallback);
+          const enveloped = toSystemStateEnvelope(resolvedState, raw);
+          saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+          logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_shadow_result", eventData: { shadow, proposed: [], actual: [], needsClarification: true } });
+          return {
+            sessionId,
+            message: fallback,
+            route,
+            grounding,
+            needsClarification: true,
+            clarificationQuestion: fallback,
+            toolPlan: { proposed: [], actual: [] },
+            policy: { action: "clarify", reason: `Confirmation builder rejected facts: ${built.reason}`, requiresConfirmation: false, clarificationQuestion: fallback, proposedTools: [] },
+            shadowMode: shadow,
+          };
+        }
+        confirmMsg = built.message;
+      } else {
+        const legacyResult = buildLegacyConfirmation(
+          pendingSystem,
+          sysStateForConfirm.extractedValues,
+          sysStateForConfirm.slotSignals,
+        );
+        if (!legacyResult.ok) {
+          const fallback =
+            `I cannot present a confirmation yet — no findings have been extracted. ` +
+            `Please describe the injury or assessment in more detail.`;
+          resolvedState = setPendingClarification(resolvedState, fallback);
+          const enveloped = toSystemStateEnvelope(resolvedState, raw);
+          saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+          logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_shadow_result", eventData: { shadow, proposed: [], actual: [], needsClarification: true } });
+          return {
+            sessionId,
+            message: fallback,
+            route,
+            grounding,
+            needsClarification: true,
+            clarificationQuestion: fallback,
+            toolPlan: { proposed: [], actual: [] },
+            policy: { action: "clarify", reason: `Legacy confirmation builder rejected facts: ${legacyResult.reason}`, requiresConfirmation: false, clarificationQuestion: fallback, proposedTools: [] },
+            shadowMode: shadow,
+          };
+        }
+        confirmMsg = legacyResult.message;
+      }
       resolvedState = setConfirmationPending(resolvedState, pendingSystem, confirmMsg);
       if (activeInstanceForObs) {
         resolvedState = setInstanceConfirmationPending(resolvedState, activeInstanceForObs.instanceId, confirmMsg);
@@ -424,6 +481,20 @@ export async function processChatV2(
             eventData: { system: targetSystem, warnings: extractionResult.warnings },
           });
         }
+        if (extractionResult.auditEvents && extractionResult.auditEvents.length > 0) {
+          for (const ev of extractionResult.auditEvents) {
+            // The extractor declares its event types as plain strings to keep
+            // contracts.ts free of an auditLog import. AuditEventType union is
+            // the source of truth — adding a new extractor event requires
+            // adding it there too.
+            logAuditEvent({
+              sessionId,
+              userId: opts?.userId,
+              eventType: ev.eventType as Parameters<typeof logAuditEvent>[0]["eventType"],
+              eventData: { system: targetSystem, ...ev.payload },
+            });
+          }
+        }
 
         if (extractionResult.instanceId) {
           const { systemKey, slotKeys } = parseInstanceId(extractionResult.instanceId);
@@ -503,6 +574,11 @@ export async function processChatV2(
   // calculating and we want to chain into the next system the doctor
   // mentioned in the original utterance. (REQ-B1.5)
   let handoff: NextSystemHandoff | undefined;
+  // Set when the post-handoff path auto-offers a Global CVC combine. Carries
+  // the chips and message into the response composition without conflating
+  // with the system-handoff overlay.
+  let globalCvcOfferChips: string[] | undefined;
+  let globalCvcOfferMessage: string | undefined;
 
   if (policy.action === "clarify") {
     let clarification = policy.clarificationQuestion ?? "Please clarify the target system.";
@@ -521,11 +597,27 @@ export async function processChatV2(
         const clearedSignals = applySignalClear(nextState.systems[sys].slotSignals, patch.signalsToClear);
         nextState = updateSlotSignals(nextState, sys, clearedSignals);
       }
-      // Rebuild the confirmation with updated values
+      // Rebuild the confirmation with updated values. Fail-closed: if the
+      // correction made the structured facts insufficient, surface the
+      // missing fields rather than re-rendering an invalid confirmation.
       const updatedSystemState = nextState.systems[sys];
-      clarification = isStructuredLiveSystem(sys)
-        ? buildStructuredConfirmationMessage(sys, updatedSystemState.extractedFacts)
-        : buildConfirmationMessage(sys, updatedSystemState.extractedValues, updatedSystemState.slotSignals);
+      if (isStructuredLiveSystem(sys)) {
+        const built = buildStructuredConfirmation(sys, updatedSystemState.extractedFacts);
+        clarification = built.ok
+          ? built.message
+          : `I cannot present a confirmation yet — required fields are missing: ${built.missingFields.join(", ")}. ` +
+            `Please provide the missing details.`;
+      } else {
+        const built = buildLegacyConfirmation(
+          sys,
+          updatedSystemState.extractedValues,
+          updatedSystemState.slotSignals,
+        );
+        clarification = built.ok
+          ? built.message
+          : `I cannot present a confirmation yet — no findings have been extracted. ` +
+            `Please describe the injury or assessment in more detail.`;
+      }
     }
 
     // Set or update pendingConfirmation when this is a confirmation-type clarification.
@@ -553,6 +645,15 @@ export async function processChatV2(
       // Non-confirmation clarification — clear any pending confirmation.
       nextState = setPendingConfirmation(nextState, null);
       nextState = setPendingClarification(nextState, clarification);
+    }
+
+    // ── Pending global CVC offer side-effects ────────────────────────────
+    if (policy.pendingGlobalCvcSnapshot) {
+      // Stale-re-offer path: refresh the snapshot to current component values.
+      nextState = setPendingGlobalCvcConfirmation(nextState, policy.pendingGlobalCvcSnapshot);
+    } else if (policy.clearPendingGlobalCvc) {
+      // Doctor pivoted away from the offer (Add another system / Edit a finding).
+      nextState = setPendingGlobalCvcConfirmation(nextState, null);
     }
 
     message = clarification;
@@ -584,9 +685,38 @@ export async function processChatV2(
 
     nextState = applyToolResults(nextState, actual);
 
+    // ── Global CVC execution (Q4) ─────────────────────────────────────────
+    // assess_global_cvc has its own deterministic renderer and is not tied
+    // to a single system. Handle it before the per-system renderer below.
+    const globalCvcCall = actual.find((c) => c.name === "assess_global_cvc");
+    if (globalCvcCall) {
+      if (globalCvcCall.status === "executed" && globalCvcCall.validation.ok) {
+        message = renderGlobalCvcResult(globalCvcCall.result);
+        nextState = setPendingGlobalCvcConfirmation(nextState, null);
+        nextState = setPendingClarification(nextState, "");
+        logAuditEvent({
+          sessionId,
+          userId: opts?.userId,
+          eventType: "v2_global_cvc_executed",
+          eventData: {
+            globalPiPercent: ((globalCvcCall.result ?? {}) as Record<string, unknown>).globalPiPercent,
+          },
+        });
+      } else {
+        const failure = renderV2Failure("tool_execution_failed", globalCvcCall.validation.message);
+        logAuditEvent({
+          sessionId,
+          userId: opts?.userId,
+          eventType: "v2_failure",
+          eventData: { failureKind: "tool_execution_failed", tool: "assess_global_cvc" },
+        });
+        message = failure.message;
+      }
+    }
+
     // For structured_live assess_* calls: use the deterministic renderer
     const assessCall = actual.find((c) => /^assess_(?!global_cvc)/.test(c.name) && c.status === "executed");
-    if (assessCall && primarySystem) {
+    if (!globalCvcCall && assessCall && primarySystem) {
       const cap = V2_SYSTEM_REGISTRY[primarySystem];
       if (cap.mode === "structured_live" && cap.resultRenderer) {
         if (!assessCall.validation.ok) {
@@ -653,6 +783,29 @@ export async function processChatV2(
                 pendingConfirmation: handoff.pendingConfirmation,
               },
             });
+          } else if (shouldOfferGlobalCvc(nextState)) {
+            // ── Global CVC offer (Q4) ────────────────────────────────────────
+            // No further system to hand off to, but ≥2 systems have calculated.
+            // Offer the deterministic combine step. ADR D4-style snapshot is
+            // stored on the session so a later edit of either component
+            // invalidates the offer at confirm time.
+            const offer = buildGlobalCvcOffer(nextState);
+            if (offer) {
+              message = `${message}\n\n---\n\n${offer.appendMessage}`;
+              globalCvcOfferMessage = offer.appendMessage;
+              globalCvcOfferChips = offer.chips;
+              nextState = setPendingGlobalCvcConfirmation(nextState, offer.snapshot);
+              nextState = setPendingClarification(nextState, offer.appendMessage);
+              logAuditEvent({
+                sessionId,
+                userId: opts?.userId,
+                eventType: "v2_global_cvc_offered",
+                eventData: {
+                  componentSystems: offer.snapshot.componentSystems,
+                  componentValues: offer.snapshot.componentValues,
+                },
+              });
+            }
           }
         }
       } else {
@@ -663,7 +816,7 @@ export async function processChatV2(
           routeSummary: `${route.operation} (${route.systems.join(", ") || "none"})`,
         }));
       }
-    } else {
+    } else if (!globalCvcCall) {
       message = formatLookupExecutionMessage(actual, formatV2Message({
         policyReason: policy.reason,
         needsClarification: false,
@@ -711,9 +864,13 @@ export async function processChatV2(
     message,
     route,
     grounding,
-    needsClarification: handoff ? true : policy.action === "clarify",
-    clarificationQuestion: handoff ? handoff.appendMessage : policy.clarificationQuestion,
-    suggestedChips: handoff ? handoff.chips : policy.chips,
+    needsClarification: handoff || globalCvcOfferMessage ? true : policy.action === "clarify",
+    clarificationQuestion: handoff
+      ? handoff.appendMessage
+      : globalCvcOfferMessage ?? policy.clarificationQuestion,
+    suggestedChips: handoff
+      ? handoff.chips
+      : globalCvcOfferChips ?? policy.chips,
     toolPlan: { proposed, actual },
     policy,
     shadowMode: shadow,

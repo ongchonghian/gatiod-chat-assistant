@@ -1,0 +1,69 @@
+{
+  "system": "respiratory",
+  "sampleSize": 16,
+  "byExpected": {
+    "exact_calculation": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    },
+    "clarification_required": {
+      "total": 16,
+      "matched": 16,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 16,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    },
+    "unsupported_safe_fail": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    },
+    "routing_only": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    },
+    "legacy_deferred": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    }
+  },
+  "componentSafeOutcomeRate": 1,
+  "exactCalculationRate": 0,
+  "mismatchSamples": []
+}

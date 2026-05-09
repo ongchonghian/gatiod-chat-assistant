@@ -137,10 +137,32 @@ export function routeUtterance(
   grounding: GroundingResult,
   state: V2SessionState
 ): RouteDecision {
-  const operation = detectOperation(utterance.normalizedText, state);
+  let operation = detectOperation(utterance.normalizedText, state);
   const { ranked, ontologyClipped } = rankSystems(utterance, grounding);
   const top = ranked[0];
   const second = ranked[1];
+
+  // Slice-14 — assessment-keyword backstop. detectOperation only sees
+  // action verbs ("assess", "calculate", "fracture", etc.). A clinical
+  // case described purely with disease/condition or anatomical
+  // vocabulary (e.g. "Occupational asthma requiring daily maintenance
+  // bronchodilators", "Right shoulder active flexion from neutral 140°")
+  // would otherwise default to "clarify" even though the system is
+  // unambiguously identified.
+  //
+  // Slice-18 — relaxed from 2 keyword matches to 1. The downstream
+  // confidence check at the bottom of routeUtterance still gates on
+  // confidence ≥ threshold; this just lets single-keyword clinical
+  // descriptions reach the assessment path instead of asking "which
+  // body system?".
+  if (
+    operation === "clarify" &&
+    !state.pendingConfirmation &&
+    top &&
+    top.breakdown.keyword >= KEYWORD_WEIGHT_PER_MATCH
+  ) {
+    operation = "assessment";
+  }
 
   // Build the included-systems list. The top system is included if it scored
   // > 0; secondaries must clear the ratio + floor AND have at least one

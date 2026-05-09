@@ -11,9 +11,18 @@ import type {
 import { collectCalculatedSubtotals, getInstances, hashExtractedFacts } from "./stateMachine.js";
 import { decideSlotAction } from "./dialoguePolicy.js";
 import { isConfirmation, isEditRequest } from "./factPatch.js";
-import { buildConfirmationMessage, buildStructuredConfirmationMessage } from "./confirmationBuilder.js";
+import { buildLegacyConfirmation, buildStructuredConfirmation } from "./confirmationBuilder.js";
 import { V2_SYSTEM_REGISTRY, isStructuredLiveSystem, requireStructuredCapability } from "./systemRegistry.js";
 import { SYSTEM_SELECTION_PATTERN } from "./systemSelection.js";
+import {
+  buildGlobalCvcOffer,
+  getCalculatedSystems,
+  verifyGlobalCvcSnapshot,
+} from "./globalCvc.js";
+
+const GLOBAL_CVC_COMBINE_RE = /^(combine|confirm and combine|yes|y|ok|okay|proceed|confirmed)$/i;
+const GLOBAL_CVC_ADD_SYSTEM_RE = /\b(add another system|add\s+system|another\s+system)\b/i;
+const GLOBAL_CVC_EDIT_RE = /\b(edit (a )?finding|edit findings|edit)\b/i;
 
 const CONTINUATION_REPLY_PATTERN = /^(no|yes|y|n|ok|okay|confirmed|proceed|continue|none)$/i;
 
@@ -87,6 +96,96 @@ export function makePolicyDecision(
   grounding: GroundingResult,
   state: V2SessionState
 ): PolicyDecision {
+  // ── Pending Global CVC offer (Q4) ─────────────────────────────────────────
+  // After ≥2 systems calculate, the assistant offers a combination. The
+  // doctor's reply is interpreted here before the regular system-confirmation
+  // flow so a chip click ("Combine") doesn't get routed as a new utterance.
+  if (state.pendingGlobalCvcConfirmation) {
+    const text = normalized.normalizedText.trim();
+
+    if (GLOBAL_CVC_COMBINE_RE.test(text)) {
+      const verification = verifyGlobalCvcSnapshot(state, state.pendingGlobalCvcConfirmation);
+      if (!verification.ok) {
+        // Snapshot is stale — re-offer with current values. The chat service
+        // refreshes the pending snapshot from `pendingGlobalCvcSnapshot` so
+        // the next "Combine" reply verifies against the new component values.
+        const reOffer = buildGlobalCvcOffer(state);
+        return {
+          action: "clarify",
+          reason:
+            "Component PI values changed since the Global CVC offer was presented; re-offering with current values.",
+          requiresConfirmation: true,
+          clarificationQuestion:
+            reOffer?.appendMessage ??
+            "Component values changed since the offer was presented. Please review.",
+          chips: reOffer?.chips,
+          proposedTools: [],
+          pendingGlobalCvcSnapshot: reOffer?.snapshot,
+        };
+      }
+
+      const components = getCalculatedSystems(state);
+      return {
+        action: "execute_tools",
+        reason: "Confirmed Global CVC offer; executing assess_global_cvc.",
+        requiresConfirmation: false,
+        proposedTools: [
+          {
+            name: "assess_global_cvc",
+            args: {
+              systemSubtotals: components.map((c) => ({
+                system: c.system,
+                piPercent: c.piPercent,
+              })),
+            },
+            status: "proposed",
+            validation: {
+              ok: true,
+              message: `Combining ${components.length} component PI value${components.length === 1 ? "" : "s"}.`,
+            },
+          },
+        ],
+      };
+    }
+
+    if (GLOBAL_CVC_ADD_SYSTEM_RE.test(text)) {
+      return {
+        action: "clarify",
+        reason: "Doctor chose to add another system before global combine.",
+        requiresConfirmation: false,
+        clarificationQuestion:
+          "Which system would you like to assess next? Tell me the findings and I'll route them.",
+        chips: [
+          "Upper Limb",
+          "Lower Limb",
+          "Spine",
+          "Hearing",
+          "Respiratory",
+          "Renal",
+          "Gastro-Digestive",
+        ],
+        proposedTools: [],
+        clearPendingGlobalCvc: true,
+      };
+    }
+
+    if (GLOBAL_CVC_EDIT_RE.test(text)) {
+      return {
+        action: "clarify",
+        reason: "Doctor chose to edit a finding before global combine.",
+        requiresConfirmation: false,
+        clarificationQuestion:
+          "Which finding would you like to edit? Tell me the system and what to change.",
+        proposedTools: [],
+        clearPendingGlobalCvc: true,
+      };
+    }
+
+    // Anything else: fall through to regular handling. chatServiceV2 will
+    // clear the pending offer on its next state update so the doctor isn't
+    // trapped in a stale offer if they pivot to an unrelated topic.
+  }
+
   // ── Confirmation / correction handling ──────────────────────────────────
   // When V2 has presented a structured confirmation, intercept the response
   // before routing to resolve it deterministically.
@@ -311,13 +410,23 @@ export function makePolicyDecision(
   }
 
   if (shouldDoLookupFirstForAssessment(route, grounding)) {
-    const top = grounding.ontologyMatches[0]!;
-    return {
-      action: "execute_tools",
-      reason: `Assessment intent with high-confidence ${top.type} match; lookup-first grounding before full assessment.`,
-      requiresConfirmation: false,
-      proposedTools: [proposeLookupTool(normalized, grounding)],
-    };
+    // Slice-24 — skip lookup-first for structured_live systems. The
+    // extractor's DBE auto-population (slice 23) already wrote
+    // FK_DBE_SELECTIONS as a fact, and the structured readiness path
+    // below will present the confirmation card. Without this skip, the
+    // doctor's first turn returned a lookup-tool result ("Mapped
+    // successfully") and the second-turn "Confirmed" had no
+    // pendingConfirmation to act on — assessment never ran.
+    const primary = route.systems[0];
+    if (!primary || !isStructuredLiveSystem(primary)) {
+      const top = grounding.ontologyMatches[0]!;
+      return {
+        action: "execute_tools",
+        reason: `Assessment intent with high-confidence ${top.type} match; lookup-first grounding before full assessment.`,
+        requiresConfirmation: false,
+        proposedTools: [proposeLookupTool(normalized, grounding)],
+      };
+    }
   }
 
   // Before delegating to legacy: run the slot / confirmation decision.
@@ -368,12 +477,26 @@ export function makePolicyDecision(
       }
 
       // All required facts present — present structured confirmation built from extractedFacts.
-      const confirmMsg = buildStructuredConfirmationMessage(primarySystem, systemState.extractedFacts);
+      // Fail-closed: if the confirmation builder cannot render (missing required
+      // facts that readiness somehow let through), surface a clarification
+      // listing the missing fields rather than presenting a soft message.
+      const confirmResult = buildStructuredConfirmation(primarySystem, systemState.extractedFacts);
+      if (!confirmResult.ok) {
+        return {
+          action: "clarify",
+          reason: `Confirmation builder rejected facts: ${confirmResult.reason}`,
+          requiresConfirmation: false,
+          clarificationQuestion:
+            `I cannot present a confirmation yet — required fields are missing: ${confirmResult.missingFields.join(", ")}. ` +
+            `Please provide the missing details.`,
+          proposedTools: [],
+        };
+      }
       return {
         action: "clarify",
         reason: "All required facts confirmed; presenting structured confirmation before calculation.",
         requiresConfirmation: true,
-        clarificationQuestion: confirmMsg,
+        clarificationQuestion: confirmResult.message,
         chips: ["Confirm and calculate", "Edit findings"],
         proposedTools: [],
       };
@@ -394,16 +517,27 @@ export function makePolicyDecision(
     }
 
     if (slotAction.type === "CONFIRM") {
-      const confirmMsg = buildConfirmationMessage(
+      const built = buildLegacyConfirmation(
         primarySystem,
         systemState?.extractedValues ?? {},
         systemState?.slotSignals ?? {}
       );
+      if (!built.ok) {
+        return {
+          action: "clarify",
+          reason: `Legacy confirmation builder rejected facts: ${built.reason}`,
+          requiresConfirmation: false,
+          clarificationQuestion:
+            `I cannot present a confirmation yet — no findings have been extracted. ` +
+            `Please describe the injury or assessment in more detail.`,
+          proposedTools: [],
+        };
+      }
       return {
         action: "clarify",
         reason: "All required slots satisfied; presenting structured confirmation before calculation.",
         requiresConfirmation: true,
-        clarificationQuestion: confirmMsg,
+        clarificationQuestion: built.message,
         chips: ["Confirm and calculate", "Edit findings"],
         proposedTools: [],
       };

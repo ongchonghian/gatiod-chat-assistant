@@ -28,7 +28,10 @@ export type AuditEventType =
   | "v2_failure"
   | "v2_failure_user_choice"
   | "v2_legacy_fallback_requested"
-  | "v2_legacy_fallback_result";
+  | "v2_legacy_fallback_result"
+  | "v2_global_cvc_offered"
+  | "v2_global_cvc_executed"
+  | "spine_multi_region_unsupported";
 
 export interface AuditEntry {
   sessionId: string;

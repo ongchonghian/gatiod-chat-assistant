@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import type {
   GatiodSystemKey,
   PendingConfirmation,
+  PendingGlobalCvcConfirmation,
   PendingObservation,
   RouteDecision,
   SlotSignals,
@@ -61,6 +62,7 @@ export function defaultV2SessionState(): V2SessionState {
     instancesBySystem: {},
     pendingClarification: null,
     pendingConfirmation: null,
+    pendingGlobalCvcConfirmation: null,
   };
 }
 
@@ -106,6 +108,7 @@ export function coerceV2State(raw: unknown): V2SessionState {
 
   merged.pendingClarification = candidate.pendingClarification ?? null;
   merged.pendingConfirmation = candidate.pendingConfirmation ?? null;
+  merged.pendingGlobalCvcConfirmation = candidate.pendingGlobalCvcConfirmation ?? null;
 
   // Coerce instancesBySystem
   const rawInstances = candidate.instancesBySystem as Record<string, unknown[]> | undefined;
@@ -158,6 +161,16 @@ export function setPendingConfirmation(state: V2SessionState, pending: PendingCo
   return {
     ...state,
     pendingConfirmation: pending,
+  };
+}
+
+export function setPendingGlobalCvcConfirmation(
+  state: V2SessionState,
+  pending: PendingGlobalCvcConfirmation | null,
+): V2SessionState {
+  return {
+    ...state,
+    pendingGlobalCvcConfirmation: pending,
   };
 }
 

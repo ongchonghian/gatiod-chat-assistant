@@ -70,13 +70,15 @@ describe("validateRespiratoryReadiness", () => {
   });
 
   it("blocks occupational asthma with no PFT and incomplete prerequisites", () => {
+    // Slice-17 — readiness rejects incomplete prereqs first, asks about
+    // prereqs (not "no_assessable_input" which was the old generic reason).
     const r = validateRespiratoryReadiness(stateWith({
       [RESP_FK_DIAGNOSIS]: fact("occupational_asthma"),
       [RESP_FK_ASTHMA_MAINT]: fact(true),
       // missing transfer and improve
     }));
     expect(r.ready).toBe(false);
-    expect(r.reason).toBe("no_assessable_input");
+    expect(r.reason).toBe("missing_asthma_prerequisites");
   });
 
   it("blocks occupational asthma with prerequisites but no medication and no PFT", () => {
@@ -90,6 +92,21 @@ describe("validateRespiratoryReadiness", () => {
     expect(r.ready).toBe(false);
     expect(r.reason).toBe("missing_asthma_medication");
     expect(r.candidateAnswers).toContain("Oral steroids");
+  });
+
+  it("blocks occupational asthma with all prereqs + medication but no PFT (slice-17)", () => {
+    // Slice-17 — engine requires FEV1 > 80 for the medication-based asthma
+    // override. Without PFT, readiness now blocks rather than letting the
+    // engine silently return 0%.
+    const r = validateRespiratoryReadiness(stateWith({
+      [RESP_FK_DIAGNOSIS]:       fact("occupational_asthma"),
+      [RESP_FK_ASTHMA_MAINT]:    fact(true),
+      [RESP_FK_ASTHMA_TRANSFER]: fact(true),
+      [RESP_FK_ASTHMA_IMPROVE]:  fact(true),
+      [RESP_FK_ASTHMA_MED]:      fact("oral_steroids"),
+    }));
+    expect(r.ready).toBe(false);
+    expect(r.reason).toBe("missing_pft_for_asthma");
   });
 
   it("is ready occupational asthma with all prerequisites and medication", () => {

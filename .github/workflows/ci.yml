@@ -1,0 +1,59 @@
+# CI workflow wiring the gates built in slices 1-32:
+#
+#   1. Type check                 — tsc --noEmit
+#   2. Default test suite         — vitest run (no Excel shadow)
+#   3. Excel fixture freshness    — regenerate from workbook, fail on diff
+#   4. Excel shadow suite         — opt-in, threshold-enforced (ADR-0001 §)
+#   5. ADR-0001 promotion check   — registry-time gate against latest evidence
+#
+# Each step is the authoritative form of one ADR-0001 commitment:
+#   - Step 3 enforces "the workbook and the fixture move together" (slice 6).
+#   - Step 4 enforces per-system safe-outcome / exact-calculation thresholds
+#     mechanically against the catalogue (slice 29).
+#   - Step 5 enforces that every `structured_live` system has CURRENT
+#     evidence at threshold — historical permission to be live is not enough
+#     (slice 32).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Default test suite
+        run: npm test
+
+      - name: Excel fixture freshness
+        # Fails if data/gatiod_injury_scenario_catalogue.xlsx changed
+        # without regenerating tests/v2/excelScenarios/scenarios.generated.json.
+        run: npm run check:excel-fixtures-fresh
+
+      - name: Excel shadow suite (ADR-0001 thresholds enforced)
+        run: npm run test:excel-shadow
+
+      - name: ADR-0001 promotion check
+        # Reads each *.calibration.generated.json and validates that every
+        # structured_live system has evidence at or above its ADR-0001
+        # per-system threshold. Catches:
+        #   - System flipped to live without running shadow.
+        #   - Evidence dropped below threshold.
+        run: npm run check:adr-0001-promotion

@@ -70,6 +70,12 @@ export const SYSTEM_SYNONYMS: SystemSynonym[] = [
   { term: "sacral", system: "spine", confidence: 1.0 },
   { term: "lumbo sacral", system: "spine", confidence: 1.0 },
   { term: "lumbosacral", system: "spine", confidence: 1.0 },
+  // Slice-34/35 — `lumbosacral plexus` is a lower-limb peripheral nerve.
+  // Match the post-normalization form ("lumbo sacral plexus") since the
+  // normalizer rewrites "lumbosacral" → "lumbo sacral" with a space.
+  // Slice-35's containment-suppression then drops the spine matches for
+  // "lumbo", "sacral", "lumbo sacral" when this phrase is present.
+  { term: "lumbo sacral plexus", system: "lower_limb", confidence: 1.0 },
   { term: "cervical", system: "spine", confidence: 1.0 },
   { term: "thoracic", system: "spine", confidence: 1.0 },
   { term: "thoraco", system: "spine", confidence: 1.0 },
@@ -91,6 +97,13 @@ export const SYSTEM_SYNONYMS: SystemSynonym[] = [
   { term: "cauda equina", system: "spine", confidence: 1.0 },
   { term: "compression fracture", system: "spine", confidence: 1.0 },
   { term: "burst fracture", system: "spine", confidence: 1.0 },
+  // Slice-16 — neurogenic bladder/bowel is a spinal cord injury
+  // complication. Without these signals the row "Neurogenic bladder/bowel:
+  // Complete incontinence..." was being routed to gastro_digestive (which
+  // matched "bowel" and the slice-13 "incontinence" synonym).
+  { term: "neurogenic", system: "spine", confidence: 1.0 },
+  { term: "neurogenic bladder", system: "spine", confidence: 1.0 },
+  { term: "neurogenic bowel", system: "spine", confidence: 1.0 },
 
   // ── Respiratory ─────────────────────────────────────────────────────────
   { term: "respiratory", system: "respiratory", confidence: 1.0 },
@@ -111,6 +124,24 @@ export const SYSTEM_SYNONYMS: SystemSynonym[] = [
   { term: "asbestosis", system: "respiratory", confidence: 1.0 },
   { term: "bronchial", system: "respiratory", confidence: 0.95 },
   { term: "pneumoconiosis", system: "respiratory", confidence: 1.0 },
+  // Slice-14 — workbook rows for occupational asthma reference medication
+  // classes that the router didn't recognize, dropping confidence below the
+  // assessment threshold even though "asthma" was matched. These are all
+  // respiratory medication or exposure terms when used in a respiratory
+  // context (which "asthma" or "respiratory" co-occurrence anchors).
+  { term: "bronchodilator", system: "respiratory", confidence: 0.95 },
+  { term: "bronchodilators", system: "respiratory", confidence: 0.95 },
+  { term: "inhaler", system: "respiratory", confidence: 0.95 },
+  { term: "inhaled", system: "respiratory", confidence: 0.85, notes: "respiratory context (inhaled steroids/bronchodilators)" },
+  { term: "nebulizer", system: "respiratory", confidence: 0.95 },
+  { term: "nebuliser", system: "respiratory", confidence: 0.95 },
+  // "occupational" alone is ambiguous (could be CTS, asbestosis, NID),
+  // but in the workbook's respiratory rows it's nearly always paired with
+  // asthma / asbestos / exposure. Lower confidence so it boosts but
+  // doesn't dominate.
+  { term: "occupational", system: "respiratory", confidence: 0.6, requiresConfirmation: true, notes: "ambiguous; needs co-occurring respiratory term" },
+  { term: "asbestos", system: "respiratory", confidence: 0.95 },
+  { term: "profusion", system: "respiratory", confidence: 0.9, notes: "asbestosis profusion grading" },
 
   // ── Renal ──────────────────────────────────────────────────────────────
   { term: "renal", system: "renal", confidence: 1.0 },
@@ -149,6 +180,22 @@ export const SYSTEM_SYNONYMS: SystemSynonym[] = [
   { term: "stomach", system: "gastro_digestive", confidence: 0.95 },
   { term: "hernia", system: "gastro_digestive", confidence: 0.85, notes: "abdominal hernia is gastro; disc herniation is spine" },
   { term: "herniation", system: "gastro_digestive", confidence: 0.6, requiresConfirmation: true, notes: "could be disc (spine) or abdominal (gastro)" },
+  // Lower GI / colorectal — added after the slice-11 calibration showed
+  // workbook rows starting "Colon and rectum:", "Anus:" misrouting to spine
+  // and upper_limb. These are clear gastro signals.
+  { term: "colon", system: "gastro_digestive", confidence: 1.0 },
+  { term: "colonic", system: "gastro_digestive", confidence: 1.0 },
+  { term: "colorectal", system: "gastro_digestive", confidence: 1.0 },
+  { term: "rectum", system: "gastro_digestive", confidence: 1.0 },
+  { term: "rectal", system: "gastro_digestive", confidence: 1.0 },
+  { term: "anus", system: "gastro_digestive", confidence: 1.0 },
+  { term: "anal", system: "gastro_digestive", confidence: 0.9, notes: "anal canal/disease is gastro; anal fissure usually too" },
+  { term: "faecal", system: "gastro_digestive", confidence: 1.0 },
+  { term: "fecal", system: "gastro_digestive", confidence: 1.0 },
+  // "abdominal" alone is gastro most of the time but can refer to abdominal
+  // wall trauma broadly — kept lower confidence than core organ terms.
+  { term: "abdominal", system: "gastro_digestive", confidence: 0.85, notes: "abdominal wall hernia and abdominal organ disease both route here" },
+  { term: "abdomen", system: "gastro_digestive", confidence: 0.85 },
 
   // ── Hearing ─────────────────────────────────────────────────────────────
   { term: "hearing", system: "hearing", confidence: 1.0 },
@@ -254,7 +301,24 @@ export function findContainedSynonyms(normalizedText: string, tokens: string[]):
       if (!seen.has(key)) { seen.add(key); matches.push(syn); }
     }
   }
-  return matches;
+
+  // Slice-35 — when a multi-word match strictly contains a single-word
+  // match's term, drop the single-word match. Workbook phrasings like
+  // "Lumbosacral plexus: ..." otherwise match BOTH "lumbosacral" (spine,
+  // single-word) AND "lumbosacral plexus" (lower_limb, multi-word),
+  // tying the keyword score and routing to spine by declaration order.
+  // The phrase form is more specific and should win.
+  const phraseMatches = matches.filter((m) => m.term.includes(" "));
+  if (phraseMatches.length === 0) return matches;
+  return matches.filter((m) => {
+    if (m.term.includes(" ")) return true; // keep phrase matches
+    // Drop single-word matches whose term is a token of any phrase match
+    // for a DIFFERENT system. (Same-system overlap is fine; doesn't change
+    // the system's score.)
+    return !phraseMatches.some(
+      (p) => p.system !== m.system && p.term.split(/\s+/).includes(m.term),
+    );
+  });
 }
 
 /**

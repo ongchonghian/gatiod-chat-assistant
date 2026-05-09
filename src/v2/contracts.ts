@@ -164,6 +164,20 @@ export interface PolicyDecision {
   clarificationQuestion?: string;
   chips?: string[];
   proposedTools: ToolPlanCall[];
+  /**
+   * When set, the chat service should write this snapshot to
+   * `state.pendingGlobalCvcConfirmation` after applying the decision. Used
+   * by the global-CVC policy branch to refresh a stale offer's snapshot.
+   * The forward declaration here avoids a circular type — defined fully
+   * above as PendingGlobalCvcConfirmation.
+   */
+  pendingGlobalCvcSnapshot?: PendingGlobalCvcConfirmation;
+  /**
+   * When true, the chat service should clear `state.pendingGlobalCvcConfirmation`
+   * after applying the decision. Used when the doctor picks "Add another
+   * system" or "Edit a finding" from a global-CVC offer.
+   */
+  clearPendingGlobalCvc?: boolean;
 }
 
 export type V2SystemStatus = "idle" | "collecting" | "needs_confirmation" | "calculated";
@@ -257,6 +271,21 @@ export interface PendingConfirmation {
   createdAt: string;
 }
 
+/**
+ * Snapshot of the per-system PI values the doctor was offered to combine.
+ * Set when ≥2 systems have calculated and the assistant offers a global CVC
+ * combination. Becomes stale (and gets cleared) if any component's piPercent
+ * changes before the doctor confirms — exactly analogous to the per-system
+ * `factsHash` snapshot but at session level. Vanilla CVC; cap policy is a
+ * follow-up (see CONTEXT.md).
+ */
+export interface PendingGlobalCvcConfirmation {
+  status: "pending";
+  componentSystems: GatiodSystemKey[];
+  componentValues: number[];
+  createdAt: string;
+}
+
 export interface V2SessionState {
   version: 1;
   systems: Record<GatiodSystemKey, V2SystemState>;
@@ -269,6 +298,7 @@ export interface V2SessionState {
   instancesBySystem: Partial<Record<GatiodSystemKey, V2AssessmentInstance[]>>;
   pendingClarification: string | null;
   pendingConfirmation: PendingConfirmation | null;
+  pendingGlobalCvcConfirmation: PendingGlobalCvcConfirmation | null;
 }
 
 export interface ChatV2Response {
@@ -286,6 +316,13 @@ export interface ChatV2Response {
 
 // ── Component result types (shared across extractor / readiness / arg-builder / renderer) ──
 
+export interface ExtractionAuditEvent {
+  /** Audit event type — recorded as `eventType` in the audit log. */
+  eventType: string;
+  /** Structured payload for the event. */
+  payload: Record<string, unknown>;
+}
+
 export interface StructuredExtractionResult {
   extractedFactsPatch: V2SystemFacts;
   pendingObservationsToAdd: PendingObservation[];
@@ -293,6 +330,13 @@ export interface StructuredExtractionResult {
   slotSignalsPatch: Partial<SlotSignals>;
   displayValuesPatch: Record<string, string>;
   warnings: string[];
+  /**
+   * Typed audit events emitted during extraction. The chat service forwards
+   * each one to `logAuditEvent` so extractors can record structured facts
+   * (e.g. blocked overwrites, scope-violation safe-fails) without smuggling
+   * structured data through the warnings channel.
+   */
+  auditEvents?: ExtractionAuditEvent[];
   /**
    * The instance this extraction targets (e.g. "hearing::right_ear").
    * Undefined for non-instance-aware extractors and when the instance cannot

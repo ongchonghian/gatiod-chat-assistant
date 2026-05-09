@@ -35,20 +35,32 @@ export function validateRespiratoryReadiness(state: V2SystemState): ReadinessRes
     const hasMed      = ef[RESP_FK_ASTHMA_MED] !== undefined;
     const allPrereqs  = hasMaint && hasTransfer && hasImprove;
 
-    if (!hasPft && !allPrereqs) {
+    if (!allPrereqs) {
       return {
         ready: false,
-        reason: "no_assessable_input",
-        clarificationQuestion: "Please provide PFT values (FVC, FEV1, DLCO, or VO2 Max) or confirm all occupational asthma qualifiers.",
-        candidateAnswers: ["Provide FVC/FEV1/DLCO", "Confirm daily maintenance required", "Confirm transferred from exposure ≥1 year", "Confirm unlikely further improvement"],
+        reason: "missing_asthma_prerequisites",
+        clarificationQuestion: "Please confirm all occupational asthma qualifiers (daily maintenance, transferred from exposure ≥1 year, unlikely further improvement).",
+        candidateAnswers: ["Confirm daily maintenance required", "Confirm transferred from exposure ≥1 year", "Confirm unlikely further improvement"],
       };
     }
-    if (!hasPft && allPrereqs && !hasMed) {
+    if (!hasMed) {
       return {
         ready: false,
         reason: "missing_asthma_medication",
         clarificationQuestion: "Which maintenance medication is the patient on?",
         candidateAnswers: ["Bronchodilators only", "Low-dose inhaled steroids", "High-dose inhaled steroids", "Oral steroids"],
+      };
+    }
+    // Slice-17 — engine requires FEV1 > 80 for the medication-based asthma
+    // override to apply. Without FEV1 it silently returns 0% (defaulting to
+    // "no impairment"). Block readiness here so the assistant asks rather
+    // than producing a misleading 0%.
+    if (!hasPft) {
+      return {
+        ready: false,
+        reason: "missing_pft_for_asthma",
+        clarificationQuestion: "Please provide the patient's FEV1 % predicted (and any other PFT values). The medication-based asthma classification requires FEV1 to apply.",
+        candidateAnswers: ["FEV1 > 80% predicted", "FEV1 60-80%", "FEV1 < 60%"],
       };
     }
     return { ready: true };

@@ -1,0 +1,280 @@
+{
+  "system": "lower_limb",
+  "sampleSize": 1164,
+  "byExpected": {
+    "exact_calculation": {
+      "total": 727,
+      "matched": 562,
+      "observedDist": {
+        "exact_calculation": 562,
+        "clarification_required": 163,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 2
+      }
+    },
+    "clarification_required": {
+      "total": 437,
+      "matched": 436,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 436,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 1
+      }
+    },
+    "unsupported_safe_fail": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    },
+    "routing_only": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    },
+    "legacy_deferred": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    }
+  },
+  "componentSafeOutcomeRate": 0.8573883161512027,
+  "exactCalculationRate": 0.7235213204951857,
+  "mismatchSamples": [
+    {
+      "rowId": "SCN-0827",
+      "inputText": "Pelvis: Healed pelvic fracture with displacement, deformity and residual signs - rami bilateral",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"Which lower limb is affected — left or right?…\""
+    },
+    {
+      "rowId": "SCN-0857",
+      "inputText": "Tibial shaft fracture with malalignment 20 degrees or more",
+      "expected": "clarification_required",
+      "observed": "wrong_route",
+      "notes": "expected lower_limb; routed to [upper_limb]"
+    },
+    {
+      "rowId": "SPC-00074",
+      "inputText": "Lower limb / foot / toes: Loss of left midfoot",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-00075",
+      "inputText": "Lower limb / foot / toes: Loss of right midfoot",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01560",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe metatarsophalangeal joint active extension from neutral / arc: 0-30°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01561",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe metatarsophalangeal joint active extension from neutral / arc: 0-30°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01562",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe metatarsophalangeal joint active extension from neutral / arc: 40°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01563",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe metatarsophalangeal joint active extension from neutral / arc: 40°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01564",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe metatarsophalangeal joint active flexion from neutral / arc: 0-10°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01565",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe metatarsophalangeal joint active flexion from neutral / arc: 0-10°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01566",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe metatarsophalangeal joint active flexion from neutral / arc: 20-30°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01567",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe metatarsophalangeal joint active flexion from neutral / arc: 20-30°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01568",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe metatarsophalangeal joint ankylosed in extension: 0-20°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01569",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe metatarsophalangeal joint ankylosed in extension: 0-20°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01570",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe metatarsophalangeal joint ankylosed in extension: 30-40°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01571",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe metatarsophalangeal joint ankylosed in extension: 30-40°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01572",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe metatarsophalangeal joint ankylosed in flexion: 0-20°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01573",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe metatarsophalangeal joint ankylosed in flexion: 0-20°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01574",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe metatarsophalangeal joint ankylosed in flexion: 30°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01575",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe metatarsophalangeal joint ankylosed in flexion: 30°",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01576",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe proximal interphalangeal joint restricted motion: no functional value",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01577",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe proximal interphalangeal joint restricted motion: no functional value",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01578",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe proximal interphalangeal joint ankylosed in extension",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01579",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe proximal interphalangeal joint ankylosed in extension",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01580",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe proximal interphalangeal joint ankylosed neutral (position of function)",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01581",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe proximal interphalangeal joint ankylosed neutral (position of function)",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01582",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe proximal interphalangeal joint ankylosed in flexion",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01583",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe proximal interphalangeal joint ankylosed in flexion",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01584",
+      "inputText": "2nd to 5th toes: Left 2nd-5th toe distal interphalangeal joint restricted motion: no functional value",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    },
+    {
+      "rowId": "SPC-01585",
+      "inputText": "2nd to 5th toes: Right 2nd-5th toe distal interphalangeal joint restricted motion: no functional value",
+      "expected": "exact_calculation",
+      "observed": "clarification_required",
+      "notes": "asked: \"What type of lower-limb finding should I assess: amputation, ROM restriction, ne…\""
+    }
+  ]
+}

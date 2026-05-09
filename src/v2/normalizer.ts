@@ -44,9 +44,15 @@ const KNOWN_CLINICAL_TOKENS = new Set([
   // Spine
   "lumbar", "vertebral", "vertebra", "spondyl", "spondylosis", "spondylolisthesis", "myelopathy", "stenosis",
   "radiculopathy", "thoracic", "thoraco", "cervical", "compression", "burst", "cauda", "equina", "spinal",
+  // Slice-16 — spinal cord injury complications and degenerated-disc terms.
+  "neurogenic", "bladder", "degenerated", "degenerating", "discomfort", "acceptable", "superimposed",
   // Respiratory
   "pulmonary", "lung", "spirometry", "fvc", "fev1", "dlco", "vo2", "asthma", "copd", "dyspnoea", "dyspnea",
   "breathlessness", "obstructive", "restrictive", "asbestosis", "bronchial", "pneumoconiosis",
+  // Slice-14 — respiratory medication and exposure terms surfaced as
+  // "missing terms" for occupational asthma rows in the workbook.
+  "bronchodilator", "bronchodilators", "inhaled", "inhaler", "nebulizer", "nebuliser",
+  "steroid", "steroids", "occupational", "asbestos", "profusion", "exposure", "exposed",
   // Renal
   "kidney", "creatinine", "ckd", "nephrotic", "nephrology", "nephritis", "proteinuria", "egfr", "glomerular",
   "dialysis", "solitary", "clearance",
@@ -54,6 +60,9 @@ const KNOWN_CLINICAL_TOKENS = new Set([
   "gastric", "liver", "hepatic", "hepatitis", "cirrhosis", "biliary", "hepatobiliary", "pancreas", "pancreatic",
   "bowel", "colitis", "colostomy", "ileostomy", "esophageal", "oesophageal", "intestinal", "stomach", "hernia",
   "herniation",
+  // Slice-13/14 — colorectal and abdominal terms (router synonyms added too).
+  "colon", "colonic", "colorectal", "rectum", "rectal", "anus", "anal", "faecal", "fecal",
+  "abdominal", "abdomen", "incontinence",
   // Hearing
   "audiogram", "audiological", "ahl", "ear", "tinnitus", "snhl", "deafness", "deaf", "sensorineural", "conductive",
   "cochlear", "auditory", "pta", "nid", "nihl",
@@ -68,6 +77,24 @@ const KNOWN_CLINICAL_TOKENS = new Set([
   "shoulder", "elbow", "wrist", "thumb", "finger", "hand", "arm", "forearm", "humerus", "radius", "ulna", "ulnar",
   "median", "metacarpal", "phalanx", "brachial", "suprascapular", "rotator", "cuff",
   "femur", "tibia", "fibula", "patella", "calcaneus", "metatarsal", "leg", "thigh", "foot", "toe", "meniscus",
+  // Slice-18 — limb ROM/anatomical vocab. Workbook rows like "Right shoulder
+  // active flexion from neutral / arc of active flexion: 140°" had nine
+  // words flagged as "missing terms" (right, active, flexion, neutral, arc,
+  // ankylosed, abduction, rotation, etc.), dragging routing confidence
+  // below the assessment threshold even though "shoulder" matched cleanly.
+  "left", "right", "active", "passive", "flexion", "extension", "abduction", "adduction",
+  "rotation", "internal", "external", "supination", "pronation", "eversion", "inversion",
+  "dorsiflexion", "plantarflexion", "ankylosed", "ankylosis", "neutral", "arc", "position",
+  "function", "phalanges", "phalangeal", "interphalangeal", "metacarpophalangeal",
+  "metatarsophalangeal", "dip", "pip", "mp", "ip", "mtp", "ddi", "mcp",
+  "hip", "ankle", "knee", "midforearm", "midfoot", "forefoot", "hindfoot", "subtalar",
+  "displaced", "undisplaced", "calcaneocuboid", "talocalcaneal", "talonavicular",
+  "discrepancy", "shortening",
+  // Slice-26 — additional limb anatomical/clinical terms surfaced by the
+  // workbook's DBE rows.
+  "patellofemoral", "tibiofemoral", "tibiotalar", "talofibular", "deltoid",
+  "post-traumatic", "intra-articular", "pelvic", "pelvis", "sacrum", "sacroiliac",
+  "metatarsal", "angulation", "comminuted", "subluxation",
   "acl", "pcl",
 ]);
 
@@ -75,7 +102,11 @@ function tokenise(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/[^a-z0-9\s_/-]+/g, " ")
-    .split(/\s+/)
+    // Slice-30 — also split on `/` so workbook prefixes like
+    // "Ankle/subtalar:" tokenize as ["ankle", "subtalar"] rather than
+    // staying as one unrecognized "ankle/subtalar" token. Hyphens
+    // inside tokens (e.g. "low-dose") stay as part of the token.
+    .split(/[/\s]+/)
     .map((t) => t.trim())
     .filter(Boolean);
 }

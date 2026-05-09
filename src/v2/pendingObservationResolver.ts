@@ -17,6 +17,7 @@ import {
 import {
   SP_FK_ENTRIES,
   SP_FK_REGION,
+  resolveSpineSeverityKeyFromText,
   type SpineCategoryEntryFact,
 } from "./extractors/spine.js";
 import {
@@ -240,6 +241,24 @@ function resolveSpineSeverity(
       break;
     }
   }
+
+  // Fallback to the shared severity parser so chip text like
+  // "Compression or burst fractures of <25% with residual pain" or natural
+  // phrasings reach the same matcher used by the extractor.
+  if (!matchedKey) {
+    matchedKey = resolveSpineSeverityKeyFromText(
+      text,
+      parsed.diagnosisCategory,
+      parsed.partialEntry.spondylolysisPathway
+    );
+    if (matchedKey) {
+      // Validate the parsed key is actually one of the offered options for
+      // this category/pathway before accepting it.
+      const allowed = severityOptions.some((o) => o.key === matchedKey);
+      if (!allowed) matchedKey = undefined;
+    }
+  }
+
   if (!matchedKey) return { resolved: false };
 
   const completedEntry: SpineCategoryEntryFact = {

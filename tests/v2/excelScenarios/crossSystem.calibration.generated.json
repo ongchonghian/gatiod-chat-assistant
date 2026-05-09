@@ -1,0 +1,377 @@
+{
+  "sampleSize": 20,
+  "all": {
+    "rowCount": 20,
+    "globalCvcOfferedRate": 0.4,
+    "globalCvcExecutedRate": 0.4,
+    "endToEndPiMatchRate": 0.4
+  },
+  "liveOnly": {
+    "rowCount": 20,
+    "globalCvcOfferedRate": 0.4,
+    "globalCvcExecutedRate": 0.4,
+    "endToEndPiMatchRate": 0.4
+  },
+  "mixed": {
+    "rowCount": 0,
+    "globalCvcOfferedRate": 0,
+    "globalCvcExecutedRate": 0,
+    "endToEndPiMatchRate": 0
+  },
+  "outcomes": [
+    {
+      "rowId": "XSC-00001",
+      "expectedSystems": [
+        "spine",
+        "lower_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 67,
+      "observedFinalPi": 67,
+      "componentTools": [
+        "assess_spine",
+        "assess_lower_limb"
+      ],
+      "globalCvcOffered": true,
+      "globalCvcExecuted": true,
+      "finalPiMatches": true,
+      "turnCount": 4,
+      "finalMessage": "**Combined GATIOD PI%: 67%**\n\nCVC inputs:\n- Lower Limb: 65%\n- Spine: 5%\n\nCalculation:\n65% combined with 5% → 67%\n\n**System-generated GATIOD PI%: 67%**"
+    },
+    {
+      "rowId": "XSC-00002",
+      "expectedSystems": [
+        "spine",
+        "lower_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 40,
+      "observedFinalPi": null,
+      "componentTools": [],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 1,
+      "finalMessage": "For the fractures dislocations diagnosis, which severity row applies?"
+    },
+    {
+      "rowId": "XSC-00003",
+      "expectedSystems": [
+        "spine",
+        "lower_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 44,
+      "observedFinalPi": null,
+      "componentTools": [
+        "assess_spine"
+      ],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 2,
+      "finalMessage": "System-generated GATIOD PI%: 5%\n\nSpine — Thoraco-Lumbar:\n- Fractures and Dislocations: Compression or burst fractures of <25% with residual pain → 5% ← winner\n\nFinal PI%: 5%"
+    },
+    {
+      "rowId": "XSC-00004",
+      "expectedSystems": [
+        "spine",
+        "lower_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 34,
+      "observedFinalPi": null,
+      "componentTools": [
+        "assess_spine"
+      ],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 2,
+      "finalMessage": "System-generated GATIOD PI%: 25%\n\nSpine — Cervical:\n- Intervertebral Disc: 3.1d Persistent pain + restricted motion with motor deficit (± sensory) → 25% ← winner\n\nFinal PI%: 25%"
+    },
+    {
+      "rowId": "XSC-00005",
+      "expectedSystems": [
+        "spine",
+        "upper_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 44,
+      "observedFinalPi": null,
+      "componentTools": [
+        "assess_spine"
+      ],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 2,
+      "finalMessage": "System-generated GATIOD PI%: 20%\n\nSpine — Cervical:\n- Intervertebral Disc: 3.1c Persistent pain + restricted motion with sensory deficit → 20% ← winner\n\nFinal PI%: 20%"
+    },
+    {
+      "rowId": "XSC-00006",
+      "expectedSystems": [
+        "spine",
+        "upper_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 27,
+      "observedFinalPi": 27,
+      "componentTools": [
+        "assess_spine",
+        "assess_upper_limb"
+      ],
+      "globalCvcOffered": true,
+      "globalCvcExecuted": true,
+      "finalPiMatches": true,
+      "turnCount": 4,
+      "finalMessage": "**Combined GATIOD PI%: 27%**\n\nCVC inputs:\n- Spine: 15%\n- Upper Limb: 14%\n\nCalculation:\n15% combined with 14% → 27%\n\n**System-generated GATIOD PI%: 27%**"
+    },
+    {
+      "rowId": "XSC-00007",
+      "expectedSystems": [
+        "spine",
+        "upper_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 27,
+      "observedFinalPi": null,
+      "componentTools": [],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 1,
+      "finalMessage": "For the fractures dislocations diagnosis, which severity row applies?"
+    },
+    {
+      "rowId": "XSC-00008",
+      "expectedSystems": [
+        "spine",
+        "upper_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 24,
+      "observedFinalPi": 24,
+      "componentTools": [
+        "assess_spine",
+        "assess_upper_limb"
+      ],
+      "globalCvcOffered": true,
+      "globalCvcExecuted": true,
+      "finalPiMatches": true,
+      "turnCount": 4,
+      "finalMessage": "**Combined GATIOD PI%: 24%**\n\nCVC inputs:\n- Upper Limb: 20%\n- Spine: 5%\n\nCalculation:\n20% combined with 5% → 24%\n\n**System-generated GATIOD PI%: 24%**"
+    },
+    {
+      "rowId": "XSC-00017",
+      "expectedSystems": [
+        "lower_limb",
+        "upper_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 23,
+      "observedFinalPi": null,
+      "componentTools": [],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 1,
+      "finalMessage": "Which knee movement does 80° apply to?"
+    },
+    {
+      "rowId": "XSC-00018",
+      "expectedSystems": [
+        "lower_limb",
+        "upper_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 28,
+      "observedFinalPi": null,
+      "componentTools": [
+        "assess_upper_limb"
+      ],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 2,
+      "finalMessage": "System-generated GATIOD PI%: 20%\n\nUpper limb — left:\n- Amputation stream: 20%\n- No nerve deficit, or DBE included.\n\nFinal PI%: 20%"
+    },
+    {
+      "rowId": "XSC-00019",
+      "expectedSystems": [
+        "lower_limb",
+        "upper_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 45,
+      "observedFinalPi": null,
+      "componentTools": [],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 1,
+      "finalMessage": "For the median nerve: is the deficit sensory, motor, or combined? Total or partial loss?"
+    },
+    {
+      "rowId": "XSC-00020",
+      "expectedSystems": [
+        "lower_limb",
+        "upper_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 12,
+      "observedFinalPi": null,
+      "componentTools": [],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 1,
+      "finalMessage": "I may be missing terms (fall, height, moderate, anterior, cruciate, ligament). Which body system should I assess first?"
+    },
+    {
+      "rowId": "XSC-00041",
+      "expectedSystems": [
+        "upper_limb",
+        "lower_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 46,
+      "observedFinalPi": null,
+      "componentTools": [],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 1,
+      "finalMessage": "What type of lower-limb finding should I assess: amputation, ROM restriction, nerve deficit, shortening, or diagnosis-based injury?"
+    },
+    {
+      "rowId": "XSC-00042",
+      "expectedSystems": [
+        "upper_limb",
+        "lower_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 36,
+      "observedFinalPi": null,
+      "componentTools": [
+        "assess_upper_limb"
+      ],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 2,
+      "finalMessage": "System-generated GATIOD PI%: 20%\n\nUpper limb — left:\n- Amputation stream: 20%\n- No nerve deficit, or DBE included.\n\nFinal PI%: 20%\n\n---\n\n**Continuing with Lower Limb.** What type of lower-limb finding"
+    },
+    {
+      "rowId": "XSC-00043",
+      "expectedSystems": [
+        "upper_limb",
+        "lower_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 22,
+      "observedFinalPi": null,
+      "componentTools": [],
+      "globalCvcOffered": false,
+      "globalCvcExecuted": false,
+      "finalPiMatches": false,
+      "turnCount": 1,
+      "finalMessage": "What type of upper-limb finding should I assess: amputation, ROM restriction, nerve deficit, or diagnosis-based injury?"
+    },
+    {
+      "rowId": "XSC-00044",
+      "expectedSystems": [
+        "upper_limb",
+        "lower_limb"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 22,
+      "observedFinalPi": 22,
+      "componentTools": [
+        "assess_upper_limb",
+        "assess_lower_limb"
+      ],
+      "globalCvcOffered": true,
+      "globalCvcExecuted": true,
+      "finalPiMatches": true,
+      "turnCount": 4,
+      "finalMessage": "**Combined GATIOD PI%: 22%**\n\nCVC inputs:\n- Lower Limb: 14%\n- Upper Limb: 9%\n\nCalculation:\n14% combined with 9% → 22%\n\n**System-generated GATIOD PI%: 22%**"
+    },
+    {
+      "rowId": "XSC-00045",
+      "expectedSystems": [
+        "upper_limb",
+        "spine"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 34,
+      "observedFinalPi": 34,
+      "componentTools": [
+        "assess_spine",
+        "assess_upper_limb"
+      ],
+      "globalCvcOffered": true,
+      "globalCvcExecuted": true,
+      "finalPiMatches": true,
+      "turnCount": 4,
+      "finalMessage": "**Combined GATIOD PI%: 34%**\n\nCVC inputs:\n- Upper Limb: 30%\n- Spine: 5%\n\nCalculation:\n30% combined with 5% → 34%\n\n**System-generated GATIOD PI%: 34%**"
+    },
+    {
+      "rowId": "XSC-00046",
+      "expectedSystems": [
+        "upper_limb",
+        "spine"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 73,
+      "observedFinalPi": 73,
+      "componentTools": [
+        "assess_spine",
+        "assess_upper_limb"
+      ],
+      "globalCvcOffered": true,
+      "globalCvcExecuted": true,
+      "finalPiMatches": true,
+      "turnCount": 4,
+      "finalMessage": "**Combined GATIOD PI%: 73%**\n\nCVC inputs:\n- Spine: 70%\n- Upper Limb: 9%\n\nCalculation:\n70% combined with 9% → 73%\n\n**System-generated GATIOD PI%: 73%**"
+    },
+    {
+      "rowId": "XSC-00047",
+      "expectedSystems": [
+        "upper_limb",
+        "spine"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 74,
+      "observedFinalPi": 74,
+      "componentTools": [
+        "assess_spine",
+        "assess_upper_limb"
+      ],
+      "globalCvcOffered": true,
+      "globalCvcExecuted": true,
+      "finalPiMatches": true,
+      "turnCount": 4,
+      "finalMessage": "**Combined GATIOD PI%: 74%**\n\nCVC inputs:\n- Spine: 70%\n- Upper Limb: 14%\n\nCalculation:\n70% combined with 14% → 74%\n\n**System-generated GATIOD PI%: 74%**"
+    },
+    {
+      "rowId": "XSC-00048",
+      "expectedSystems": [
+        "upper_limb",
+        "spine"
+      ],
+      "allComponentsLive": true,
+      "expectedFinalPi": 36,
+      "observedFinalPi": 36,
+      "componentTools": [
+        "assess_spine",
+        "assess_upper_limb"
+      ],
+      "globalCvcOffered": true,
+      "globalCvcExecuted": true,
+      "finalPiMatches": true,
+      "turnCount": 4,
+      "finalMessage": "**Combined GATIOD PI%: 36%**\n\nCVC inputs:\n- Upper Limb: 20%\n- Spine: 20%\n\nCalculation:\n20% combined with 20% → 36%\n\n**System-generated GATIOD PI%: 36%**"
+    }
+  ]
+}
