@@ -1,18 +1,36 @@
 import type { AssessmentRenderResult, V2SystemState } from "../contracts.js";
-import type { SpineAssessmentResult } from "../../engine/spineAssessmentData.js";
+import type { SpineAssessmentResult, DiagnosisCategory, SpondylolysisPathway } from "../../engine/spineAssessmentData.js";
 import { diagnosisCategories, getSeveritiesForCategory } from "../../engine/spineAssessmentData.js";
 import { SP_FK_REGION, SP_FK_ENTRIES, type SpineCategoryEntryFact } from "../extractors/spine.js";
 
 function pct(n: number): string { return `${n}%`; }
 
+const VALID_DIAGNOSIS_KEYS: ReadonlySet<string> = new Set([
+  "fractures_dislocations",
+  "spinal_cord_injury",
+  "intervertebral_disc",
+  "spondylolysis_spondylolisthesis",
+  "chronic_pain_normal_mri",
+]);
+
 function categoryLabel(key: string): string {
   return diagnosisCategories.find((c) => c.key === key)?.label ?? key;
 }
 
+/**
+ * Map a severity key → label. Defensive against the tool-handler's
+ * sanitizeSpineResult, which can replace enum keys with display labels
+ * before this renderer runs. If the inputs are already labels, pass them
+ * through unchanged rather than feeding a label into getSeveritiesForCategory
+ * (whose switch doesn't match labels and returns undefined → .find() crash).
+ */
 function severityLabel(diagnosisCategory: string, severityKey: string, pathway?: string): string {
+  if (!VALID_DIAGNOSIS_KEYS.has(diagnosisCategory)) {
+    return severityKey;
+  }
   const opts = getSeveritiesForCategory(
-    diagnosisCategory as import("../../engine/spineAssessmentData.js").DiagnosisCategory,
-    { spondylolysisPathway: (pathway ?? "acute_traumatic") as import("../../engine/spineAssessmentData.js").SpondylolysisPathway }
+    diagnosisCategory as DiagnosisCategory,
+    { spondylolysisPathway: (pathway ?? "acute_traumatic") as SpondylolysisPathway }
   );
   return opts.find((o) => o.key === severityKey)?.label ?? severityKey;
 }

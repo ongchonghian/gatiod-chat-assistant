@@ -13,25 +13,13 @@ const TERM_NORMALISATIONS: Array<{
   { pattern: /\bcvc\b/gi, normalized: "combined values chart", category: "abbreviation" },
   // Respiratory
   { pattern: /\bfev\s*1\b/gi, normalized: "fev1", category: "synonym" },
-  { pattern: /\bdlco\b/gi, normalized: "dlco diffusing capacity carbon monoxide", category: "abbreviation" },
-  { pattern: /\bcopd\b/gi, normalized: "copd chronic obstructive pulmonary disease", category: "abbreviation" },
-  { pattern: /\bpft\b/gi, normalized: "pulmonary function test", category: "abbreviation" },
+  // NOTE: keep abbreviations as-is. Multi-word expansions (e.g. AHL → "average
+  // hearing level") break extractor regexes that expect "AHL <digits>" or
+  // "CKD stage". The synonym table already handles routing for these tokens.
   // Spine
   { pattern: /\blumbo[-\s]?sacral\b/gi, normalized: "lumbo sacral", category: "synonym" },
   { pattern: /\bthoraco[-\s]?lumbar\b/gi, normalized: "thoraco lumbar", category: "synonym" },
   { pattern: /\bintervert(e|i)bral\b/gi, normalized: "intervertebral", category: "spelling" },
-  // Hearing
-  { pattern: /\bsnhl\b/gi, normalized: "snhl sensorineural hearing loss", category: "abbreviation" },
-  { pattern: /\bnihl\b/gi, normalized: "nihl noise induced hearing loss", category: "abbreviation" },
-  { pattern: /\bnid\b/gi, normalized: "nid noise induced deafness", category: "abbreviation" },
-  { pattern: /\bahl\b/gi, normalized: "ahl average hearing level", category: "abbreviation" },
-  { pattern: /\bpta\b/gi, normalized: "pta pure tone average hearing", category: "abbreviation" },
-  // CNS
-  { pattern: /\bcva\b/gi, normalized: "cva cerebrovascular accident stroke", category: "abbreviation" },
-  { pattern: /\btbi\b/gi, normalized: "tbi traumatic brain injury", category: "abbreviation" },
-  // Renal
-  { pattern: /\bckd\b/gi, normalized: "ckd chronic kidney disease renal", category: "abbreviation" },
-  { pattern: /\begfr\b/gi, normalized: "egfr estimated glomerular filtration rate renal", category: "abbreviation" },
   // Spelling
   { pattern: /\bnecrosos\b/gi, normalized: "necrosis", category: "spelling" },
   { pattern: /\bfractr?ure\b/gi, normalized: "fracture", category: "spelling" },

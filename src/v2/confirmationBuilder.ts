@@ -6,6 +6,17 @@ import {
   HEARING_FK_AGE,
   HEARING_FK_AFFECTED_EARS,
 } from "./extractors/hearing.js";
+import {
+  SP_FK_REGION,
+  SP_FK_ENTRIES,
+  type SpineCategoryEntryFact,
+} from "./extractors/spine.js";
+import {
+  diagnosisCategories,
+  getSeveritiesForCategory,
+  type DiagnosisCategory,
+  type SpondylolysisPathway,
+} from "../engine/spineAssessmentData.js";
 
 /**
  * Builds a human-readable structured confirmation message for a system, given
@@ -44,12 +55,80 @@ export function buildStructuredConfirmationMessage(
 function buildStructuredBody(system: GatiodSystemKey, facts: V2SystemFacts): string {
   switch (system) {
     case "hearing": return buildHearingFromFacts(facts);
+    case "spine":   return buildSpineFromFacts(facts);
     default: {
       const entries = Object.entries(facts).filter(([, f]) => f?.value != null);
       if (entries.length === 0) return "Findings collected — confirm to calculate.";
       return entries.map(([k, f]) => line(formatKey(k), titleCase(String(f!.value)))).join("\n");
     }
   }
+}
+
+const SPINE_REGION_LABELS: Record<string, string> = {
+  cervical: "Cervical",
+  thoraco_lumbar: "Thoraco-Lumbar",
+  lumbo_sacral: "Lumbo-Sacral",
+};
+
+const SPINE_BLADDER_BOWEL_LABELS: Record<string, string> = {
+  none: "None",
+  incomplete_single: "Incomplete (bladder or bowel only)",
+  incomplete_both: "Incomplete (bladder and bowel)",
+  complete_single: "Complete (bladder or bowel only)",
+  complete_both: "Complete (bladder and bowel)",
+};
+
+function spineCategoryLabel(key: string): string {
+  return diagnosisCategories.find((c) => c.key === key)?.label ?? key;
+}
+
+function spineSeverityLabel(category: string, severityKey: string, pathway?: string): string {
+  if (!severityKey) return "(severity not yet selected)";
+  // Defensive: if `category` is already a human label rather than an enum key,
+  // getSeveritiesForCategory's switch returns undefined → .find() would crash.
+  const validCategories = new Set([
+    "fractures_dislocations", "spinal_cord_injury", "intervertebral_disc",
+    "spondylolysis_spondylolisthesis", "chronic_pain_normal_mri",
+  ]);
+  if (!validCategories.has(category)) return severityKey;
+  const opts = getSeveritiesForCategory(
+    category as DiagnosisCategory,
+    { spondylolysisPathway: (pathway ?? "acute_traumatic") as SpondylolysisPathway }
+  );
+  return opts.find((o) => o.key === severityKey)?.label ?? severityKey;
+}
+
+function buildSpineFromFacts(facts: V2SystemFacts): string {
+  const rows: string[] = [];
+  const region = facts[SP_FK_REGION]?.value as string | undefined;
+  if (region) {
+    rows.push(line("Region", SPINE_REGION_LABELS[region] ?? titleCase(region)));
+  }
+
+  const entries = (facts[SP_FK_ENTRIES]?.value ?? []) as SpineCategoryEntryFact[];
+  if (entries.length === 0) {
+    rows.push(line("Findings", "(no diagnosis entries captured yet)"));
+    return rows.join("\n");
+  }
+
+  rows.push(`- **Entries:**`);
+  for (const entry of entries) {
+    const cat = spineCategoryLabel(entry.diagnosisCategory);
+    const sev = spineSeverityLabel(entry.diagnosisCategory, entry.severityKey, entry.spondylolysisPathway);
+    const modifiers: string[] = [];
+    if (entry.monoparesisHalving) modifiers.push("monoparesis halving");
+    if (entry.bladderBowelSeverity && entry.bladderBowelSeverity !== "none") {
+      modifiers.push(`bladder/bowel: ${SPINE_BLADDER_BOWEL_LABELS[entry.bladderBowelSeverity] ?? entry.bladderBowelSeverity}`);
+    }
+    if (entry.discCordInvolvement) modifiers.push("disc cord involvement");
+    if (entry.spondylolysisPathway === "pre_existing_superimposed") {
+      modifiers.push("pre-existing/superimposed pathway");
+    }
+    const modifierStr = modifiers.length > 0 ? ` (${modifiers.join("; ")})` : "";
+    rows.push(`  - ${cat}: ${sev}${modifierStr}`);
+  }
+
+  return rows.join("\n");
 }
 
 function buildHearingFromFacts(facts: V2SystemFacts): string {

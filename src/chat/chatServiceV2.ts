@@ -37,6 +37,104 @@ import { renderV2Failure } from "../v2/failureRenderer.js";
 import { applyInstanceToolResult, setConfirmationConfirmed, setConfirmationPending, setInstanceConfirmationPending } from "../v2/stateMachine.js";
 import { buildTraceForSystem } from "../v2/systemTraceAdapters.js";
 
+const SYSTEM_DISPLAY_NAMES: Record<GatiodSystemKey, string> = {
+  upper_limb: "Upper Limb",
+  lower_limb: "Lower Limb",
+  spine: "Spine",
+  respiratory: "Respiratory",
+  renal: "Renal",
+  gastro_digestive: "Gastro / Digestive",
+  hearing: "Hearing",
+  cns: "Central Nervous System",
+  visual: "Visual",
+};
+
+const SYSTEM_KEY_LIST: GatiodSystemKey[] = [
+  "spine", "upper_limb", "lower_limb", "hearing", "visual",
+  "respiratory", "renal", "gastro_digestive", "cns",
+];
+
+interface NextSystemHandoff {
+  system: GatiodSystemKey;
+  appendMessage: string;
+  chips: string[];
+  pendingConfirmation: boolean;
+}
+
+/**
+ * After a system finishes calculating, look for OTHER systems whose facts were
+ * collected from the same multi-system utterance but never got their turn to
+ * be confirmed/calculated. Returns a handoff prompt for the next such system,
+ * driving a "now let's do hearing" continuation rather than the chat going
+ * silent after the first system. (REQ-B1.5)
+ */
+function buildNextSystemHandoff(
+  state: V2SessionState,
+  justCompleted: GatiodSystemKey
+): NextSystemHandoff | undefined {
+  for (const sys of SYSTEM_KEY_LIST) {
+    if (sys === justCompleted) continue;
+    const sysState = state.systems[sys];
+    if (sysState.status === "calculated") continue;
+
+    const hasFacts = Object.keys(sysState.extractedFacts).length > 0;
+    const hasPendingObs = sysState.pendingObservations.length > 0;
+    if (!hasFacts && !hasPendingObs) continue;
+
+    const cap = V2_SYSTEM_REGISTRY[sys];
+    const displayName = SYSTEM_DISPLAY_NAMES[sys];
+
+    if (cap.mode === "structured_live" && cap.readinessValidator) {
+      const readiness = cap.readinessValidator(sysState);
+
+      if (readiness.ready) {
+        // System is ready — present its confirmation right now so the doctor
+        // can either confirm or edit without re-typing the original case.
+        const confirmMsg = buildStructuredConfirmationMessage(sys, sysState.extractedFacts);
+        const append =
+          `**Continuing with ${displayName}.** I captured these findings from your earlier message:\n\n${confirmMsg}`;
+        return {
+          system: sys,
+          appendMessage: append,
+          chips: ["Confirm and calculate", "Edit findings"],
+          pendingConfirmation: true,
+        };
+      }
+
+      if (readiness.reason === "pending_observations" && hasPendingObs) {
+        const obs = sysState.pendingObservations[0];
+        const append =
+          `**Continuing with ${displayName}.** ${obs.clarificationQuestion}`;
+        return {
+          system: sys,
+          appendMessage: append,
+          chips: obs.candidateAnswers ?? [],
+          pendingConfirmation: false,
+        };
+      }
+
+      const q = readiness.clarificationQuestion ?? `What additional details do you have for ${displayName}?`;
+      return {
+        system: sys,
+        appendMessage: `**Continuing with ${displayName}.** ${q}`,
+        chips: readiness.candidateAnswers ?? [],
+        pendingConfirmation: false,
+      };
+    }
+
+    // Legacy (non-structured-live) system with collected work — surface it.
+    return {
+      system: sys,
+      appendMessage:
+        `I also captured findings for **${displayName}** from your earlier message. ` +
+        `Would you like to assess that next?`,
+      chips: [`Yes — assess ${displayName}`, "Skip for now"],
+      pendingConfirmation: false,
+    };
+  }
+  return undefined;
+}
+
 interface ProcessChatV2Options {
   userId?: string;
   claimId?: string;
@@ -401,6 +499,10 @@ export async function processChatV2(
   const proposed = policy.proposedTools;
   const actual: ToolPlanCall[] = [];
   let message = "";
+  // Multi-system handoff overlay — populated when a system finishes
+  // calculating and we want to chain into the next system the doctor
+  // mentioned in the original utterance. (REQ-B1.5)
+  let handoff: NextSystemHandoff | undefined;
 
   if (policy.action === "clarify") {
     let clarification = policy.clarificationQuestion ?? "Please clarify the target system.";
@@ -511,6 +613,47 @@ export async function processChatV2(
           }
           const rendered = cap.resultRenderer(assessCall.result, nextState.systems[primarySystem]);
           message = rendered.message;
+
+          // ── Multi-system handoff ─────────────────────────────────────────
+          // After this system completes, look for another system whose facts
+          // were captured from the same utterance and pivot into it. Without
+          // this the chat goes silent on multi-system inputs after the first
+          // system finishes — the user's reported regression.
+          handoff = buildNextSystemHandoff(nextState, primarySystem);
+          if (handoff) {
+            message = `${message}\n\n---\n\n${handoff.appendMessage}`;
+
+            if (handoff.pendingConfirmation) {
+              nextState = setConfirmationPending(nextState, handoff.system, handoff.appendMessage);
+              const activeForHandoff = V2_SYSTEM_REGISTRY[handoff.system].instanceReadinessValidator
+                ? getInstances(nextState, handoff.system)
+                    .filter((i) => i.status !== "calculated")
+                    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+                : undefined;
+              if (activeForHandoff) {
+                nextState = setInstanceConfirmationPending(nextState, activeForHandoff.instanceId, handoff.appendMessage);
+              }
+              nextState = setPendingConfirmation(nextState, {
+                system: handoff.system,
+                summary: handoff.appendMessage,
+                createdAt: new Date().toISOString(),
+              });
+            } else {
+              nextState = setPendingClarification(nextState, handoff.appendMessage);
+            }
+
+            logAuditEvent({
+              sessionId,
+              userId: opts?.userId,
+              eventType: "v2_multi_system_extraction",
+              eventData: {
+                event: "handoff",
+                fromSystem: primarySystem,
+                toSystem: handoff.system,
+                pendingConfirmation: handoff.pendingConfirmation,
+              },
+            });
+          }
         }
       } else {
         message = formatLookupExecutionMessage(actual, formatV2Message({
@@ -568,9 +711,9 @@ export async function processChatV2(
     message,
     route,
     grounding,
-    needsClarification: policy.action === "clarify",
-    clarificationQuestion: policy.clarificationQuestion,
-    suggestedChips: policy.chips,
+    needsClarification: handoff ? true : policy.action === "clarify",
+    clarificationQuestion: handoff ? handoff.appendMessage : policy.clarificationQuestion,
+    suggestedChips: handoff ? handoff.chips : policy.chips,
     toolPlan: { proposed, actual },
     policy,
     shadowMode: shadow,
