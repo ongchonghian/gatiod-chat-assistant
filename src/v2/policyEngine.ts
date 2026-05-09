@@ -6,15 +6,28 @@ import type {
   RouteDecision,
   ToolPlanCall,
   V2SessionState,
+  V2SystemFacts,
 } from "./contracts.js";
-import { collectCalculatedSubtotals, hashExtractedFacts } from "./stateMachine.js";
+import { collectCalculatedSubtotals, getInstances, hashExtractedFacts } from "./stateMachine.js";
 import { decideSlotAction } from "./dialoguePolicy.js";
 import { isConfirmation, isEditRequest } from "./factPatch.js";
-import { buildConfirmationMessage } from "./confirmationBuilder.js";
-import { isStructuredLiveSystem, requireStructuredCapability } from "./systemRegistry.js";
+import { buildConfirmationMessage, buildStructuredConfirmationMessage } from "./confirmationBuilder.js";
+import { V2_SYSTEM_REGISTRY, isStructuredLiveSystem, requireStructuredCapability } from "./systemRegistry.js";
+import { SYSTEM_SELECTION_PATTERN } from "./systemSelection.js";
 
-const SYSTEM_SELECTION_PATTERN = /\b(spine|upper\s+limb|lower\s+limb|respiratory|renal|gastro|digestive|hearing|cns|visual)\b/i;
 const CONTINUATION_REPLY_PATTERN = /^(no|yes|y|n|ok|okay|confirmed|proceed|continue|none)$/i;
+
+const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
+  upper_limb: "Upper Limb",
+  lower_limb: "Lower Limb",
+  spine: "Spine",
+  respiratory: "Respiratory",
+  renal: "Renal",
+  gastro_digestive: "Gastro / Digestive",
+  hearing: "Hearing",
+  cns: "Central Nervous System",
+  visual: "Visual",
+};
 
 function isSystemSelectionReply(normalized: NormalizedUtterance): boolean {
   return SYSTEM_SELECTION_PATTERN.test(normalized.normalizedText);
@@ -86,7 +99,15 @@ export function makePolicyDecision(
         const cap = requireStructuredCapability(primary);
         const systemState = state.systems[primary];
 
-        const readiness: ReadinessResult = cap.readinessValidator(systemState);
+        // Prefer instance-aware readiness when an active instance exists.
+        const instanceValidator = V2_SYSTEM_REGISTRY[primary].instanceReadinessValidator;
+        const activeInstance = instanceValidator
+          ? getInstances(state, primary).filter((i) => i.status !== "calculated")
+              .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+          : undefined;
+        const readiness: ReadinessResult = activeInstance && instanceValidator
+          ? instanceValidator(activeInstance)
+          : cap.readinessValidator(systemState);
         if (!readiness.ready) {
           return {
             action: "clarify",
@@ -98,10 +119,14 @@ export function makePolicyDecision(
           };
         }
 
-        const pendingHash = state.pendingConfirmation.system
-          ? systemState.confirmation.factsHash
-          : undefined;
-        const currentHash = hashExtractedFacts(systemState.extractedFacts);
+        // Prefer instance-scoped facts for hash check and arg builder when an active instance exists.
+        const factsForBuild: V2SystemFacts = activeInstance
+          ? (activeInstance.facts as V2SystemFacts)
+          : systemState.extractedFacts;
+        const pendingHash = activeInstance
+          ? activeInstance.confirmation.factsHash
+          : systemState.confirmation.factsHash;
+        const currentHash = hashExtractedFacts(factsForBuild);
         if (pendingHash && pendingHash !== currentHash) {
           return {
             action: "clarify",
@@ -113,7 +138,7 @@ export function makePolicyDecision(
           };
         }
 
-        const built = cap.argBuilder(systemState.extractedFacts);
+        const built = cap.argBuilder(factsForBuild);
         if (!built.ok) {
           return {
             action: "clarify",
@@ -201,7 +226,41 @@ export function makePolicyDecision(
     };
   }
 
-  if (route.operation === "clarify" || (route.confidence < 0.55 && !allowLowConfidenceSelection)) {
+  // Single unambiguous system gets a relaxed threshold to avoid asking
+  // "which system?" when only one was plausibly detected. Multi-system routes
+  // still need higher confidence because misrouting is more consequential.
+  const confidenceThreshold = route.systems.length === 1 ? 0.4 : 0.55;
+  if (route.operation === "clarify" || (route.confidence < confidenceThreshold && !allowLowConfidenceSelection)) {
+    // Similar-term confirmation: when the router found no system but synonym
+    // candidates exist for unresolved terms, ask a targeted "did you mean?"
+    // instead of the generic system-picker.
+    const candidates = route.candidateSystems ?? [];
+    if (candidates.length > 0 && route.systems.length === 0) {
+      const top = candidates[0];
+      const topName = SYSTEM_DISPLAY_NAMES[top.system] ?? top.system;
+      let question: string;
+      let chips: string[];
+      if (candidates.length === 1) {
+        question = `You mentioned "${top.term}", which usually relates to **${topName}**. Should I proceed with a ${topName} assessment?`;
+        chips = [`Yes — ${topName}`, "Choose another system"];
+      } else {
+        const list = candidates.slice(0, 3).map((c) => {
+          const name = SYSTEM_DISPLAY_NAMES[c.system] ?? c.system;
+          return `**${name}** (from "${c.term}")`;
+        }).join(", ");
+        question = `I see terms that may relate to multiple systems: ${list}. Which would you like to assess first?`;
+        chips = candidates.slice(0, 4).map((c) => SYSTEM_DISPLAY_NAMES[c.system] ?? c.system);
+      }
+      return {
+        action: "clarify",
+        reason: `Similar-term confirmation: ${candidates.map((c) => `${c.term}→${c.system}`).join(", ")}`,
+        requiresConfirmation: false,
+        clarificationQuestion: question,
+        chips,
+        proposedTools: [],
+      };
+    }
+
     const question = normalized.unresolvedTerms.length > 0
       ? `I may be missing terms (${normalized.unresolvedTerms.join(", ")}). Which body system should I assess first?`
       : "Please clarify which GATIOD system you want to assess first (e.g., spine, lower limb, upper limb).";
@@ -266,6 +325,61 @@ export function makePolicyDecision(
   if (!state.pendingClarification && route.systems.length > 0) {
     const primarySystem = route.systems[0];
     const systemState = state.systems[primarySystem];
+
+    // For structured_live systems bypass the old slot-signal path entirely and use the
+    // readiness validator — slot signals are coarser than extractedFacts and can drive
+    // the wrong clarification question (e.g. asking for left-ear AHL on a right-ear case).
+    if (isStructuredLiveSystem(primarySystem)) {
+      const cap = requireStructuredCapability(primarySystem);
+
+      // Prefer instance-aware readiness when an active instance exists.
+      const instanceValidator = V2_SYSTEM_REGISTRY[primarySystem].instanceReadinessValidator;
+      const activeInstance = instanceValidator
+        ? getInstances(state, primarySystem).filter((i) => i.status !== "calculated")
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+        : undefined;
+      const readiness: ReadinessResult = activeInstance && instanceValidator
+        ? instanceValidator(activeInstance)
+        : cap.readinessValidator(systemState);
+
+      if (!readiness.ready) {
+        // Surface the pending-observation question from whichever source holds it.
+        const firstObs =
+          (activeInstance?.pendingObservations ?? []).concat(systemState.pendingObservations)[0];
+        if (readiness.reason === "pending_observations" && firstObs) {
+          return {
+            action: "clarify",
+            reason: "Pending observation requires resolution before proceeding.",
+            requiresConfirmation: false,
+            clarificationQuestion: firstObs.clarificationQuestion,
+            chips: firstObs.candidateAnswers,
+            proposedTools: [],
+          };
+        }
+
+        return {
+          action: "clarify",
+          reason: `Readiness check failed: ${readiness.reason}`,
+          requiresConfirmation: false,
+          clarificationQuestion: readiness.clarificationQuestion ?? "Additional information is required before calculating.",
+          chips: readiness.candidateAnswers,
+          proposedTools: [],
+        };
+      }
+
+      // All required facts present — present structured confirmation built from extractedFacts.
+      const confirmMsg = buildStructuredConfirmationMessage(primarySystem, systemState.extractedFacts);
+      return {
+        action: "clarify",
+        reason: "All required facts confirmed; presenting structured confirmation before calculation.",
+        requiresConfirmation: true,
+        clarificationQuestion: confirmMsg,
+        chips: ["Confirm and calculate", "Edit findings"],
+        proposedTools: [],
+      };
+    }
+
+    // Legacy slot-signal path for non-structured-live systems.
     const slotAction = decideSlotAction(primarySystem, systemState?.slotSignals ?? {});
 
     if (slotAction.type === "ASK") {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { validateHearingReadiness } from "../../../src/v2/readiness/hearing.js";
+import { validateHearingInstanceReadiness, validateHearingReadiness } from "../../../src/v2/readiness/hearing.js";
 import { buildHearingArgs } from "../../../src/v2/argBuilders/hearing.js";
 import { defaultV2SessionState } from "../../../src/v2/stateMachine.js";
-import type { V2SystemFacts, V2SystemState } from "../../../src/v2/contracts.js";
+import type { V2AssessmentInstance, V2SystemFacts, V2SystemState } from "../../../src/v2/contracts.js";
 import {
   HEARING_FK_PATH,
   HEARING_FK_LEFT_EAR_AHL,
@@ -121,6 +121,115 @@ describe("validateHearingReadiness", () => {
       [HEARING_FK_LEFT_EAR_AHL]: fact(65),
     }));
     expect(r.ready).toBe(true);
+  });
+});
+
+// ── Instance-aware readiness validator ───────────────────────────────────────
+
+function makeInstance(
+  instanceId: string,
+  facts: V2SystemFacts,
+  hasPending = false
+): V2AssessmentInstance {
+  const now = nowIso();
+  return {
+    instanceId,
+    system: "hearing",
+    slotPath: instanceId.split("::").slice(1),
+    facts,
+    pendingObservations: hasPending
+      ? [{ id: "obs1", system: "hearing", type: "hearing_value", sourceText: "test",
+           parsed: {}, missingFields: ["path"], clarificationQuestion: "NID or injury?",
+           createdAt: now, updatedAt: now }]
+      : [],
+    confirmation: { status: "not_confirmed" },
+    status: "collecting",
+    piPercent: null,
+    trace: null,
+    updatedAt: now,
+  };
+}
+
+describe("validateHearingInstanceReadiness — NID (hearing::global)", () => {
+  it("blocks when pending observations exist", () => {
+    const inst = makeInstance("hearing::global", { [HEARING_FK_PATH]: fact("nid") }, true);
+    const r = validateHearingInstanceReadiness(inst);
+    expect(r.ready).toBe(false);
+    expect(r.reason).toBe("pending_observations");
+  });
+
+  it("blocks when path is missing", () => {
+    const inst = makeInstance("hearing::global", {});
+    const r = validateHearingInstanceReadiness(inst);
+    expect(r.ready).toBe(false);
+    expect(r.reason).toBe("missing_path");
+  });
+
+  it("blocks when both AHLs missing for NID", () => {
+    const inst = makeInstance("hearing::global", {
+      [HEARING_FK_PATH]: fact("nid"),
+      [HEARING_FK_AGE]: fact(55),
+    });
+    const r = validateHearingInstanceReadiness(inst);
+    expect(r.ready).toBe(false);
+    expect(r.reason).toBe("missing_ahl");
+    expect(r.clarificationQuestion).toMatch(/both ears/i);
+  });
+
+  it("blocks when age missing for NID", () => {
+    const inst = makeInstance("hearing::global", {
+      [HEARING_FK_PATH]: fact("nid"),
+      [HEARING_FK_LEFT_EAR_AHL]: fact(65),
+      [HEARING_FK_RIGHT_EAR_AHL]: fact(70),
+    });
+    const r = validateHearingInstanceReadiness(inst);
+    expect(r.ready).toBe(false);
+    expect(r.reason).toBe("missing_age");
+  });
+
+  it("is ready for NID with both AHLs and age", () => {
+    const inst = makeInstance("hearing::global", {
+      [HEARING_FK_PATH]: fact("nid"),
+      [HEARING_FK_LEFT_EAR_AHL]: fact(65),
+      [HEARING_FK_RIGHT_EAR_AHL]: fact(70),
+      [HEARING_FK_AGE]: fact(55),
+    });
+    expect(validateHearingInstanceReadiness(inst).ready).toBe(true);
+  });
+});
+
+describe("validateHearingInstanceReadiness — Injury (hearing::right_ear)", () => {
+  it("blocks when affected ear AHL missing", () => {
+    const inst = makeInstance("hearing::right_ear", {
+      [HEARING_FK_PATH]: fact("injury"),
+      [HEARING_FK_AFFECTED_EARS]: fact("right"),
+      // rightEarAhl absent — only this should block
+    });
+    const r = validateHearingInstanceReadiness(inst);
+    expect(r.ready).toBe(false);
+    expect(r.reason).toBe("missing_ahl");
+    expect(r.clarificationQuestion).toMatch(/right ear/i);
+  });
+
+  it("is ready when affected ear and AHL present", () => {
+    const inst = makeInstance("hearing::right_ear", {
+      [HEARING_FK_PATH]: fact("injury"),
+      [HEARING_FK_AFFECTED_EARS]: fact("right"),
+      [HEARING_FK_RIGHT_EAR_AHL]: fact(90),
+    });
+    expect(validateHearingInstanceReadiness(inst).ready).toBe(true);
+  });
+
+  it("right-ear instance is ready even without leftEarAhl (scoped facts)", () => {
+    // The original bug: if leftEarAhl was absent, old code asked for it even on right-ear case.
+    // Instance-aware validator only checks rightEarAhl for hearing::right_ear.
+    const inst = makeInstance("hearing::right_ear", {
+      [HEARING_FK_PATH]: fact("injury"),
+      [HEARING_FK_AFFECTED_EARS]: fact("right"),
+      [HEARING_FK_RIGHT_EAR_AHL]: fact(90),
+      // leftEarAhl deliberately absent — must not cause a block
+    });
+    expect(validateHearingInstanceReadiness(inst).ready).toBe(true);
   });
 });
 

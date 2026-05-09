@@ -97,7 +97,7 @@ const SIGNAL_EXTRACTORS: Record<SignalKey, Extractor> = {
   asbestosis_profusion: (t) => /\b(profusion|1\/1|radiolog)\b/i.test(t),
 
   // gastro
-  subSystem: (t) => /\b(colon|rectal|anal|liver|biliary|colonic|hepatic)\b/i.test(t),
+  subSystem: (t) => /\b(upper\s*gi|oesophag|esophag|stomach|duoden|colon|rectal|anal|liver|biliary|colonic|hepatic|hernia(?:tion)?)/i.test(t),
   selectedBracketIndex: (t) => /\b(mild|moderate|severe|bracket|class|category)\b/i.test(t),
   piPercent: (t) => /\b\d+\s*%\b/.test(t),
   clinicalJustification: (t) =>
@@ -126,7 +126,7 @@ const SIGNAL_EXTRACTORS: Record<SignalKey, Extractor> = {
   specialist_confirmation: (t) =>
     /\b(confirm|specialist|psychiatrist|neurologist|psychologist)\b/i.test(t),
   section_b_component: (t) =>
-    /\b(bladder|bowel|sexual|spasms|pressure.?sore|component)\b/i.test(t),
+    /\b(olfact|facial(\s+nerve)?|equilibri|swallow|station|gait|respiration|breath)/i.test(t),
   section_b_bracket: (t) =>
     /\b(mild|moderate|severe|intermittent|constant|complete)\b/i.test(t),
   paralysed_limbs: (t) =>
@@ -139,14 +139,14 @@ const SIGNAL_EXTRACTORS: Record<SignalKey, Extractor> = {
   field: (t) =>
     /\b(visual.?field|vf\b|field.?defect|perimetry|hemianopia|quadrantanopia)\b/i.test(t),
   diplopiaId: (t) =>
-    /\b(diplopia|double.?vision|monocular|binocular|no.?diplopia)\b/i.test(t),
+    /\b(diplopia|double.?vision|uncorrectable|central\s*30|30.?to.?60|beyond\s*60|no.?diplopia)\b/i.test(t),
   modifiers: (t) =>
     /\b(dominant|non.?dominant|enucleation|prosthetic)\b/i.test(t),
 
   // renal
   sex: (t) => /\b(male|female|man|woman|gender)\b/i.test(t),
   renal_inputs: (t) =>
-    /\b(creatinine|gfr|egfr|kidney.?function|renal.?function|\d+\s*µmol|\d+\s*umol|\d+\s*ml\/min)\b/i.test(t),
+    /\b(creatinine|creatinine.?clearance|ckd.?stage|clinical.?severity|kidney.?function|renal.?function|\d+\s*µmol|\d+\s*umol|\d+\s*ml\/min)\b/i.test(t),
   clinical_severity: (t) =>
     /\b(mild|moderate|severe|class\s*\d|stage\s*\d|grade\s*\d|ckd\s*\d)\b/i.test(t),
   solitary_kidney: (t) =>
@@ -373,8 +373,8 @@ const SYSTEM_SLOTS: Record<GatiodSystemKey, SlotDefinition[]> = {
     {
       key: "renal_inputs",
       requiredWhen: "always",
-      question: "Please provide the renal function values: serum creatinine (µmol/L) or eGFR (mL/min), and the sex if using creatinine-based scoring.",
-      chips: ["Provide creatinine + sex", "Provide eGFR"],
+      question: "Please provide any available renal inputs: serum creatinine, creatinine clearance, CKD stage, or clinical severity.",
+      chips: ["Serum creatinine", "Creatinine clearance", "CKD stage", "Clinical severity"],
     },
     {
       key: "sex",
@@ -406,8 +406,8 @@ const SYSTEM_SLOTS: Record<GatiodSystemKey, SlotDefinition[]> = {
     {
       key: "subSystem",
       requiredWhen: "always",
-      question: "Which gastro-digestive subsystem applies: colonic/rectal/anal, or liver/biliary?",
-      chips: ["Colonic/rectal/anal", "Liver/biliary"],
+      question: "Which gastro-digestive subsystem applies: upper GI, colon/rectum/anus, liver/biliary, or hernia?",
+      chips: ["Upper GI", "Colon/rectum/anus", "Liver/biliary", "Hernia"],
     },
     {
       key: "selectedBracketIndex",
@@ -490,8 +490,8 @@ const SYSTEM_SLOTS: Record<GatiodSystemKey, SlotDefinition[]> = {
     {
       key: "section_b_component",
       requiredWhen: "section_b_present AND component_missing",
-      question: "Which Section B neurological component applies: bladder, bowel, sexual function, spasms, or pressure sores?",
-      chips: ["Bladder", "Bowel", "Sexual function", "Spasms"],
+      question: "Which Section B neurological component applies: olfaction, facial nerve, equilibrium, swallowing, station/gait, or respiration?",
+      chips: ["Olfaction", "Facial nerve", "Equilibrium", "Swallowing", "Station/gait", "Respiration"],
     },
     {
       key: "section_b_bracket",
@@ -535,8 +535,8 @@ const SYSTEM_SLOTS: Record<GatiodSystemKey, SlotDefinition[]> = {
     {
       key: "diplopiaId",
       requiredWhen: "always",
-      question: "Is there diplopia (double vision)? If yes, is it monocular or binocular?",
-      chips: ["No diplopia", "Monocular", "Binocular"],
+      question: "Is there diplopia? If yes, is it uncorrectable, central 30°, 30–60°, or beyond 60°?",
+      chips: ["No diplopia", "Uncorrectable", "Central 30°", "30–60°", "Beyond 60°"],
     },
   ],
 };

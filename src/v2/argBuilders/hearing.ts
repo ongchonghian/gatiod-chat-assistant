@@ -48,6 +48,23 @@ export function buildHearingArgs(facts: V2SystemFacts): BuildResult<HearingValue
     }
     userSupplied.push(HEARING_FK_AFFECTED_EARS);
 
+    // Clinical validation: the affected ear's AHL is required — Zod marks both optional
+    // but the engine returns 0% when the affected ear's AHL is absent (see calculateInjury).
+    if (affectedEar === "right" && !facts[HEARING_FK_RIGHT_EAR_AHL]) {
+      return {
+        ok: false,
+        warnings: ["Right ear AHL is required for right-ear injury hearing assessment."],
+        zodErrors: ["rightEarAhl: required for affected right ear"],
+      };
+    }
+    if (affectedEar === "left" && !facts[HEARING_FK_LEFT_EAR_AHL]) {
+      return {
+        ok: false,
+        warnings: ["Left ear AHL is required for left-ear injury hearing assessment."],
+        zodErrors: ["leftEarAhl: required for affected left ear"],
+      };
+    }
+
     const leftAhl  = facts[HEARING_FK_LEFT_EAR_AHL];
     const rightAhl = facts[HEARING_FK_RIGHT_EAR_AHL];
     if (leftAhl)  userSupplied.push(HEARING_FK_LEFT_EAR_AHL);

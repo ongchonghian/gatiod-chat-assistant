@@ -286,3 +286,133 @@ describe("full upper limb ROM workflow via signal accumulation", () => {
     expect(missing).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Policy fixes — §1 CNS Section B, §2 Visual diplopia, §3 Gastro, §4 Renal
+// ---------------------------------------------------------------------------
+
+describe("§1 — CNS Section B component signal (correct components)", () => {
+  it("detects olfaction", () => {
+    expect(extractSignals(utterance("olfactory impairment")).section_b_component).toBe(true);
+  });
+  it("detects facial nerve", () => {
+    expect(extractSignals(utterance("facial nerve palsy")).section_b_component).toBe(true);
+  });
+  it("detects equilibrium", () => {
+    expect(extractSignals(utterance("equilibrium dysfunction")).section_b_component).toBe(true);
+  });
+  it("detects swallowing", () => {
+    expect(extractSignals(utterance("difficulty swallowing")).section_b_component).toBe(true);
+  });
+  it("detects station/gait", () => {
+    expect(extractSignals(utterance("gait disturbance")).section_b_component).toBe(true);
+  });
+  it("detects respiration / breathing", () => {
+    expect(extractSignals(utterance("neurological breathing impairment")).section_b_component).toBe(true);
+  });
+  it("does NOT fire on old spine-only terms (bladder, bowel, spasms)", () => {
+    expect(extractSignals(utterance("bladder dysfunction")).section_b_component).toBeFalsy();
+    expect(extractSignals(utterance("bowel incontinence")).section_b_component).toBeFalsy();
+    expect(extractSignals(utterance("spasms present")).section_b_component).toBeFalsy();
+  });
+  it("slot policy chips are the correct CNS components", () => {
+    // evaluateCondition "section_b_present AND component_missing" checks s.cns_section
+    const missing = getMissingSlots("cns", { cns_section: true, section_b_component: false });
+    const componentSlot = missing.find((m) => m.key === "section_b_component");
+    expect(componentSlot?.chips).toContain("Olfaction");
+    expect(componentSlot?.chips).toContain("Facial nerve");
+    expect(componentSlot?.chips).toContain("Equilibrium");
+    expect(componentSlot?.chips).toContain("Swallowing");
+    expect(componentSlot?.chips).toContain("Station/gait");
+    expect(componentSlot?.chips).toContain("Respiration");
+    expect(componentSlot?.chips).not.toContain("Bladder");
+    expect(componentSlot?.chips).not.toContain("Bowel");
+  });
+});
+
+describe("§2 — Visual diplopia zone signal (zone-based, not monocular/binocular)", () => {
+  it("detects diplopia keyword", () => {
+    expect(extractSignals(utterance("diplopia present")).diplopiaId).toBe(true);
+  });
+  it("detects uncorrectable", () => {
+    expect(extractSignals(utterance("uncorrectable diplopia")).diplopiaId).toBe(true);
+  });
+  it("detects central 30 zone", () => {
+    expect(extractSignals(utterance("central 30 degrees")).diplopiaId).toBe(true);
+  });
+  it("detects 30 to 60 zone", () => {
+    expect(extractSignals(utterance("30 to 60 degrees")).diplopiaId).toBe(true);
+  });
+  it("detects beyond 60 zone", () => {
+    expect(extractSignals(utterance("beyond 60 degrees")).diplopiaId).toBe(true);
+  });
+  it("does NOT fire on old monocular/binocular terms alone", () => {
+    expect(extractSignals(utterance("monocular vision issue")).diplopiaId).toBeFalsy();
+    expect(extractSignals(utterance("binocular coordination")).diplopiaId).toBeFalsy();
+  });
+  it("slot policy chips are zone-based not monocular/binocular", () => {
+    const missing = getMissingSlots("visual", { leftEye: true, rightEye: true });
+    const dipSlot = missing.find((m) => m.key === "diplopiaId");
+    expect(dipSlot?.chips).toContain("No diplopia");
+    expect(dipSlot?.chips).toContain("Uncorrectable");
+    expect(dipSlot?.chips).toContain("Central 30°");
+    expect(dipSlot?.chips).toContain("30–60°");
+    expect(dipSlot?.chips).toContain("Beyond 60°");
+    expect(dipSlot?.chips).not.toContain("Monocular");
+    expect(dipSlot?.chips).not.toContain("Binocular");
+  });
+});
+
+describe("§3 — Gastro-digestive subSystem signal (all 4 subsystems)", () => {
+  it("detects upper GI (oesophagus)", () => {
+    expect(extractSignals(utterance("oesophageal disease")).subSystem).toBe(true);
+  });
+  it("detects upper GI (stomach)", () => {
+    expect(extractSignals(utterance("stomach ulcer")).subSystem).toBe(true);
+  });
+  it("detects upper GI (duodenal)", () => {
+    expect(extractSignals(utterance("duodenal injury")).subSystem).toBe(true);
+  });
+  it("detects herniation", () => {
+    expect(extractSignals(utterance("inguinal hernia")).subSystem).toBe(true);
+  });
+  it("still detects existing colon/liver terms", () => {
+    expect(extractSignals(utterance("colonic disease")).subSystem).toBe(true);
+    expect(extractSignals(utterance("liver disease")).subSystem).toBe(true);
+  });
+  it("slot policy chips include all 4 subsystems", () => {
+    const missing = getMissingSlots("gastro_digestive", {});
+    const subSlot = missing.find((m) => m.key === "subSystem");
+    expect(subSlot?.chips).toContain("Upper GI");
+    expect(subSlot?.chips).toContain("Colon/rectum/anus");
+    expect(subSlot?.chips).toContain("Liver/biliary");
+    expect(subSlot?.chips).toContain("Hernia");
+    expect(subSlot?.chips).not.toContain("Colonic/rectal/anal");
+  });
+});
+
+describe("§4 — Renal inputs signal (no eGFR, creatinine clearance instead)", () => {
+  it("detects serum creatinine", () => {
+    expect(extractSignals(utterance("serum creatinine 120 µmol")).renal_inputs).toBe(true);
+  });
+  it("detects creatinine clearance", () => {
+    expect(extractSignals(utterance("creatinine clearance 45 ml/min")).renal_inputs).toBe(true);
+  });
+  it("detects CKD stage", () => {
+    expect(extractSignals(utterance("CKD stage 3")).renal_inputs).toBe(true);
+  });
+  it("detects clinical severity", () => {
+    expect(extractSignals(utterance("clinical severity incompletely controlled")).renal_inputs).toBe(true);
+  });
+  it("does NOT fire on eGFR alone (engine has no eGFR field)", () => {
+    expect(extractSignals(utterance("eGFR 45")).renal_inputs).toBeFalsy();
+    expect(extractSignals(utterance("GFR result")).renal_inputs).toBeFalsy();
+  });
+  it("slot policy question and chips reference creatinine clearance not eGFR", () => {
+    const missing = getMissingSlots("renal", {});
+    const renalSlot = missing.find((m) => m.key === "renal_inputs");
+    expect(renalSlot?.question).not.toMatch(/eGFR/i);
+    expect(renalSlot?.chips).toContain("Creatinine clearance");
+    expect(renalSlot?.chips).not.toContain("Provide eGFR");
+  });
+});

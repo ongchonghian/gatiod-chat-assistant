@@ -180,6 +180,97 @@ describe("AHL extraction — injury path", () => {
   });
 });
 
+// ── Instance ID resolution ────────────────────────────────────────────────────
+
+describe("instanceId resolution", () => {
+  it("returns hearing::global for NID path with both AHLs and age", () => {
+    const r = extractHearing(utt("noise-induced left 65 dB right 70 dB age 55"), emptyState());
+    expect(r.instanceId).toBe("hearing::global");
+  });
+
+  it("returns hearing::global for NID even when AHLs are missing (still on NID path)", () => {
+    const state = stateWith({ [HEARING_FK_PATH]: fact("nid") });
+    const r = extractHearing(utt("NID patient, hearing not yet measured"), state);
+    expect(r.instanceId).toBe("hearing::global");
+  });
+
+  it("returns hearing::right_ear for injury + right ear", () => {
+    const state = stateWith({ [HEARING_FK_PATH]: fact("injury") });
+    const r = extractHearing(utt("injury right ear 65 dB"), state);
+    expect(r.instanceId).toBe("hearing::right_ear");
+  });
+
+  it("returns hearing::left_ear for injury + left ear", () => {
+    const state = stateWith({ [HEARING_FK_PATH]: fact("injury") });
+    const r = extractHearing(utt("injury left ear 70 dB"), state);
+    expect(r.instanceId).toBe("hearing::left_ear");
+  });
+
+  it("returns undefined when path is unknown", () => {
+    const r = extractHearing(utt("hearing loss"), emptyState());
+    expect(r.instanceId).toBeUndefined();
+  });
+
+  it("returns undefined when path is injury but ear is not yet known", () => {
+    const state = stateWith({ [HEARING_FK_PATH]: fact("injury") });
+    const r = extractHearing(utt("injury to hearing"), state);
+    expect(r.instanceId).toBeUndefined();
+  });
+
+  it("resolves instanceId from ear already in system state", () => {
+    const state = stateWith({
+      [HEARING_FK_PATH]: fact("injury"),
+      [HEARING_FK_AFFECTED_EARS]: fact("right"),
+    });
+    const r = extractHearing(utt("AHL 90 dB"), state);
+    expect(r.instanceId).toBe("hearing::right_ear");
+  });
+});
+
+// ── Instance facts scoping ────────────────────────────────────────────────────
+
+describe("instance facts scoping", () => {
+  it("right-ear injury patch does NOT include left-ear AHL", () => {
+    const state = stateWith({ [HEARING_FK_PATH]: fact("injury") });
+    // "right ear 65 dB" — RIGHT_AHL_RE matches 65; LEFT_AHL_RE would not match
+    // but even if both were in text, the right-ear instance should strip left
+    const r = extractHearing(utt("injury right ear 65 dB"), state);
+    expect(r.instanceId).toBe("hearing::right_ear");
+    expect(r.extractedFactsPatch[HEARING_FK_RIGHT_EAR_AHL]?.value).toBe(65);
+    expect(r.extractedFactsPatch[HEARING_FK_LEFT_EAR_AHL]).toBeUndefined();
+  });
+
+  it("left-ear injury patch does NOT include right-ear AHL", () => {
+    const state = stateWith({ [HEARING_FK_PATH]: fact("injury") });
+    const r = extractHearing(utt("injury left ear 70 dB"), state);
+    expect(r.instanceId).toBe("hearing::left_ear");
+    expect(r.extractedFactsPatch[HEARING_FK_LEFT_EAR_AHL]?.value).toBe(70);
+    expect(r.extractedFactsPatch[HEARING_FK_RIGHT_EAR_AHL]).toBeUndefined();
+  });
+
+  it("NID (global) patch includes both left and right AHL", () => {
+    const r = extractHearing(utt("noise-induced left 65 dB right 70 dB age 55"), emptyState());
+    expect(r.instanceId).toBe("hearing::global");
+    expect(r.extractedFactsPatch[HEARING_FK_LEFT_EAR_AHL]?.value).toBe(65);
+    expect(r.extractedFactsPatch[HEARING_FK_RIGHT_EAR_AHL]?.value).toBe(70);
+  });
+
+  it("cross-ear text does not contaminate right-ear instance (the original bug)", () => {
+    // Simulates the scenario: doctor says "right ear injury AHL 90 dB"
+    // At some earlier point, left AHL 50 dB was mentioned in passing.
+    // The right-ear instance must not pick up the left AHL.
+    const state = stateWith({
+      [HEARING_FK_PATH]: fact("injury"),
+      [HEARING_FK_AFFECTED_EARS]: fact("right"),
+    });
+    const r = extractHearing(utt("right ear AHL 90 dB left 50 dB"), state);
+    expect(r.instanceId).toBe("hearing::right_ear");
+    expect(r.extractedFactsPatch[HEARING_FK_RIGHT_EAR_AHL]?.value).toBe(90);
+    // Left AHL must be stripped from the right-ear instance's patch
+    expect(r.extractedFactsPatch[HEARING_FK_LEFT_EAR_AHL]).toBeUndefined();
+  });
+});
+
 // ── Tinnitus ───────────────────────────────────────────────────────────────────
 
 describe("tinnitus extraction", () => {

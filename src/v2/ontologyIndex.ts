@@ -14,6 +14,7 @@ import {
   type DiagnosisCategory,
 } from "../engine/spineAssessmentData.js";
 import type { GatiodSystemKey, OntologyMatch } from "./contracts.js";
+import { SYSTEM_SYNONYMS } from "./systemSynonyms.js";
 
 interface OntologyEntry {
   system: GatiodSystemKey;
@@ -144,25 +145,23 @@ function buildOntology(): OntologyEntry[] {
     entries.push(...buildSpineSeverityEntries(category.key));
   }
 
-  const systemConcepts: Array<{ system: GatiodSystemKey; alias: string[] }> = [
-    { system: "respiratory", alias: ["respiratory", "fvc", "fev1", "dlco", "asthma"] },
-    { system: "renal", alias: ["renal", "creatinine", "ckd", "kidney"] },
-    { system: "gastro_digestive", alias: ["gastro", "digestive", "hepatobiliary", "liver", "pancreas"] },
-    { system: "hearing", alias: ["hearing", "audiogram", "ahl"] },
-    { system: "cns", alias: ["cns", "brain", "spastic", "neuropsychological"] },
-    { system: "visual", alias: ["visual", "vision", "eye", "field"] },
-    { system: "upper_limb", alias: ["upper limb", "shoulder", "elbow", "wrist", "thumb", "finger"] },
-    { system: "lower_limb", alias: ["lower limb", "hip", "knee", "ankle", "toe", "shortening"] },
-    { system: "spine", alias: ["spine", "lumbo sacral", "cervical", "thoraco lumbar", "disc"] },
-  ];
-
-  for (const concept of systemConcepts) {
+  // Concept aliases derived from the curated synonym table — single source of
+  // truth so router keywords, ontology concepts, and similar-term suggestions
+  // never drift apart.
+  const aliasesBySystem = new Map<GatiodSystemKey, string[]>();
+  for (const syn of SYSTEM_SYNONYMS) {
+    if (syn.requiresConfirmation) continue;
+    if (syn.confidence < 0.85) continue;
+    if (!aliasesBySystem.has(syn.system)) aliasesBySystem.set(syn.system, []);
+    aliasesBySystem.get(syn.system)!.push(syn.term);
+  }
+  for (const [system, aliases] of aliasesBySystem) {
     entries.push({
-      system: concept.system,
+      system,
       type: "concept",
-      canonicalId: `${concept.system}_concept`,
-      label: `${concept.system} concept`,
-      aliases: concept.alias,
+      canonicalId: `${system}_concept`,
+      label: `${system} concept`,
+      aliases,
     });
   }
 

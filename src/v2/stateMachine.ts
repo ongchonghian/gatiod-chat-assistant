@@ -7,11 +7,14 @@ import type {
   SlotSignals,
   StructuredExtractionResult,
   ToolPlanCall,
+  V2AssessmentInstance,
   V2SessionState,
   V2SystemConfirmation,
   V2SystemFacts,
   V2SystemState,
 } from "./contracts.js";
+import { INSTANCE_RULES, parseInstanceId, v2AssessmentInstanceSchema } from "./assessmentInstanceRules.js";
+import { combineAdditive, combineMultipleValuesChart, selectHighest } from "../engine/cvcCalculator.js";
 
 const SYSTEM_KEYS: GatiodSystemKey[] = [
   "upper_limb",
@@ -55,6 +58,7 @@ export function defaultV2SessionState(): V2SessionState {
   return {
     version: 1,
     systems,
+    instancesBySystem: {},
     pendingClarification: null,
     pendingConfirmation: null,
   };
@@ -102,6 +106,24 @@ export function coerceV2State(raw: unknown): V2SessionState {
 
   merged.pendingClarification = candidate.pendingClarification ?? null;
   merged.pendingConfirmation = candidate.pendingConfirmation ?? null;
+
+  // Coerce instancesBySystem
+  const rawInstances = candidate.instancesBySystem as Record<string, unknown[]> | undefined;
+  if (rawInstances && typeof rawInstances === "object") {
+    for (const [key, rawArr] of Object.entries(rawInstances)) {
+      if (!SYSTEM_KEYS.includes(key as GatiodSystemKey)) continue;
+      if (!Array.isArray(rawArr)) continue;
+      const validated: V2AssessmentInstance[] = [];
+      for (const raw of rawArr) {
+        const result = v2AssessmentInstanceSchema.safeParse(raw);
+        if (result.success) validated.push(result.data as V2AssessmentInstance);
+      }
+      if (validated.length > 0) {
+        merged.instancesBySystem[key as GatiodSystemKey] = validated;
+      }
+    }
+  }
+
   return merged;
 }
 
@@ -219,6 +241,38 @@ export function toSystemStateEnvelope(state: V2SessionState, existingRaw: Record
     ...(existingRaw ?? {}),
     v2: state,
   };
+}
+
+/**
+ * Aggregate PI% values from all calculated instances for a system using the
+ * system's combinationMethod defined in INSTANCE_RULES.
+ *
+ * Returns null when no calculated instances exist.
+ * "none" systems (respiratory, renal, CNS) pass through the single instance value.
+ */
+export function computeSystemSubtotal(
+  systemKey: GatiodSystemKey,
+  instances: V2AssessmentInstance[]
+): number | null {
+  const rule = INSTANCE_RULES[systemKey];
+  const values = instances
+    .filter((i) => i.status === "calculated" && typeof i.piPercent === "number")
+    .map((i) => i.piPercent as number);
+
+  if (values.length === 0) return null;
+
+  switch (rule.combinationMethod) {
+    case "cvc":
+      return combineMultipleValuesChart(values);
+    case "additive":
+      return combineAdditive(values);
+    case "highest":
+      return selectHighest(values);
+    case "none":
+      return values[0];
+    default:
+      return values[0];
+  }
 }
 
 export function collectCalculatedSubtotals(state: V2SessionState): { system: string; piPercent: number }[] {
@@ -363,6 +417,222 @@ export function setConfirmationConfirmed(
     },
   };
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Instance-aware state helpers (Step 2)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export function getInstances(
+  state: V2SessionState,
+  system: GatiodSystemKey
+): V2AssessmentInstance[] {
+  return state.instancesBySystem[system] ?? [];
+}
+
+export function getInstanceById(
+  state: V2SessionState,
+  instanceId: string
+): V2AssessmentInstance | undefined {
+  const { systemKey } = parseInstanceId(instanceId);
+  return (state.instancesBySystem[systemKey] ?? []).find((i) => i.instanceId === instanceId);
+}
+
+export function upsertInstance(
+  state: V2SessionState,
+  instance: V2AssessmentInstance
+): V2SessionState {
+  const existing = state.instancesBySystem[instance.system] ?? [];
+  const idx = existing.findIndex((i) => i.instanceId === instance.instanceId);
+  const next =
+    idx >= 0
+      ? [...existing.slice(0, idx), instance, ...existing.slice(idx + 1)]
+      : [...existing, instance];
+  return {
+    ...state,
+    instancesBySystem: { ...state.instancesBySystem, [instance.system]: next },
+  };
+}
+
+export function removeInstance(
+  state: V2SessionState,
+  instanceId: string
+): V2SessionState {
+  const { systemKey } = parseInstanceId(instanceId);
+  const next = (state.instancesBySystem[systemKey] ?? []).filter(
+    (i) => i.instanceId !== instanceId
+  );
+  return {
+    ...state,
+    instancesBySystem: { ...state.instancesBySystem, [systemKey]: next },
+  };
+}
+
+/** Apply a structured extraction result to a specific instance's facts. */
+export function applyInstanceFactsPatch(
+  state: V2SessionState,
+  instanceId: string,
+  result: StructuredExtractionResult
+): V2SessionState {
+  const instance = getInstanceById(state, instanceId);
+  if (!instance) return state;
+
+  // Merge rom_joints: new direction measurements accumulate (same as system-level path)
+  const mergedFactsPatch = { ...result.extractedFactsPatch };
+  if (mergedFactsPatch["rom_joints"] && instance.facts["rom_joints"]) {
+    const existing = instance.facts["rom_joints"].value as Record<string, unknown>;
+    const incoming = mergedFactsPatch["rom_joints"].value as Record<string, unknown>;
+    mergedFactsPatch["rom_joints"] = {
+      ...mergedFactsPatch["rom_joints"],
+      value: { ...existing, ...incoming },
+    };
+  }
+
+  const newFacts: V2SystemFacts = { ...instance.facts, ...mergedFactsPatch };
+  const keepObs = instance.pendingObservations.filter(
+    (o) => !result.pendingObservationsToResolve.includes(o.id)
+  );
+  const newPending: PendingObservation[] = [...keepObs, ...result.pendingObservationsToAdd];
+
+  const hasFacts = Object.keys(mergedFactsPatch).length > 0;
+  const newConfirmation: V2SystemConfirmation =
+    hasFacts && instance.confirmation.status !== "not_confirmed"
+      ? { ...instance.confirmation, status: "stale" }
+      : instance.confirmation;
+
+  return upsertInstance(state, {
+    ...instance,
+    facts: newFacts,
+    pendingObservations: newPending,
+    confirmation: newConfirmation,
+    status:
+      instance.status === "calculated" && newConfirmation.status === "stale"
+        ? "collecting"
+        : instance.status,
+    piPercent: hasFacts && newConfirmation.status === "stale" ? null : instance.piPercent,
+    updatedAt: nowIso(),
+  });
+}
+
+export function invalidateInstanceConfirmation(
+  state: V2SessionState,
+  instanceId: string
+): V2SessionState {
+  const instance = getInstanceById(state, instanceId);
+  if (!instance || instance.confirmation.status === "not_confirmed") return state;
+  return upsertInstance(state, {
+    ...instance,
+    confirmation: { ...instance.confirmation, status: "stale" },
+    piPercent: null,
+    updatedAt: nowIso(),
+  });
+}
+
+export function setInstanceConfirmationPending(
+  state: V2SessionState,
+  instanceId: string,
+  summary: string
+): V2SessionState {
+  const instance = getInstanceById(state, instanceId);
+  if (!instance) return state;
+  const factsHash = hashExtractedFacts(instance.facts);
+  return upsertInstance(state, {
+    ...instance,
+    confirmation: { status: "pending", confirmationSummary: summary, factsHash },
+    updatedAt: nowIso(),
+  });
+}
+
+export function setInstanceConfirmationConfirmed(
+  state: V2SessionState,
+  instanceId: string,
+  confirmedBy?: string
+): V2SessionState {
+  const instance = getInstanceById(state, instanceId);
+  if (!instance) return state;
+  return upsertInstance(state, {
+    ...instance,
+    status: "confirmed",
+    confirmation: {
+      ...instance.confirmation,
+      status: "confirmed",
+      confirmedAt: nowIso(),
+      confirmedBy,
+      factsHash: hashExtractedFacts(instance.facts),
+    },
+    updatedAt: nowIso(),
+  });
+}
+
+export function graduateInstanceObservation(
+  state: V2SessionState,
+  instanceId: string,
+  observationId: string,
+  factsPatch: V2SystemFacts
+): V2SessionState {
+  const instance = getInstanceById(state, instanceId);
+  if (!instance) return state;
+  const newPending = instance.pendingObservations.filter((o) => o.id !== observationId);
+  const newFacts = { ...instance.facts, ...factsPatch };
+  const hasFacts = Object.keys(factsPatch).length > 0;
+  const newConfirmation: V2SystemConfirmation =
+    hasFacts && instance.confirmation.status !== "not_confirmed"
+      ? { ...instance.confirmation, status: "stale" }
+      : instance.confirmation;
+  return upsertInstance(state, {
+    ...instance,
+    facts: newFacts,
+    pendingObservations: newPending,
+    confirmation: newConfirmation,
+    piPercent: hasFacts && newConfirmation.status === "stale" ? null : instance.piPercent,
+    updatedAt: nowIso(),
+  });
+}
+
+/**
+ * Record a tool result (PI%) against a specific instance, mark it calculated,
+ * then recompute the system-level subtotal from all calculated instances and
+ * write it back to systems[key].piPercent so collectCalculatedSubtotals
+ * (and global CVC) see the correct aggregated value.
+ */
+export function applyInstanceToolResult(
+  state: V2SessionState,
+  instanceId: string,
+  piPercent: number,
+  trace?: import("./calculationTrace.js").CalculationTrace | null
+): V2SessionState {
+  const instance = getInstanceById(state, instanceId);
+  if (!instance) return state;
+
+  let next = upsertInstance(state, {
+    ...instance,
+    status: "calculated",
+    piPercent,
+    trace: trace ?? null,
+    updatedAt: nowIso(),
+  });
+
+  const { systemKey } = parseInstanceId(instanceId);
+  const subtotal = computeSystemSubtotal(systemKey, getInstances(next, systemKey));
+  if (subtotal !== null) {
+    const prev = next.systems[systemKey];
+    next = {
+      ...next,
+      systems: {
+        ...next.systems,
+        [systemKey]: {
+          ...prev,
+          status: "calculated",
+          piPercent: subtotal,
+          updatedAt: nowIso(),
+        },
+      },
+    };
+  }
+
+  return next;
+}
+
+// ── Legacy system-level helpers below (unchanged) ─────────────────────────────
 
 export function graduateObservation(
   state: V2SessionState,

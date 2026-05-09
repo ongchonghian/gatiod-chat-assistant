@@ -24,6 +24,7 @@ export type AuditEventType =
   | "v2_shadow_result"
   | "v2_pending_observation"
   | "v2_extraction_warning"
+  | "v2_multi_system_extraction"
   | "v2_failure"
   | "v2_failure_user_choice"
   | "v2_legacy_fallback_requested"

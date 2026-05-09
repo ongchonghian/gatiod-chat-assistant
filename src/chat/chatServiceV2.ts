@@ -8,24 +8,34 @@ import { retrieveGrounding } from "../v2/hybridRetriever.js";
 import { routeUtterance } from "../v2/router.js";
 import { makePolicyDecision } from "../v2/policyEngine.js";
 import {
+  applyInstanceFactsPatch,
   applyStructuredExtraction,
   applyToolResults,
   coerceV2State,
   defaultV2SessionState,
+  getInstanceById,
+  getInstances,
   setPendingClarification,
   setPendingConfirmation,
   toSystemStateEnvelope,
   updateExtractedValues,
   updateSlotSignals,
+  upsertInstance,
   withRoute,
 } from "../v2/stateMachine.js";
+import {
+  canCreateInstance,
+  parseInstanceId,
+} from "../v2/assessmentInstanceRules.js";
+import type { V2AssessmentInstance } from "../v2/contracts.js";
 import { extractSignals, extractValues, mergeSignals } from "../v2/slotEvaluator.js";
 import { applySignalClear, buildFactPatch, isConfirmation } from "../v2/factPatch.js";
-import { buildConfirmationMessage } from "../v2/confirmationBuilder.js";
-import { V2_SYSTEM_REGISTRY } from "../v2/systemRegistry.js";
+import { buildConfirmationMessage, buildStructuredConfirmationMessage } from "../v2/confirmationBuilder.js";
+import { V2_SYSTEM_REGISTRY, isStructuredLiveSystem } from "../v2/systemRegistry.js";
 import { tryResolvePendingObservation } from "../v2/pendingObservationResolver.js";
 import { renderV2Failure } from "../v2/failureRenderer.js";
-import { setConfirmationConfirmed, setConfirmationPending } from "../v2/stateMachine.js";
+import { applyInstanceToolResult, setConfirmationConfirmed, setConfirmationPending, setInstanceConfirmationPending } from "../v2/stateMachine.js";
+import { buildTraceForSystem } from "../v2/systemTraceAdapters.js";
 
 interface ProcessChatV2Options {
   userId?: string;
@@ -194,8 +204,18 @@ export async function processChatV2(
       const pendingCap = V2_SYSTEM_REGISTRY[pendingSystem];
       let resolvedState = resolution.state;
 
-      if (pendingCap.mode === "structured_live" && pendingCap.readinessValidator) {
-        const readiness = pendingCap.readinessValidator(resolvedState.systems[pendingSystem]);
+      // Compute active instance once; used for both readiness check and confirmation snapshot.
+      const activeInstanceForObs = pendingCap.instanceReadinessValidator
+        ? getInstances(resolvedState, pendingSystem)
+            .filter((i) => i.status !== "calculated")
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+        : undefined;
+
+      if (pendingCap.mode === "structured_live" && (pendingCap.readinessValidator || pendingCap.instanceReadinessValidator)) {
+        const readiness =
+          activeInstanceForObs && pendingCap.instanceReadinessValidator
+            ? pendingCap.instanceReadinessValidator(activeInstanceForObs)
+            : pendingCap.readinessValidator!(resolvedState.systems[pendingSystem]);
         if (!readiness.ready) {
           const clarification = readiness.clarificationQuestion ?? "Additional information is required before calculating.";
           resolvedState = { ...resolvedState, pendingClarification: clarification, pendingConfirmation: null };
@@ -220,8 +240,15 @@ export async function processChatV2(
       // Readiness passed — present structured confirmation and commit pendingConfirmation to
       // session state so the doctor's "confirm" reply is handled by the policy engine.
       const sysStateForConfirm = resolvedState.systems[pendingSystem];
-      const confirmMsg = buildConfirmationMessage(pendingSystem, sysStateForConfirm.extractedValues, sysStateForConfirm.slotSignals);
+      // For structured_live systems read directly from extractedFacts so display keys
+      // (right_ear_ahl, left_ear_ahl, etc.) don't mismatch the confirmation builder.
+      const confirmMsg = isStructuredLiveSystem(pendingSystem)
+        ? buildStructuredConfirmationMessage(pendingSystem, sysStateForConfirm.extractedFacts)
+        : buildConfirmationMessage(pendingSystem, sysStateForConfirm.extractedValues, sysStateForConfirm.slotSignals);
       resolvedState = setConfirmationPending(resolvedState, pendingSystem, confirmMsg);
+      if (activeInstanceForObs) {
+        resolvedState = setInstanceConfirmationPending(resolvedState, activeInstanceForObs.instanceId, confirmMsg);
+      }
       resolvedState = setPendingConfirmation(resolvedState, {
         system: pendingSystem,
         summary: confirmMsg,
@@ -270,34 +297,92 @@ export async function processChatV2(
   // ── V2-007b: extraction-skip on confirmation reply ─────────────────────────
   const confirmationReply = Boolean(loadedState.pendingConfirmation) && isConfirmation(normalized);
 
-  if (primarySystem && !confirmationReply) {
-    const cap = V2_SYSTEM_REGISTRY[primarySystem];
-    if ((cap.mode === "structured_live" || cap.mode === "structured_shadow") && cap.extractor) {
-      // Structured path: use the V2 extractor
-      const extractionResult = cap.extractor(normalized, nextState.systems[primarySystem], grounding.ontologyMatches);
-      if (extractionResult.warnings.length > 0) {
-        logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_extraction_warning", eventData: { warnings: extractionResult.warnings } });
-      }
-      nextState = applyStructuredExtraction(nextState, primarySystem, extractionResult);
-    } else {
-      // Legacy path: use the signal/value extractors
-      const incoming = extractSignals(normalized);
-      const incomingValues = extractValues(normalized);
-      const existing = nextState.systems[primarySystem].slotSignals ?? {};
-      const merged = mergeSignals(existing, incoming);
-      nextState = updateSlotSignals(nextState, primarySystem, merged);
-      nextState = updateExtractedValues(nextState, primarySystem, incomingValues);
+  // Multi-system extraction: when the router detects multiple systems in one
+  // utterance, run each system's extractor against the same utterance. The
+  // primary system (route.systems[0] or pendingConfirmation.system) drives
+  // the conversational flow; secondary systems have their facts persisted so
+  // they're ready when the doctor moves on to them.
+  // (REQ-B1) Without this loop, only route.systems[0] would have its facts
+  // extracted — a multi-system query like "femoral fracture and lumbar disc
+  // prolapse" would lose the spine facts entirely.
+  const extractionTargets: GatiodSystemKey[] = [];
+  if (primarySystem) {
+    extractionTargets.push(primarySystem);
+    for (const sys of route.systems) {
+      if (!extractionTargets.includes(sys)) extractionTargets.push(sys);
     }
-  } else if (primarySystem && confirmationReply) {
-    // Confirmation reply — skip extraction entirely (D8)
-  } else if (primarySystem) {
-    // No primary system branch — legacy extraction
-    const incoming = extractSignals(normalized);
-    const incomingValues = extractValues(normalized);
-    const existing = nextState.systems[primarySystem].slotSignals ?? {};
-    const merged = mergeSignals(existing, incoming);
-    nextState = updateSlotSignals(nextState, primarySystem, merged);
-    nextState = updateExtractedValues(nextState, primarySystem, incomingValues);
+  }
+
+  if (extractionTargets.length > 0 && !confirmationReply) {
+    for (const targetSystem of extractionTargets) {
+      const cap = V2_SYSTEM_REGISTRY[targetSystem];
+      if ((cap.mode === "structured_live" || cap.mode === "structured_shadow") && cap.extractor) {
+        const extractionResult = cap.extractor(normalized, nextState.systems[targetSystem], grounding.ontologyMatches);
+        if (extractionResult.warnings.length > 0) {
+          logAuditEvent({
+            sessionId,
+            userId: opts?.userId,
+            eventType: "v2_extraction_warning",
+            eventData: { system: targetSystem, warnings: extractionResult.warnings },
+          });
+        }
+
+        if (extractionResult.instanceId) {
+          const { systemKey, slotKeys } = parseInstanceId(extractionResult.instanceId);
+          if (!getInstanceById(nextState, extractionResult.instanceId)) {
+            const existingIds = getInstances(nextState, systemKey).map((i) => i.instanceId);
+            const validation = canCreateInstance(systemKey, slotKeys, existingIds);
+            if (validation.allowed) {
+              const now = new Date().toISOString();
+              const newInstance: V2AssessmentInstance = {
+                instanceId: extractionResult.instanceId,
+                system: systemKey,
+                slotPath: slotKeys,
+                facts: {},
+                pendingObservations: [],
+                confirmation: { status: "not_confirmed" },
+                status: "collecting",
+                piPercent: null,
+                trace: null,
+                updatedAt: now,
+              };
+              nextState = upsertInstance(nextState, newInstance);
+            } else {
+              logAuditEvent({
+                sessionId,
+                userId: opts?.userId,
+                eventType: "v2_extraction_warning",
+                eventData: { system: targetSystem, warnings: [`Instance creation blocked: ${validation.reason}`] },
+              });
+            }
+          }
+          nextState = applyInstanceFactsPatch(nextState, extractionResult.instanceId, extractionResult);
+          nextState = applyStructuredExtraction(nextState, targetSystem, extractionResult);
+        } else {
+          nextState = applyStructuredExtraction(nextState, targetSystem, extractionResult);
+        }
+      } else {
+        const incoming = extractSignals(normalized);
+        const incomingValues = extractValues(normalized);
+        const existing = nextState.systems[targetSystem].slotSignals ?? {};
+        const merged = mergeSignals(existing, incoming);
+        nextState = updateSlotSignals(nextState, targetSystem, merged);
+        nextState = updateExtractedValues(nextState, targetSystem, incomingValues);
+      }
+    }
+
+    if (extractionTargets.length > 1) {
+      logAuditEvent({
+        sessionId,
+        userId: opts?.userId,
+        eventType: "v2_multi_system_extraction",
+        eventData: {
+          systems: extractionTargets,
+          primarySystem,
+          routeConfidence: route.confidence,
+        },
+      });
+    }
   }
 
   const policy = makePolicyDecision(route, normalized, grounding, nextState);
@@ -336,11 +421,27 @@ export async function processChatV2(
       }
       // Rebuild the confirmation with updated values
       const updatedSystemState = nextState.systems[sys];
-      clarification = buildConfirmationMessage(sys, updatedSystemState.extractedValues, updatedSystemState.slotSignals);
+      clarification = isStructuredLiveSystem(sys)
+        ? buildStructuredConfirmationMessage(sys, updatedSystemState.extractedFacts)
+        : buildConfirmationMessage(sys, updatedSystemState.extractedValues, updatedSystemState.slotSignals);
     }
 
     // Set or update pendingConfirmation when this is a confirmation-type clarification.
     if (policy.requiresConfirmation && primarySystem) {
+      // For structured_live systems also snapshot the factsHash so the policy engine can
+      // detect stale confirmations (facts changed between presentation and confirmation).
+      if (isStructuredLiveSystem(primarySystem)) {
+        nextState = setConfirmationPending(nextState, primarySystem, clarification);
+        // Snapshot the active instance's confirmation so policyEngine hash-check uses instance facts.
+        const activeForConfirm = V2_SYSTEM_REGISTRY[primarySystem].instanceReadinessValidator
+          ? getInstances(nextState, primarySystem)
+              .filter((i) => i.status !== "calculated")
+              .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+          : undefined;
+        if (activeForConfirm) {
+          nextState = setInstanceConfirmationPending(nextState, activeForConfirm.instanceId, clarification);
+        }
+      }
       nextState = setPendingConfirmation(nextState, {
         system: primarySystem,
         summary: clarification,
@@ -357,6 +458,13 @@ export async function processChatV2(
   } else if (policy.action === "execute_tools") {
     // Clear pending confirmation on successful tool execution path.
     nextState = setPendingConfirmation(nextState, null);
+
+    // Capture the active instance ID now (before state mutations) for post-execution update.
+    const activeInstanceIdForExec = primarySystem && V2_SYSTEM_REGISTRY[primarySystem].instanceReadinessValidator
+      ? getInstances(nextState, primarySystem)
+          .filter((i) => i.status !== "calculated")
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.instanceId
+      : undefined;
 
     for (const call of proposed) {
       const execResult = handleToolCall(call.name, call.args);
@@ -385,6 +493,22 @@ export async function processChatV2(
           message = failure.message;
         } else {
           nextState = setConfirmationConfirmed(nextState, primarySystem, opts?.userId);
+          // Persist the PI result, trace, and mark the active instance as calculated.
+          if (activeInstanceIdForExec) {
+            const resultObj = (assessCall.result ?? {}) as Record<string, unknown>;
+            const pi =
+              typeof resultObj.finalPercent === "number" ? resultObj.finalPercent
+              : typeof resultObj.finalPi === "number" ? resultObj.finalPi
+              : typeof resultObj.selectedPi === "number" ? resultObj.selectedPi
+              : null;
+            if (pi !== null) {
+              const trace = buildTraceForSystem(primarySystem, assessCall.args, assessCall.result, {
+                instanceId: activeInstanceIdForExec,
+                level: "spoke",
+              });
+              nextState = applyInstanceToolResult(nextState, activeInstanceIdForExec, pi, trace);
+            }
+          }
           const rendered = cap.resultRenderer(assessCall.result, nextState.systems[primarySystem]);
           message = rendered.message;
         }

@@ -1,4 +1,10 @@
-import type { ReadinessResult, V2SystemState } from "../contracts.js";
+import type {
+  PendingObservation,
+  ReadinessResult,
+  V2AssessmentInstance,
+  V2SystemFacts,
+  V2SystemState,
+} from "../contracts.js";
 import {
   HEARING_FK_PATH,
   HEARING_FK_LEFT_EAR_AHL,
@@ -7,14 +13,21 @@ import {
   HEARING_FK_AFFECTED_EARS,
 } from "../extractors/hearing.js";
 
-export function validateHearingReadiness(state: V2SystemState): ReadinessResult {
-  const ef = state.extractedFacts;
+// ── Shared core ───────────────────────────────────────────────────────────────
+// Both the flat (system-state) and instance-aware validators delegate here.
+// `facts` is always an instance-scoped slice: for hearing::global it contains
+// both AHLs; for hearing::left_ear / hearing::right_ear it contains only the
+// relevant ear's AHL.
 
-  if (state.pendingObservations.length > 0) {
+function validateHearingCore(
+  facts: V2SystemFacts,
+  pendingObservations: PendingObservation[]
+): ReadinessResult {
+  if (pendingObservations.length > 0) {
     return { ready: false, reason: "pending_observations" };
   }
 
-  const path = ef[HEARING_FK_PATH]?.value as "nid" | "injury" | undefined;
+  const path = facts[HEARING_FK_PATH]?.value as "nid" | "injury" | undefined;
   if (!path) {
     return {
       ready: false,
@@ -25,10 +38,13 @@ export function validateHearingReadiness(state: V2SystemState): ReadinessResult 
   }
 
   if (path === "nid") {
-    if (!ef[HEARING_FK_LEFT_EAR_AHL] || !ef[HEARING_FK_RIGHT_EAR_AHL]) {
-      const which = !ef[HEARING_FK_LEFT_EAR_AHL] && !ef[HEARING_FK_RIGHT_EAR_AHL]
-        ? "both ears"
-        : !ef[HEARING_FK_LEFT_EAR_AHL] ? "left ear" : "right ear";
+    if (!facts[HEARING_FK_LEFT_EAR_AHL] || !facts[HEARING_FK_RIGHT_EAR_AHL]) {
+      const which =
+        !facts[HEARING_FK_LEFT_EAR_AHL] && !facts[HEARING_FK_RIGHT_EAR_AHL]
+          ? "both ears"
+          : !facts[HEARING_FK_LEFT_EAR_AHL]
+          ? "left ear"
+          : "right ear";
       return {
         ready: false,
         reason: "missing_ahl",
@@ -36,7 +52,7 @@ export function validateHearingReadiness(state: V2SystemState): ReadinessResult 
         candidateAnswers: ["50 dB", "55 dB", "60 dB", "65 dB", "70 dB", "75 dB", "80 dB", "85 dB", "90 dB"],
       };
     }
-    if (!ef[HEARING_FK_AGE]) {
+    if (!facts[HEARING_FK_AGE]) {
       return {
         ready: false,
         reason: "missing_age",
@@ -47,7 +63,7 @@ export function validateHearingReadiness(state: V2SystemState): ReadinessResult 
   }
 
   // Injury path
-  const affectedEar = ef[HEARING_FK_AFFECTED_EARS]?.value as "left" | "right" | undefined;
+  const affectedEar = facts[HEARING_FK_AFFECTED_EARS]?.value as "left" | "right" | undefined;
   if (!affectedEar) {
     return {
       ready: false,
@@ -57,7 +73,7 @@ export function validateHearingReadiness(state: V2SystemState): ReadinessResult 
     };
   }
   const ahlKey = affectedEar === "left" ? HEARING_FK_LEFT_EAR_AHL : HEARING_FK_RIGHT_EAR_AHL;
-  if (!ef[ahlKey]) {
+  if (!facts[ahlKey]) {
     return {
       ready: false,
       reason: "missing_ahl",
@@ -67,4 +83,24 @@ export function validateHearingReadiness(state: V2SystemState): ReadinessResult 
   }
 
   return { ready: true };
+}
+
+// ── Public validators ─────────────────────────────────────────────────────────
+
+/** Flat system-state validator. Used by the legacy slot path and existing tests. */
+export function validateHearingReadiness(state: V2SystemState): ReadinessResult {
+  return validateHearingCore(state.extractedFacts, state.pendingObservations);
+}
+
+/**
+ * Instance-aware validator. Validates a single hearing assessment instance
+ * (hearing::global, hearing::left_ear, hearing::right_ear).
+ * Uses only the facts and observations scoped to that instance,
+ * preventing cross-ear readiness false-positives.
+ */
+export function validateHearingInstanceReadiness(instance: V2AssessmentInstance): ReadinessResult {
+  return validateHearingCore(
+    instance.facts as V2SystemFacts,
+    instance.pendingObservations
+  );
 }

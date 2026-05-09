@@ -6,6 +6,7 @@ import type {
   NormalizedUtterance,
   ReadinessResult,
   StructuredExtractionResult,
+  V2AssessmentInstance,
   V2SystemFacts,
   V2SystemState,
 } from "./contracts.js";
@@ -34,7 +35,7 @@ import { validateGastroReadiness } from "./readiness/gastro.js";
 import { buildGastroArgs } from "./argBuilders/gastro.js";
 import { renderGastroResult } from "./renderers/gastroResult.js";
 import { extractHearing } from "./extractors/hearing.js";
-import { validateHearingReadiness } from "./readiness/hearing.js";
+import { validateHearingReadiness, validateHearingInstanceReadiness } from "./readiness/hearing.js";
 import { buildHearingArgs } from "./argBuilders/hearing.js";
 import { renderHearingResult } from "./renderers/hearingResult.js";
 
@@ -48,6 +49,10 @@ export type StructuredExtractor = (
 
 export type ReadinessValidator = (systemState: V2SystemState) => ReadinessResult;
 
+/** Instance-aware readiness validator. Validates a single assessment instance
+ *  rather than the flat per-system state. Preferred when instances are present. */
+export type InstanceAwareReadinessValidator = (instance: V2AssessmentInstance) => ReadinessResult;
+
 export type ToolArgBuilder = (facts: V2SystemFacts) => BuildResult<unknown>;
 
 export type ResultRenderer = (toolResult: unknown, systemState: V2SystemState) => AssessmentRenderResult;
@@ -57,6 +62,9 @@ export interface V2SystemCapability {
   mode: SystemMigrationMode;
   extractor?: StructuredExtractor;
   readinessValidator?: ReadinessValidator;
+  /** Instance-aware readiness validator. Takes precedence over readinessValidator
+   *  when instances exist for the system. */
+  instanceReadinessValidator?: InstanceAwareReadinessValidator;
   argBuilder?: ToolArgBuilder;
   resultRenderer?: ResultRenderer;
 }
@@ -115,6 +123,7 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
     mode: "structured_live",
     extractor: extractHearing as StructuredExtractor,
     readinessValidator: validateHearingReadiness as ReadinessValidator,
+    instanceReadinessValidator: validateHearingInstanceReadiness as InstanceAwareReadinessValidator,
     argBuilder: buildHearingArgs as ToolArgBuilder,
     resultRenderer: renderHearingResult as ResultRenderer,
   },

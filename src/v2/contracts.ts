@@ -104,6 +104,18 @@ export interface RouteDecision {
   systems: GatiodSystemKey[];
   confidence: number;
   reasons: string[];
+  /**
+   * Soft-match candidates derived from synonym table for unresolved terms.
+   * Populated when no system meets the keyword/ontology threshold but the
+   * doctor used a clinically-meaningful synonym. Surfaces "did you mean
+   * [system]?" confirmations instead of generic system-picker prompts.
+   */
+  candidateSystems?: Array<{
+    term: string;
+    system: GatiodSystemKey;
+    confidence: number;
+    reason: string;
+  }>;
 }
 
 export interface GroundingCitation {
@@ -155,6 +167,28 @@ export interface PolicyDecision {
 }
 
 export type V2SystemStatus = "idle" | "collecting" | "needs_confirmation" | "calculated";
+
+export type V2InstanceStatus = "collecting" | "ready" | "confirmed" | "calculated";
+
+/**
+ * A single assessment instance scoped to a system + slot path.
+ * e.g. instanceId "upper_limb::left::shoulder", slotPath ["left", "shoulder"].
+ *
+ * TFacts defaults to V2SystemFacts; typed fact shapes are introduced per-system in Steps 3–5.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface V2AssessmentInstance<TFacts = Record<string, ExtractedFact<any>>> {
+  instanceId: string;
+  system: GatiodSystemKey;
+  slotPath: string[];
+  facts: TFacts;
+  pendingObservations: PendingObservation[];
+  confirmation: V2SystemConfirmation;
+  status: V2InstanceStatus;
+  piPercent: number | null;
+  trace: import("./calculationTrace.js").CalculationTrace | null;
+  updatedAt: string;
+}
 
 // D4 — per-fact provenance. No confirmed flag; confirmation is system-level.
 export interface ExtractedFact<T> {
@@ -226,6 +260,13 @@ export interface PendingConfirmation {
 export interface V2SessionState {
   version: 1;
   systems: Record<GatiodSystemKey, V2SystemState>;
+  /**
+   * Instance-aware state (Step 2+). Lives alongside `systems` during migration.
+   * Extractors, readiness validators, and arg builders migrate to use this;
+   * `systems` remains the source of truth for legacy/shadow paths until each
+   * system is promoted back to structured_live with instance support.
+   */
+  instancesBySystem: Partial<Record<GatiodSystemKey, V2AssessmentInstance[]>>;
   pendingClarification: string | null;
   pendingConfirmation: PendingConfirmation | null;
 }
@@ -252,6 +293,13 @@ export interface StructuredExtractionResult {
   slotSignalsPatch: Partial<SlotSignals>;
   displayValuesPatch: Record<string, string>;
   warnings: string[];
+  /**
+   * The instance this extraction targets (e.g. "hearing::right_ear").
+   * Undefined for non-instance-aware extractors and when the instance cannot
+   * be determined yet (path or slot unknown). When set, the caller must route
+   * facts to `applyInstanceFactsPatch` rather than `applyStructuredExtraction`.
+   */
+  instanceId?: string;
 }
 
 export interface ReadinessResult {

@@ -1,4 +1,11 @@
-import type { GatiodSystemKey, SlotSignals } from "./contracts.js";
+import type { GatiodSystemKey, SlotSignals, V2SystemFacts } from "./contracts.js";
+import {
+  HEARING_FK_PATH,
+  HEARING_FK_LEFT_EAR_AHL,
+  HEARING_FK_RIGHT_EAR_AHL,
+  HEARING_FK_AGE,
+  HEARING_FK_AFFECTED_EARS,
+} from "./extractors/hearing.js";
 
 /**
  * Builds a human-readable structured confirmation message for a system, given
@@ -17,6 +24,49 @@ export function buildConfirmationMessage(
   const body = buildBody(system, values, signals);
   const footer = "\nConfirm and calculate?";
   return header + body + footer;
+}
+
+/**
+ * Builds a confirmation message for structured_live systems directly from
+ * extractedFacts, not from the display-key map in extractedValues.
+ * Prevents mismatches caused by snake_case vs camelCase display key names.
+ */
+export function buildStructuredConfirmationMessage(
+  system: GatiodSystemKey,
+  facts: V2SystemFacts
+): string {
+  const header = `**Confirmation — ${SYSTEM_LABELS[system] ?? system}**\n\nPlease confirm the extracted findings before I calculate the system-generated PI%:\n`;
+  const body = buildStructuredBody(system, facts);
+  const footer = "\nConfirm and calculate?";
+  return header + body + footer;
+}
+
+function buildStructuredBody(system: GatiodSystemKey, facts: V2SystemFacts): string {
+  switch (system) {
+    case "hearing": return buildHearingFromFacts(facts);
+    default: {
+      const entries = Object.entries(facts).filter(([, f]) => f?.value != null);
+      if (entries.length === 0) return "Findings collected — confirm to calculate.";
+      return entries.map(([k, f]) => line(formatKey(k), titleCase(String(f!.value)))).join("\n");
+    }
+  }
+}
+
+function buildHearingFromFacts(facts: V2SystemFacts): string {
+  const rows: string[] = [];
+  const path         = facts[HEARING_FK_PATH]?.value as string | undefined;
+  const affectedEars = facts[HEARING_FK_AFFECTED_EARS]?.value as string | undefined;
+  const rightAhl     = facts[HEARING_FK_RIGHT_EAR_AHL]?.value as number | undefined;
+  const leftAhl      = facts[HEARING_FK_LEFT_EAR_AHL]?.value as number | undefined;
+  const age          = facts[HEARING_FK_AGE]?.value as number | undefined;
+
+  if (path) rows.push(line("Assessment pathway", path === "nid" ? "Noise-Induced Deafness (NID)" : "Injury/Accident"));
+  if (affectedEars) rows.push(line("Affected ear", titleCase(affectedEars)));
+  if (rightAhl !== undefined) rows.push(line("Right ear AHL", `${rightAhl} dB`));
+  if (leftAhl  !== undefined) rows.push(line("Left ear AHL",  `${leftAhl} dB`));
+  if (age      !== undefined) rows.push(line("Age", String(age)));
+
+  return rows.join("\n") || "Hearing findings collected — confirm to calculate.";
 }
 
 const SYSTEM_LABELS: Partial<Record<GatiodSystemKey, string>> = {
@@ -210,9 +260,11 @@ function buildGastro(v: Record<string, string>, _s: Partial<SlotSignals>): strin
 
 function buildHearing(v: Record<string, string>, _s: Partial<SlotSignals>): string {
   const rows: string[] = [];
-  if (v.path) rows.push(line("Assessment pathway", titleCase(v.path)));
-  if (v.leftEarAhl) rows.push(line("Left ear AHL", v.leftEarAhl));
-  if (v.rightEarAhl) rows.push(line("Right ear AHL", v.rightEarAhl));
+  // Display keys use snake_case as written by the hearing extractor's displayValuesPatch.
+  if (v.path) rows.push(line("Assessment pathway", v.path === "nid" ? "Noise-Induced Deafness (NID)" : "Injury/Accident"));
+  if (v.affected_ears) rows.push(line("Affected ear", titleCase(v.affected_ears)));
+  if (v.right_ear_ahl) rows.push(line("Right ear AHL", v.right_ear_ahl));
+  if (v.left_ear_ahl)  rows.push(line("Left ear AHL",  v.left_ear_ahl));
   if (v.age) rows.push(line("Age", v.age));
   return rows.join("\n") || "Hearing findings collected — confirm to calculate.";
 }
