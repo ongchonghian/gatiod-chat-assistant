@@ -31,6 +31,21 @@ export type AuditEventType =
   | "v2_legacy_fallback_result"
   | "v2_global_cvc_offered"
   | "v2_global_cvc_executed"
+  | "v2_global_cvc_component_excluded"
+  | "v2_global_cvc_component_reincluded"
+  | "v2_semantic_consensus_gate"
+  | "v2_semantic_router_comparison"
+  | "semantic_interpretation_created"
+  | "semantic_interpretation_schema_failed"
+  | "semantic_interpretation_accepted"
+  | "semantic_interpretation_rejected"
+  | "semantic_interpretation_edited"
+  | "semantic_legacy_deferred_component"
+  | "semantic_legacy_fallback_requested"
+  | "semantic_to_structured_extraction_started"
+  | "semantic_to_structured_extraction_failed"
+  | "semantic_multi_region_spine_detected"
+  | "v2_component_skipped_by_user"
   | "spine_multi_region_unsupported";
 
 export interface AuditEntry {

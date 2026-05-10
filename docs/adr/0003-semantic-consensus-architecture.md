@@ -1,0 +1,97 @@
+# 0003 — Semantic consensus architecture
+
+## Status
+
+Proposed (2026-05-10).
+
+## Context
+
+V2 today is a deterministic pipeline: normalize → pending-observation gate → grounding → router → extractor → readiness → confirmation → tool → render. All seven structured-capable systems pass [ADR-0001](0001-structured-live-promotion-gate.md) thresholds at full Excel scale (3,927 rows). Calculation correctness is high.
+
+What V2 does not have is **clinical-language understanding for dense multi-system narratives**. A doctor pasting:
+
+```
+Heavy object strike: Left common peroneal nerve lesion with combined sensory and motor deficit; Complete anosmia due to traumatic olfactory nerve injury.
+```
+
+today triggers the router on whatever single system wins the keyword/synonym/ontology score, silently dropping the other system. The product needs a layer that proposes "I think this is lower-limb nerve + CNS olfaction, source spans here, missing fields here" and asks the doctor to confirm that interpretation before deterministic extraction runs.
+
+The PRD ([gatiod_holistic_prd.md](../gatiod_holistic_prd.md)) describes the target. This ADR records the architectural decisions that emerged during the 2026-05-10 grilling session and that turn the PRD into something an engineer can implement without further design judgement.
+
+## Decision
+
+The semantic consensus layer is added as a **proposal-only LLM front door** that sits before the existing deterministic V2 pipeline for inputs that need it, and is bypassed entirely for inputs that don't.
+
+### 1. Pipeline placement
+
+```
+normalize
+→ pending-observation gate     (existing)
+→ pending-consensus gate       (new — REQ-SC-RESOLVE-001)
+→ shouldRunSemanticConsensus() (new — deterministic, no LLM)
+   ├─ true → semantic interpreter → render proposal → STOP
+   └─ false → grounding → router → extractor → readiness → confirmation → tool → render
+```
+
+`shouldRunSemanticConsensus()` is a deterministic preflight gate — never an LLM call. It uses pending-state checks, local synonym scan for ≥2 detected systems, legacy/deferred signal detection, dense-narrative markers, and low-confidence + unresolved-terms signals. The router still runs in shadow when semantic consensus fires, but its output is audit-only.
+
+### 2. Semantic interpreter contract
+
+The interpreter uses **schema-constrained structured output** (Option A-prime): the model is forced to return a `SemanticInterpretation` JSON object validated by Zod. It is not given access to `assess_*` tools or any function-calling that could execute against the assessment engine. After parsing, the safety validator checks: no `piPercent`, no `toolName`, no `assess_*` reference, `calculationReady` always false, every `sourceSpan` traceable to the original text, candidate systems within the `GatiodSystemKey` enum, legacy systems labelled `legacy_deferred`.
+
+The prompt is assembled at call time from a **registry-backed taxonomy** module (`semanticSystemTaxonomy.ts`) — system status (`structured_supported` vs `legacy_deferred`) is derived from `V2_SYSTEM_REGISTRY.mode`, not hardcoded prose. Clinical signals and source-span examples are curated per system but kept separate from PI tables and CVC formulas, which the interpreter must never see.
+
+### 3. State shape
+
+`V2SessionState` gains three additive fields, all hydrated by `coerceV2State()` for backward compatibility (no DB migration, no `version` bump):
+
+```ts
+pendingConsensus: PendingConsensus | null;
+claimComponentOverrides: Partial<Record<GatiodSystemKey, ClaimComponentOverride>>;
+globalCvcExclusions: Partial<Record<GatiodSystemKey, GlobalCvcExclusion>>;
+```
+
+`ClaimAssessmentComponent` (PRD §10.2 / FR-MS-002) is a **derived view model**, not a stored object. The view combines `V2SystemState.status`, pending observations, confirmation, `piPercent`, and `claimComponentOverrides`. The overlay only persists statuses that cannot be derived from `V2SystemState`: `detected`, `legacy_deferred`, `unsupported`, `skipped_by_user`. This avoids the drift risk of a fully parallel claim model.
+
+`skipped_by_user` and `excluded_from_global_cvc` are kept distinct (REQ-GC-EXCLUSION-001). Skip means never assessed; exclusion means assessed-then-omitted-from-CVC. They live in different state fields with different audit events.
+
+### 4. Consensus resolver
+
+The resolver is **deterministic** (REQ-SC-RESOLVE-001). It resolves the doctor's reply to one of: `accepted_all`, `accepted_system_first`, `edit_requested`, `rejected`, `legacy_requested`, `skipped_system`, `unresolved`. Priority order is fixed so specific actions win over generic affirmation. System parsing reuses the shared `detectExplicitSystemSelection` helper, constrained to `pendingConsensus.candidateSystems` (the doctor cannot accidentally jump to a system the interpretation didn't propose).
+
+`accepted_system_first` is an **ordering decision, not a partial accept**. "Hearing first" means "I accept the whole interpretation; show me hearing first." Extraction runs against `pendingConsensus.sourceText` for **all** accepted structured-capable systems; the focus only affects which system's confirmation/clarification renders next. This preserves accepted systems even when the doctor selects one of them as the focus.
+
+The LLM is invoked at most once per turn for re-interpretation (when `pendingConsensus.awaiting === "edit_instruction"` and the doctor supplies a correction).
+
+### 5. Extraction context
+
+Accepted semantic context flows into deterministic extractors as a **fourth optional `ExtractionContext` parameter** on `StructuredExtractor`. It is explicit, ephemeral, and read-only. It is not stored in `V2SystemState` (which is the calculation source of truth) and not encoded into `NormalizedUtterance` (which is normalizer output). Spine specifically uses `extractionContext.selectedScope.sourceSpans` to narrow the input when the doctor has chosen one region from a multi-region proposal — without this, the extractor's existing multi-region hard guard would re-trigger on the unfiltered text and block the assessment the doctor just authorized.
+
+### 6. Unified claim plan
+
+`buildNextSystemHandoff` is replaced by `buildNextClaimStep`, which reads from `deriveClaimAssessmentComponents`. The compact 2-system handoff message is one rendering mode of the unified plan; the structured 3+ system plan is another. This is the only orchestration mechanism the app has, eliminating the drift risk of two parallel "what's next" functions and ensuring legacy-deferred / unsupported / skipped systems never disappear from the plan.
+
+## Alternatives considered
+
+- **Pure deterministic gate vs. LLM pre-classifier for `shouldRunSemanticConsensus()`** — rejected the LLM pre-classifier because it adds non-determinism and cost to a function that runs on every message. Deterministic preflight handles dense-narrative detection well enough at zero LLM cost.
+- **Tool/function calling for the semantic interpreter** — rejected because exposing any callable surface to the semantic LLM risks accidentally executing assessment tools. Schema-constrained structured output gets the same JSON reliability without the execution risk.
+- **Prompt-only JSON output (Option C)** — rejected as primary because it weakens the safety boundary for a medico-legal workflow. Kept as the fallback when the model provider doesn't support schema-constrained output.
+- **Hardcoded taxonomy in the prompt prose** — rejected because system status (legacy / shadow / live) lives in `V2_SYSTEM_REGISTRY` and would drift from the prompt without a generated section. The taxonomy module is keyed by `GatiodSystemKey` so a registry mode flip propagates automatically.
+- **Fully stored `claimComponents`** — rejected because it duplicates `V2SystemState.status` and creates a drift surface. Thin overlay + derivation is enough.
+- **Expanding `V2SystemStatus` to 9 values** — rejected because the new claim-level concepts (`detected`, `skipped_by_user`, `legacy_deferred`, `unsupported`) are at a different abstraction level than the existing extraction/calculation states. Mixing them would force every extractor and readiness validator to understand claim-level orchestration concepts they don't need.
+- **LLM intent classifier for consensus replies** — rejected because the resolution space is bounded (six branches, chip-driven). Deterministic parsing is safer and faster.
+
+## Consequences
+
+- The PRD's P0 backlog grows from 7 items to 14, all required to ship together for safe rollout. P1 covers production trust (shadow runner, CVC re-offer on exclusion change, edit-cycle re-interpretation, registry alignment, audit dashboard).
+- The implementation follows eight slices (A→H, see PRD §25). The critical dependency is that the consensus resolver (D) and unified claim plan (B) must exist before the semantic interpreter is user-visible (F). Skipping this ordering would create accepted systems the app cannot resolve or remember.
+- `getCalculatedSystems()`, the spine extractor, the registry type, and `chatServiceV2.ts` all change. None of these changes are user-visible behaviour changes by themselves (Slice A is contract-only); the user-visible change happens at Slice F.
+- Two test tiers: fast semantic goldens (default CI, no LLM, validate contracts) and slow semantic shadow (opt-in via `GATIOD_RUN_SEMANTIC_SHADOW=true`, real LLM, grade interpretation quality). The shadow runner mirrors the ADR-0001 evidence pattern but with semantic-specific outcome classes.
+- Auditability gains: every semantic decision (proposal created, accepted, edited, rejected, legacy-requested, skip), every claim-component transition, every Global CVC exclusion/re-inclusion, and every semantic/deterministic disagreement emits a typed audit event with a structured payload.
+
+## References
+
+- [gatiod_holistic_prd.md](../gatiod_holistic_prd.md) — full target architecture.
+- [ADR-0001](0001-structured-live-promotion-gate.md) — promotion gate that the semantic shadow runner will eventually mirror.
+- [ADR-0002](0002-cns-visual-structured-migration.md) — CNS/Visual remain `legacy_deferred`; the semantic layer recognizes them but does not produce structured PI%.
+- [CONTEXT.md](../../CONTEXT.md) — glossary additions for semantic consensus, claim plan, override states, extraction context.

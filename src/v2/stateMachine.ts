@@ -1,7 +1,11 @@
 import { createHash } from "crypto";
 import type {
+  ClaimComponentOverride,
+  ClaimOverrideStatus,
   GatiodSystemKey,
+  GlobalCvcExclusion,
   PendingConfirmation,
+  PendingConsensus,
   PendingGlobalCvcConfirmation,
   PendingObservation,
   RouteDecision,
@@ -63,6 +67,95 @@ export function defaultV2SessionState(): V2SessionState {
     pendingClarification: null,
     pendingConfirmation: null,
     pendingGlobalCvcConfirmation: null,
+    pendingConsensus: null,
+    claimComponentOverrides: {},
+    globalCvcExclusions: {},
+  };
+}
+
+const VALID_OVERRIDE_STATUSES: readonly ClaimOverrideStatus[] = [
+  "detected",
+  "legacy_deferred",
+  "unsupported",
+  "skipped_by_user",
+];
+
+function coerceClaimComponentOverrides(
+  raw: unknown,
+): Partial<Record<GatiodSystemKey, ClaimComponentOverride>> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Partial<Record<GatiodSystemKey, ClaimComponentOverride>> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!SYSTEM_KEYS.includes(key as GatiodSystemKey)) continue;
+    if (!value || typeof value !== "object") continue;
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.status !== "string") continue;
+    if (!VALID_OVERRIDE_STATUSES.includes(obj.status as ClaimOverrideStatus)) continue;
+    out[key as GatiodSystemKey] = {
+      status: obj.status as ClaimOverrideStatus,
+      reason: typeof obj.reason === "string" ? obj.reason : undefined,
+      source:
+        obj.source === "semantic_consensus" ||
+        obj.source === "user_choice" ||
+        obj.source === "safe_fail" ||
+        obj.source === "legacy_policy"
+          ? obj.source
+          : undefined,
+      sourceText: typeof obj.sourceText === "string" ? obj.sourceText : undefined,
+      createdAt: typeof obj.createdAt === "string" ? obj.createdAt : nowIso(),
+      updatedAt: typeof obj.updatedAt === "string" ? obj.updatedAt : nowIso(),
+    };
+  }
+  return out;
+}
+
+function coerceGlobalCvcExclusions(
+  raw: unknown,
+): Partial<Record<GatiodSystemKey, GlobalCvcExclusion>> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Partial<Record<GatiodSystemKey, GlobalCvcExclusion>> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!SYSTEM_KEYS.includes(key as GatiodSystemKey)) continue;
+    if (!value || typeof value !== "object") continue;
+    const obj = value as Record<string, unknown>;
+    if (obj.source !== "user_choice") continue;
+    out[key as GatiodSystemKey] = {
+      excludedAt: typeof obj.excludedAt === "string" ? obj.excludedAt : nowIso(),
+      excludedBy: typeof obj.excludedBy === "string" ? obj.excludedBy : undefined,
+      reason: typeof obj.reason === "string" ? obj.reason : undefined,
+      source: "user_choice",
+    };
+  }
+  return out;
+}
+
+function coercePendingConsensus(raw: unknown): PendingConsensus | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (
+    typeof obj.interpretationId !== "string" ||
+    typeof obj.interpretationHash !== "string" ||
+    typeof obj.sourceHash !== "string" ||
+    typeof obj.sourceText !== "string" ||
+    typeof obj.message !== "string" ||
+    !Array.isArray(obj.candidateSystems) ||
+    typeof obj.createdAt !== "string"
+  ) {
+    return null;
+  }
+  const candidateSystems = (obj.candidateSystems as unknown[]).filter(
+    (s): s is GatiodSystemKey => typeof s === "string" && SYSTEM_KEYS.includes(s as GatiodSystemKey),
+  );
+  const awaiting = obj.awaiting === "edit_instruction" ? "edit_instruction" : "decision";
+  return {
+    interpretationId: obj.interpretationId,
+    interpretationHash: obj.interpretationHash,
+    sourceHash: obj.sourceHash,
+    sourceText: obj.sourceText,
+    message: obj.message,
+    candidateSystems,
+    createdAt: obj.createdAt,
+    awaiting,
   };
 }
 
@@ -109,6 +202,18 @@ export function coerceV2State(raw: unknown): V2SessionState {
   merged.pendingClarification = candidate.pendingClarification ?? null;
   merged.pendingConfirmation = candidate.pendingConfirmation ?? null;
   merged.pendingGlobalCvcConfirmation = candidate.pendingGlobalCvcConfirmation ?? null;
+
+  // Semantic consensus + claim orchestration (ADR-0003) — additive fields,
+  // hydrated to safe defaults when absent in older persisted state.
+  merged.pendingConsensus = coercePendingConsensus(
+    (candidate as unknown as Record<string, unknown>).pendingConsensus,
+  );
+  merged.claimComponentOverrides = coerceClaimComponentOverrides(
+    (candidate as unknown as Record<string, unknown>).claimComponentOverrides,
+  );
+  merged.globalCvcExclusions = coerceGlobalCvcExclusions(
+    (candidate as unknown as Record<string, unknown>).globalCvcExclusions,
+  );
 
   // Coerce instancesBySystem
   const rawInstances = candidate.instancesBySystem as Record<string, unknown[]> | undefined;
@@ -172,6 +277,44 @@ export function setPendingGlobalCvcConfirmation(
     ...state,
     pendingGlobalCvcConfirmation: pending,
   };
+}
+
+export function setPendingConsensus(
+  state: V2SessionState,
+  pending: PendingConsensus | null,
+): V2SessionState {
+  return {
+    ...state,
+    pendingConsensus: pending,
+  };
+}
+
+export function setClaimComponentOverride(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+  override: ClaimComponentOverride | null,
+): V2SessionState {
+  const next = { ...state.claimComponentOverrides };
+  if (override === null) {
+    delete next[system];
+  } else {
+    next[system] = override;
+  }
+  return { ...state, claimComponentOverrides: next };
+}
+
+export function setGlobalCvcExclusion(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+  exclusion: GlobalCvcExclusion | null,
+): V2SessionState {
+  const next = { ...state.globalCvcExclusions };
+  if (exclusion === null) {
+    delete next[system];
+  } else {
+    next[system] = exclusion;
+  }
+  return { ...state, globalCvcExclusions: next };
 }
 
 export function applyToolResults(state: V2SessionState, executedCalls: ToolPlanCall[]): V2SessionState {

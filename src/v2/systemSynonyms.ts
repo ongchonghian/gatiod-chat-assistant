@@ -192,10 +192,17 @@ export const SYSTEM_SYNONYMS: SystemSynonym[] = [
   { term: "anal", system: "gastro_digestive", confidence: 0.9, notes: "anal canal/disease is gastro; anal fissure usually too" },
   { term: "faecal", system: "gastro_digestive", confidence: 1.0 },
   { term: "fecal", system: "gastro_digestive", confidence: 1.0 },
-  // "abdominal" alone is gastro most of the time but can refer to abdominal
-  // wall trauma broadly — kept lower confidence than core organ terms.
-  { term: "abdominal", system: "gastro_digestive", confidence: 0.85, notes: "abdominal wall hernia and abdominal organ disease both route here" },
-  { term: "abdomen", system: "gastro_digestive", confidence: 0.85 },
+  // Slice-37 — "abdominal" alone is too generic (matches "abdominal blunt
+  // trauma" descriptions in spine+lower_limb cross-system rows). Use
+  // multi-word forms that imply gastro pathology specifically. The bare
+  // "abdomen" stays at lower confidence as a fallback for ontology
+  // suggestions but is below the router's 0.85 keyword threshold.
+  { term: "abdominal wall", system: "gastro_digestive", confidence: 0.95 },
+  { term: "abdominal hernia", system: "gastro_digestive", confidence: 1.0 },
+  { term: "abdominal pain", system: "gastro_digestive", confidence: 0.9 },
+  { term: "abdominal organ", system: "gastro_digestive", confidence: 1.0 },
+  { term: "abdominal distension", system: "gastro_digestive", confidence: 0.9 },
+  { term: "abdomen", system: "gastro_digestive", confidence: 0.7, requiresConfirmation: true, notes: "too generic for direct routing; needs co-occurring gastro term" },
 
   // ── Hearing ─────────────────────────────────────────────────────────────
   { term: "hearing", system: "hearing", confidence: 1.0 },

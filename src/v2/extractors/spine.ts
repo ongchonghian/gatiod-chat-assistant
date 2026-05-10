@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import type {
   ExtractedFact,
   ExtractionAuditEvent,
+  ExtractionContext,
   GatiodSystemKey,
   NormalizedUtterance,
   OntologyMatch,
@@ -266,10 +267,26 @@ function severityChipsForCategory(category: DiagnosisCategory, pathway?: Spondyl
 export function extractSpine(
   utterance: NormalizedUtterance,
   currentSystemState: V2SystemState,
-  _ontologyMatches: OntologyMatch[] = []
+  _ontologyMatches: OntologyMatch[] = [],
+  extractionContext?: ExtractionContext,
 ): StructuredExtractionResult {
-  const text = utterance.normalizedText;
-  const raw = utterance.raw;
+  // REQ-SC-SPINE-001 / REQ-SC-SPINE-002 — when the doctor selected one
+  // spine region from a multi-region semantic proposal, the orchestrator
+  // passes the chosen region's source spans here. We narrow the parsing
+  // input to those spans only — the hard multi-region guard still runs
+  // (it can't know the doctor already picked a region), so the narrowed
+  // text MUST contain only one region.
+  const useSelectedScope =
+    extractionContext?.selectedScope?.system === "spine" &&
+    Array.isArray(extractionContext.selectedScope.sourceSpans) &&
+    extractionContext.selectedScope.sourceSpans.length > 0;
+
+  const text = useSelectedScope
+    ? extractionContext!.selectedScope!.sourceSpans.join(" ; ")
+    : utterance.normalizedText;
+  const raw = useSelectedScope
+    ? extractionContext!.selectedScope!.sourceSpans.join(" ; ")
+    : utterance.raw;
   const existingFacts = currentSystemState.extractedFacts;
 
   const factsPatch: V2SystemFacts = {};

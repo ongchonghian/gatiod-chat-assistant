@@ -218,6 +218,26 @@ export interface ExtractedFact<T> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type V2SystemFacts = Record<string, ExtractedFact<any>>;
 
+/** Why a semantic-accepted finding could not be mapped to a calculation-grade
+ *  fact. Populated on `PendingObservation.semanticAttribution` so the
+ *  doctor-facing message can explain *what* the system understood and *what*
+ *  it still needs (REQ-SC-DISAGREE-001). */
+export type SemanticMappingFailureKind =
+  | "missing_calculation_field"
+  | "unmapped_canonical_term"
+  | "ambiguous_mapping"
+  | "unsupported_in_structured_v2"
+  | "extractor_no_match";
+
+export interface PendingObservationSemanticAttribution {
+  interpretationId: string;
+  sourceSpan: string;
+  proposedMapping: string;
+  findingType: SemanticFindingType;
+  confidence: number;
+  failureKind: SemanticMappingFailureKind;
+}
+
 // D3 — unresolved observation waiting for a missing clinical field.
 export interface PendingObservation {
   id: string;
@@ -229,6 +249,7 @@ export interface PendingObservation {
     | "severity_bracket"
     | "hearing_value"
     | "visual_value"
+    | "semantic_mapping_gap"
     | "other";
   sourceText: string;
   parsed: Record<string, unknown>;
@@ -237,6 +258,11 @@ export interface PendingObservation {
   candidateAnswers?: string[];
   createdAt: string;
   updatedAt: string;
+  /** Set when this observation was produced because a semantically-accepted
+   *  finding could not be converted to a calculation-grade fact. The
+   *  doctor-facing message says: "I understood this as X, based on
+   *  '<sourceSpan>', but I still need <missingField>." (REQ-SC-DISAGREE-001) */
+  semanticAttribution?: PendingObservationSemanticAttribution;
 }
 
 // D4 — system-level confirmation with a facts-hash snapshot.
@@ -286,6 +312,287 @@ export interface PendingGlobalCvcConfirmation {
   createdAt: string;
 }
 
+// ── Semantic consensus layer (ADR-0003) ────────────────────────────────────
+// Proposal-only LLM front door. The interpreter must never write calculation
+// facts, produce PI%, or reference assess_* tools. See REQ-SC-OUTPUT-001.
+
+/** Status of a candidate system in a semantic interpretation. */
+export type SemanticSystemStatus =
+  | "structured_supported"
+  | "structured_shadow"
+  | "legacy_deferred";
+
+/** Type of a candidate finding within a semantic interpretation. */
+export type SemanticFindingType =
+  | "amputation"
+  | "rom"
+  | "neurological"
+  | "dbe"
+  | "spine_diagnosis"
+  | "hearing_loss"
+  | "respiratory_function"
+  | "renal_function"
+  | "gastro_subsystem"
+  | "cns_component"
+  | "visual_component"
+  | "other";
+
+/** Completeness of a candidate finding. `calculation_ready` is intentionally absent —
+ *  semantic findings are never calculation-ready; only deterministic extractors
+ *  produce calculation-grade facts. */
+export type SemanticFindingCompleteness =
+  | "complete_for_extraction"
+  | "missing_calculation_fields"
+  | "unsupported";
+
+export interface SemanticCandidateSystem {
+  system: GatiodSystemKey;
+  confidence: number;
+  status: SemanticSystemStatus;
+  evidence: string[];
+  rationale: string;
+}
+
+export interface SemanticCandidateFinding {
+  system: GatiodSystemKey;
+  /** Quoted substring of the original utterance — must be verifiable against source text. */
+  sourceSpan: string;
+  findingType: SemanticFindingType;
+  proposedMapping: string;
+  systemConfidence: number;
+  mappingConfidence: number;
+  completeness: SemanticFindingCompleteness;
+  explicitlyStatedFields: string[];
+  inferredFields: string[];
+  missingFields: string[];
+  /** Always false. Enforced as `z.literal(false)` in the schema validator. */
+  calculationReady: false;
+}
+
+export interface SemanticInterpretation {
+  id: string;
+  sourceText: string;
+  sourceHash: string;
+  candidateSystems: SemanticCandidateSystem[];
+  candidateFindings: SemanticCandidateFinding[];
+  unsupportedTerms: string[];
+  assumptions: string[];
+  /** Always true. Marker that this object requires doctor consensus before extraction. */
+  requiresUserConsensus: true;
+  createdAt: string;
+}
+
+/** Persisted state when a semantic proposal awaits doctor decision.
+ *  Resolved before any routing, extraction, or policy decision runs (REQ-SC-RESOLVE-001). */
+export interface PendingConsensus {
+  interpretationId: string;
+  /** Hash of the SemanticInterpretation object — detects when the interpretation
+   *  itself was replaced (e.g. after an edit cycle). */
+  interpretationHash: string;
+  /** Hash of the original source text — detects when a new utterance arrives
+   *  before the previous proposal was resolved. */
+  sourceHash: string;
+  sourceText: string;
+  /** Doctor-facing rendered proposal message. */
+  message: string;
+  candidateSystems: GatiodSystemKey[];
+  createdAt: string;
+  /** "decision" — awaiting Proceed / Edit / Reject / Assess X first / Skip / Use legacy.
+   *  "edit_instruction" — Edit was chosen; awaiting the doctor's correction text. */
+  awaiting: "decision" | "edit_instruction";
+}
+
+// ── Semantic consensus gate (REQ-SC-GATE-001) ───────────────────────────────
+// Deterministic preflight that decides whether to invoke the semantic
+// interpreter. Must NEVER call an LLM. Returns auditable trigger reasons.
+
+export type SemanticConsensusTriggerKind =
+  | "multi_system"
+  | "legacy_deferred"
+  | "dense_narrative"
+  | "scope_conflict"
+  | "ambiguous_clinical"
+  | "none";
+
+export type SemanticConsensusSkipReason =
+  | "feature_flag_disabled"
+  | "pending_consensus"
+  | "pending_confirmation"
+  | "pending_global_cvc"
+  | "pending_observation"
+  | "short_workflow_reply"
+  | "empty_text";
+
+export interface SemanticConsensusGateResult {
+  shouldRun: boolean;
+  reasons: string[];
+  detectedSystems: GatiodSystemKey[];
+  triggerKind: SemanticConsensusTriggerKind;
+  /** When `shouldRun` is false, the deterministic reason it was skipped. */
+  skipReason?: SemanticConsensusSkipReason;
+}
+
+// ── Claim-level orchestration (REQ-MS-COMPONENT-001) ───────────────────────
+// ClaimAssessmentComponent is a derived view; only states that cannot be
+// derived from V2SystemState persist as overrides.
+
+/** Statuses that cannot be derived from `V2SystemState.status`.
+ *  Stored as overrides; everything else (idle/collecting/calculated) is derived. */
+export type ClaimOverrideStatus =
+  | "detected"
+  | "legacy_deferred"
+  | "unsupported"
+  | "skipped_by_user";
+
+export interface ClaimComponentOverride {
+  status: ClaimOverrideStatus;
+  reason?: string;
+  source?: "semantic_consensus" | "user_choice" | "safe_fail" | "legacy_policy";
+  sourceText?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Doctor-chosen exclusion of an already-calculated system from Global CVC.
+ *  Distinct from `skipped_by_user` (REQ-GC-EXCLUSION-001). The system's PI%
+ *  is preserved; only its CVC eligibility is removed. */
+export interface GlobalCvcExclusion {
+  excludedAt: string;
+  excludedBy?: string;
+  reason?: string;
+  source: "user_choice";
+}
+
+/** Read-only context passed to deterministic extractors after consensus is
+ *  accepted (REQ-MS-EXTRACT-001). Must not be persisted in V2SystemState. */
+export interface ExtractionContext {
+  consensusId: string;
+  sourceText: string;
+  sourceHash: string;
+  acceptedSystems: GatiodSystemKey[];
+  acceptedFindings: SemanticCandidateFinding[];
+  /** When the doctor selected "Assess X first", focusSystem is X. Other accepted
+   *  systems are still extracted; focus only affects rendering order. */
+  focusSystem?: GatiodSystemKey;
+  /** For multi-region narrowing (e.g. spine cervical-first). When set, the
+   *  extractor should use these source spans instead of the full original text. */
+  selectedScope?: {
+    system: GatiodSystemKey;
+    scope: string;
+    sourceSpans: string[];
+  };
+}
+
+/** Action chosen by the deterministic consensus resolver (REQ-SC-RESOLVE-001). */
+export type ConsensusResolutionAction =
+  | "accepted_all"
+  | "accepted_system_first"
+  | "edit_requested"
+  | "rejected"
+  | "legacy_requested"
+  | "skipped_system"
+  | "unresolved";
+
+export interface ConsensusResolutionResult {
+  resolved: boolean;
+  action: ConsensusResolutionAction;
+  state: V2SessionState;
+  /** Set when extraction should run this turn (accepted_all / accepted_system_first). */
+  extractionPlan?: {
+    sourceText: string;
+    sourceHash: string;
+    sourceUtterance: NormalizedUtterance;
+    extractionContext: ExtractionContext;
+    targets: GatiodSystemKey[];
+    focusSystem?: GatiodSystemKey;
+  };
+  /** Set when this resolution produces a user-facing reply that stops the pipeline. */
+  response?: {
+    message: string;
+    chips?: string[];
+    stopPipeline: boolean;
+  };
+  auditEvent?: {
+    eventType: string;
+    payload: Record<string, unknown>;
+  };
+}
+
+// ── Derived claim plan view (REQ-MS-PLAN-001) ──────────────────────────────
+// ClaimAssessmentComponent is computed at render time from V2SystemState +
+// claimComponentOverrides + globalCvcExclusions + pending states. It is a
+// view model, not a stored object.
+
+/** Full set of statuses a ClaimAssessmentComponent can be in. Includes both
+ *  derivable states (idle/needs_clarification/.../calculated) and the four
+ *  override-only states from `ClaimOverrideStatus`. */
+export type ClaimComponentStatus =
+  | "idle"
+  | "detected"
+  | "needs_clarification"
+  | "ready_for_confirmation"
+  | "confirmation_pending"
+  | "confirmed"
+  | "calculated"
+  | "legacy_deferred"
+  | "unsupported"
+  | "skipped_by_user";
+
+export interface ClaimAssessmentComponent {
+  system: GatiodSystemKey;
+  status: ClaimComponentStatus;
+  piPercent?: number;
+  missingFields?: string[];
+  pendingQuestion?: string;
+  /** Reason text from `claimComponentOverrides[system]` or doctor-facing
+   *  description when the component is in a terminal state. */
+  reason?: string;
+  /** Provenance of the override, when present. */
+  source?: ClaimComponentOverride["source"];
+  /** True when the system is calculated but listed in `globalCvcExclusions`. */
+  excludedFromGlobalCvc?: boolean;
+  exclusionReason?: string;
+}
+
+/** The next user-facing step the claim should advance to. Rendered compactly
+ *  for ≤2 active systems, as a structured plan for 3+ (REQ-MS-PLAN-001). */
+export type ClaimStep =
+  | {
+      kind: "confirm_system";
+      system: GatiodSystemKey;
+      message: string;
+      chips: string[];
+    }
+  | {
+      kind: "clarify_system";
+      system: GatiodSystemKey;
+      message: string;
+      chips?: string[];
+    }
+  | {
+      kind: "legacy_deferred";
+      system: GatiodSystemKey;
+      message: string;
+      chips: string[];
+    }
+  | {
+      kind: "unsupported";
+      system: GatiodSystemKey;
+      message: string;
+      chips: string[];
+    }
+  | {
+      kind: "offer_global_cvc";
+      message: string;
+      chips: string[];
+    }
+  | {
+      kind: "claim_plan";
+      message: string;
+      chips: string[];
+      components: ClaimAssessmentComponent[];
+    };
+
 export interface V2SessionState {
   version: 1;
   systems: Record<GatiodSystemKey, V2SystemState>;
@@ -299,6 +606,12 @@ export interface V2SessionState {
   pendingClarification: string | null;
   pendingConfirmation: PendingConfirmation | null;
   pendingGlobalCvcConfirmation: PendingGlobalCvcConfirmation | null;
+  /** Set when a semantic interpretation awaits doctor decision (REQ-SC-RESOLVE-001). */
+  pendingConsensus: PendingConsensus | null;
+  /** Claim-level statuses that cannot be derived from V2SystemState (REQ-MS-COMPONENT-001). */
+  claimComponentOverrides: Partial<Record<GatiodSystemKey, ClaimComponentOverride>>;
+  /** Calculated systems explicitly excluded from Global CVC by doctor choice (REQ-GC-EXCLUSION-001). */
+  globalCvcExclusions: Partial<Record<GatiodSystemKey, GlobalCvcExclusion>>;
 }
 
 export interface ChatV2Response {

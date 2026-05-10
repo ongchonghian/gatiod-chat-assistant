@@ -15,7 +15,8 @@
     "check:excel-fixtures-fresh": "tsx scripts/check-excel-fixtures-fresh.ts",
     "check:adr-0001-promotion": "tsx scripts/check-adr-0001-promotion.ts",
     "test:excel-shadow": "GATIOD_RUN_EXCEL_SCENARIOS=true vitest run tests/v2/excelScenarios",
-    "test:excel-full": "GATIOD_RUN_EXCEL_SCENARIOS=true EXCEL_SCENARIO_FULL=true vitest run --testTimeout=900000 tests/v2/excelScenarios"
+    "test:excel-full": "GATIOD_RUN_EXCEL_SCENARIOS=true EXCEL_SCENARIO_FULL=true vitest run --testTimeout=900000 tests/v2/excelScenarios",
+    "test:semantic-shadow": "GATIOD_RUN_SEMANTIC_SHADOW=true vitest run --testTimeout=600000 tests/v2/semanticShadow"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

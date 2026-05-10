@@ -8,10 +8,12 @@
 // is re-presented with the new values.
 import type {
   GatiodSystemKey,
+  GlobalCvcExclusion,
   PendingGlobalCvcConfirmation,
   V2SessionState,
 } from "./contracts.js";
 import { combineMultipleValuesChart } from "../engine/cvcCalculator.js";
+import { setGlobalCvcExclusion } from "./stateMachine.js";
 
 export interface CalculatedSystemPi {
   system: GatiodSystemKey;
@@ -35,16 +37,23 @@ const SYSTEM_LABELS: Record<GatiodSystemKey, string> = {
  * assess_* tool execution. A system whose facts changed after calculation
  * has piPercent === null (cleared by applyStructuredExtraction), so it does
  * not appear here. This is the soft queue.
+ *
+ * Systems explicitly excluded by the doctor via `globalCvcExclusions`
+ * (REQ-GC-EXCLUSION-001) are filtered out — their PI% remains valid in
+ * V2SystemState for audit, but they do not contribute to Global CVC.
  */
 export function getCalculatedSystems(state: V2SessionState): CalculatedSystemPi[] {
   const out: CalculatedSystemPi[] = [];
+  const exclusions = state.globalCvcExclusions ?? {};
   for (const [key, sys] of Object.entries(state.systems)) {
+    const system = key as GatiodSystemKey;
+    if (exclusions[system]) continue;
     if (
       sys.status === "calculated" &&
       typeof sys.piPercent === "number" &&
       sys.piPercent > 0
     ) {
-      out.push({ system: key as GatiodSystemKey, piPercent: sys.piPercent });
+      out.push({ system, piPercent: sys.piPercent });
     }
   }
   // Largest first — matches CVC convention.
@@ -203,4 +212,149 @@ function formatPercent(v: number): string {
   // Match the engine's existing display style (whole numbers when integer,
   // one decimal otherwise).
   return Number.isInteger(v) ? `${v}%` : `${v.toFixed(1)}%`;
+}
+
+// ── P1-B: Global CVC exclusion handling (REQ-GC-EXCLUSION-001) ─────────────
+//
+// `excludeFromGlobalCvc` and `reincludeInGlobalCvc` are the higher-level
+// helpers callers should use when the doctor decides to omit a calculated
+// system from the combined PI% (or restore it). Both:
+//   1. Update `state.globalCvcExclusions` correctly.
+//   2. Stale any pending CVC offer that included the affected system.
+//   3. Return the audit-event payload so the caller can log it as
+//      `v2_global_cvc_component_excluded` / `v2_global_cvc_component_reincluded`.
+//
+// Stale rule: any change to which calculated systems are CVC-eligible
+// invalidates the snapshot's `componentSystems` and `componentValues`. The
+// safe behaviour is to drop the offer; the next turn re-evaluates whether
+// to re-offer.
+
+export type GlobalCvcExclusionChangeKind = "excluded" | "reincluded";
+
+export interface GlobalCvcExclusionAuditPayload {
+  kind: GlobalCvcExclusionChangeKind;
+  system: GatiodSystemKey;
+  piPercent: number | null;
+  reason?: string;
+  /** Snapshot of the pending CVC offer that was staled, if any. */
+  previousSnapshot?: {
+    componentSystems: GatiodSystemKey[];
+    componentValues: number[];
+  };
+  /** True when the change actually removed an offer (not just changed
+   *  exclusion). Useful for telemetry. */
+  staleOfferDropped: boolean;
+}
+
+export interface GlobalCvcExclusionChangeResult {
+  state: V2SessionState;
+  auditEvent: {
+    eventType: "v2_global_cvc_component_excluded" | "v2_global_cvc_component_reincluded";
+    payload: GlobalCvcExclusionAuditPayload;
+  };
+}
+
+function staleSnapshotIfAffected(
+  state: V2SessionState,
+  affectedSystem: GatiodSystemKey,
+): {
+  state: V2SessionState;
+  previousSnapshot?: GlobalCvcExclusionAuditPayload["previousSnapshot"];
+  dropped: boolean;
+} {
+  const pending = state.pendingGlobalCvcConfirmation;
+  if (!pending) {
+    return { state, dropped: false };
+  }
+  // Any change to exclusions invalidates the snapshot when the affected
+  // system was either in the offer (now excluded) or could be added (now
+  // reincluded). The offer's componentSystems is the authoritative list.
+  const affected = pending.componentSystems.includes(affectedSystem);
+  if (!affected) {
+    // Re-inclusion of a system the offer already excluded should still
+    // re-offer because the eligible set grew. Treat any exclusion-list
+    // change as cause to drop.
+  }
+  const previousSnapshot = {
+    componentSystems: [...pending.componentSystems],
+    componentValues: [...pending.componentValues],
+  };
+  return {
+    state: { ...state, pendingGlobalCvcConfirmation: null },
+    previousSnapshot,
+    dropped: true,
+  };
+}
+
+/**
+ * Exclude an already-calculated system from Global CVC. Stales any pending
+ * offer. Caller should log the returned audit event.
+ *
+ * Pre-condition: the system should be `calculated` (PI% > 0). The helper
+ * does not enforce this — REQ-GC-EXCLUSION-001 disallows excluding a
+ * non-calculated system, and the consensus resolver's "skip" handler
+ * already redirects pre-calculation skips to `claimComponentOverrides`.
+ */
+export function excludeFromGlobalCvc(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+  options: {
+    excludedAt?: string;
+    excludedBy?: string;
+    reason?: string;
+  } = {},
+): GlobalCvcExclusionChangeResult {
+  const exclusion: GlobalCvcExclusion = {
+    excludedAt: options.excludedAt ?? new Date().toISOString(),
+    excludedBy: options.excludedBy,
+    reason: options.reason,
+    source: "user_choice",
+  };
+  let nextState = setGlobalCvcExclusion(state, system, exclusion);
+  const stale = staleSnapshotIfAffected(nextState, system);
+  nextState = stale.state;
+
+  const piPercent = state.systems[system]?.piPercent ?? null;
+  return {
+    state: nextState,
+    auditEvent: {
+      eventType: "v2_global_cvc_component_excluded",
+      payload: {
+        kind: "excluded",
+        system,
+        piPercent,
+        reason: options.reason,
+        previousSnapshot: stale.previousSnapshot,
+        staleOfferDropped: stale.dropped,
+      },
+    },
+  };
+}
+
+/**
+ * Re-include a previously excluded system in Global CVC. Stales any pending
+ * offer because the eligible set just grew.
+ */
+export function reincludeInGlobalCvc(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+): GlobalCvcExclusionChangeResult {
+  let nextState = setGlobalCvcExclusion(state, system, null);
+  const stale = staleSnapshotIfAffected(nextState, system);
+  nextState = stale.state;
+
+  const piPercent = state.systems[system]?.piPercent ?? null;
+  return {
+    state: nextState,
+    auditEvent: {
+      eventType: "v2_global_cvc_component_reincluded",
+      payload: {
+        kind: "reincluded",
+        system,
+        piPercent,
+        previousSnapshot: stale.previousSnapshot,
+        staleOfferDropped: stale.dropped,
+      },
+    },
+  };
 }

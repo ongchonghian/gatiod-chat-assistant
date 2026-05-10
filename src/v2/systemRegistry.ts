@@ -1,6 +1,7 @@
 import type {
   AssessmentRenderResult,
   BuildResult,
+  ExtractionContext,
   GatiodSystemKey,
   OntologyMatch,
   NormalizedUtterance,
@@ -41,10 +42,21 @@ import { renderHearingResult } from "./renderers/hearingResult.js";
 
 export type SystemMigrationMode = "legacy" | "structured_shadow" | "structured_live";
 
+/**
+ * Deterministic extractor for one GATIOD system.
+ *
+ * The optional fourth parameter `extractionContext` carries accepted semantic
+ * interpretation context (REQ-MS-EXTRACT-001). It is read-only and ephemeral;
+ * it must NEVER be persisted into V2SystemState or treated as calculation-grade
+ * fact. Extractors that don't need semantic hints can simply ignore it —
+ * TypeScript permits a 3-parameter function to satisfy this 4-parameter type
+ * because the extra parameter is optional.
+ */
 export type StructuredExtractor = (
   utterance: NormalizedUtterance,
   systemState: V2SystemState,
-  ontologyMatches?: OntologyMatch[]
+  ontologyMatches?: OntologyMatch[],
+  extractionContext?: ExtractionContext,
 ) => StructuredExtractionResult;
 
 export type ReadinessValidator = (systemState: V2SystemState) => ReadinessResult;

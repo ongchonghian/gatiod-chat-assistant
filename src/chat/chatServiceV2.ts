@@ -35,6 +35,11 @@ import { buildGlobalCvcOffer, renderGlobalCvcResult, shouldOfferGlobalCvc } from
 import { buildLegacyConfirmation, buildStructuredConfirmation } from "../v2/confirmationBuilder.js";
 import { V2_SYSTEM_REGISTRY, isStructuredLiveSystem } from "../v2/systemRegistry.js";
 import { tryResolvePendingObservation } from "../v2/pendingObservationResolver.js";
+import {
+  runConsensusOrchestrator,
+  type ConsensusOrchestratorResult,
+} from "../v2/consensusOrchestrator.js";
+import type { SemanticModelClient } from "../v2/semanticInterpreter.js";
 import { renderV2Failure } from "../v2/failureRenderer.js";
 import { applyInstanceToolResult, setConfirmationConfirmed, setConfirmationPending, setInstanceConfirmationPending } from "../v2/stateMachine.js";
 import { buildTraceForSystem } from "../v2/systemTraceAdapters.js";
@@ -146,6 +151,32 @@ interface ProcessChatV2Options {
   userId?: string;
   claimId?: string;
   shadow?: boolean;
+  /** Optional injected semantic model client. When omitted, the consensus
+   *  orchestrator falls back to the lazy default — currently only the
+   *  Gemini-backed client (constructed at first invocation when the
+   *  feature flag is on). Tests pass a stub. */
+  semanticModelClient?: SemanticModelClient;
+}
+
+/** Lazily-constructed default model client. Built only when the consensus
+ *  orchestrator is actually invoked AND the feature flag is on, so the
+ *  GEMINI_API_KEY check never runs for tests with flags off. */
+let _defaultSemanticClient: SemanticModelClient | undefined;
+function getDefaultSemanticClient(): SemanticModelClient | undefined {
+  if (_defaultSemanticClient) return _defaultSemanticClient;
+  try {
+    // Dynamic require avoids loading the Gemini SDK at module-init time.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("../v2/geminiSemanticModelClient.js") as {
+      GeminiSemanticModelClient: new () => SemanticModelClient;
+    };
+    _defaultSemanticClient = new mod.GeminiSemanticModelClient();
+    return _defaultSemanticClient;
+  } catch {
+    // Missing API key or SDK error — return undefined; orchestrator will
+    // passthrough rather than error.
+    return undefined;
+  }
 }
 
 function mapLegacyToolCalls(toolCalls: { name: string; result: unknown }[] | undefined): ToolPlanCall[] {
@@ -230,9 +261,20 @@ export async function processChatV2(
   opts?: ProcessChatV2Options
 ): Promise<ChatV2Response> {
   const shadow = Boolean(opts?.shadow);
-  const { raw, state: loadedState } = loadV2State(sessionId);
+  const { raw, state: initialLoadedState } = loadV2State(sessionId);
 
-  const normalized = normalizeClinicalUtterance(userMessage);
+  // `loadedState` and `normalized` may be substituted by the consensus
+  // orchestrator (Slice F): when the doctor accepts a semantic interpretation,
+  // extraction runs against `pendingConsensus.sourceText`, not the doctor's
+  // "Proceed" reply.
+  let loadedState: V2SessionState = initialLoadedState;
+  let normalized = normalizeClinicalUtterance(userMessage);
+  let effectiveUserMessage: string = userMessage;
+  // Captured from the consensus orchestrator when the doctor accepts a
+  // semantic interpretation. Threaded through to deterministic extractors
+  // (REQ-MS-EXTRACT-001). Read-only and ephemeral — must not be persisted
+  // into V2SystemState.
+  let activeExtractionContext: import("../v2/contracts.js").ExtractionContext | undefined;
   logAuditEvent({
     sessionId,
     userId: opts?.userId,
@@ -429,6 +471,73 @@ export async function processChatV2(
     }
   }
 
+  // ── Consensus orchestrator (Slice F) ──────────────────────────────────────
+  // Single entry point combining the semantic gate, deterministic consensus
+  // resolver, and the LLM-driven interpreter. Returns one of three signals:
+  //   - "respond"     → pipeline stops, return canned response
+  //   - "substitute"  → accepted consensus; re-normalize and continue
+  //   - "passthrough" → no consensus activity; existing pipeline runs as-is
+  // Both feature flags must be on (SEMANTIC_CONSENSUS_ENABLED and
+  // SEMANTIC_INTERPRETER_ENABLED) to produce anything other than passthrough,
+  // so default-CI behaviour is unchanged.
+  const orchestratorResult: ConsensusOrchestratorResult = await runConsensusOrchestrator({
+    state: loadedState,
+    replyText: effectiveUserMessage,
+    normalized,
+    modelClient: opts?.semanticModelClient ?? getDefaultSemanticClient(),
+  });
+
+  for (const audit of orchestratorResult.auditEvents) {
+    // Audit event types are forward-declared in auditLog.ts (Slice C).
+    logAuditEvent({
+      sessionId,
+      userId: opts?.userId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eventType: audit.eventType as any,
+      eventData: audit.payload,
+    });
+  }
+
+  if (orchestratorResult.kind === "respond") {
+    const enveloped = toSystemStateEnvelope(orchestratorResult.state, raw);
+    saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+    return {
+      sessionId,
+      message: orchestratorResult.message,
+      route: { operation: "clarify", systems: [], confidence: 0, reasons: [orchestratorResult.policyReason] },
+      grounding: { citations: [], ontologyMatches: [] },
+      needsClarification: orchestratorResult.needsClarification,
+      clarificationQuestion: orchestratorResult.needsClarification
+        ? orchestratorResult.message
+        : undefined,
+      suggestedChips: orchestratorResult.chips,
+      toolPlan: { proposed: [], actual: [] },
+      policy: {
+        action: "clarify",
+        reason: orchestratorResult.policyReason,
+        requiresConfirmation: false,
+        clarificationQuestion: orchestratorResult.message,
+        chips: orchestratorResult.chips,
+        proposedTools: [],
+      },
+      shadowMode: shadow,
+    };
+  }
+
+  if (orchestratorResult.kind === "substitute") {
+    // Doctor accepted the interpretation. Continue extraction against the
+    // original source text, not the "Proceed" reply.
+    loadedState = orchestratorResult.state;
+    effectiveUserMessage = orchestratorResult.sourceText;
+    normalized = normalizeClinicalUtterance(orchestratorResult.sourceText);
+    // Slice G — thread the read-only extraction context to the deterministic
+    // extractors via the optional 4th StructuredExtractor parameter
+    // (REQ-MS-EXTRACT-001). Spine uses `selectedScope.sourceSpans` to narrow
+    // multi-region input (REQ-SC-SPINE-001 / REQ-SC-SPINE-002).
+    activeExtractionContext = orchestratorResult.extractionContext;
+  }
+  // "passthrough" → continue with existing normalized + state as today.
+
   const grounding = retrieveGrounding(normalized.normalizedText);
   const route = routeUtterance(normalized, grounding, loadedState);
   logAuditEvent({
@@ -472,7 +581,12 @@ export async function processChatV2(
     for (const targetSystem of extractionTargets) {
       const cap = V2_SYSTEM_REGISTRY[targetSystem];
       if ((cap.mode === "structured_live" || cap.mode === "structured_shadow") && cap.extractor) {
-        const extractionResult = cap.extractor(normalized, nextState.systems[targetSystem], grounding.ontologyMatches);
+        const extractionResult = cap.extractor(
+          normalized,
+          nextState.systems[targetSystem],
+          grounding.ontologyMatches,
+          activeExtractionContext,
+        );
         if (extractionResult.warnings.length > 0) {
           logAuditEvent({
             sessionId,
@@ -550,6 +664,54 @@ export async function processChatV2(
           primarySystem,
           routeConfidence: route.confidence,
         },
+      });
+    }
+  }
+
+  // ── Slice H — semantic-attributed pending observations ────────────────────
+  // After the extraction loop finishes, scan accepted semantic findings for
+  // disagreements: systems that were accepted by the doctor but produced
+  // neither facts nor pending observations. Each disagreement becomes a
+  // semantic_mapping_gap pending observation with attribution and emits a
+  // semantic_to_structured_extraction_failed audit event (REQ-SC-DISAGREE-001).
+  if (activeExtractionContext && activeExtractionContext.acceptedFindings.length > 0) {
+    const { detectSemanticDisagreements, buildSemanticGapObservation, buildDisagreementAuditPayload } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("../v2/semanticAttribution.js") as typeof import("../v2/semanticAttribution.js");
+    const disagreements = detectSemanticDisagreements(activeExtractionContext, nextState);
+    for (const disagreement of disagreements) {
+      const observation = buildSemanticGapObservation(
+        disagreement,
+        activeExtractionContext.consensusId,
+      );
+      // Attach the observation to the relevant system without overwriting any
+      // existing pending observations (defence: detector excludes systems
+      // that already have pending observations, but the post-extraction loop
+      // may have produced others concurrently).
+      nextState = {
+        ...nextState,
+        systems: {
+          ...nextState.systems,
+          [disagreement.system]: {
+            ...nextState.systems[disagreement.system],
+            pendingObservations: [
+              ...nextState.systems[disagreement.system].pendingObservations,
+              observation,
+            ],
+          },
+        },
+      };
+      logAuditEvent({
+        sessionId,
+        userId: opts?.userId,
+        eventType: "semantic_to_structured_extraction_failed",
+        eventData: {
+          ...buildDisagreementAuditPayload(
+            activeExtractionContext.consensusId,
+            disagreement,
+            observation.id,
+          ),
+        } as Record<string, unknown>,
       });
     }
   }
