@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { shouldRunSemanticConsensus } from "../../src/v2/semanticConsensusGate.js";
 import { normalizeClinicalUtterance } from "../../src/v2/normalizer.js";
 import {
@@ -36,6 +36,10 @@ function withPendingObservation(
 }
 
 describe("Slice C — feature flag default", () => {
+  let saved: string | undefined;
+  beforeEach(() => { saved = process.env.SEMANTIC_CONSENSUS_ENABLED; delete process.env.SEMANTIC_CONSENSUS_ENABLED; });
+  afterEach(() => { if (saved !== undefined) process.env.SEMANTIC_CONSENSUS_ENABLED = saved; else delete process.env.SEMANTIC_CONSENSUS_ENABLED; });
+
   it("returns shouldRun: false with skipReason 'feature_flag_disabled' when env var is not set", () => {
     const norm = normalizeClinicalUtterance(
       "Heavy object strike: Left common peroneal nerve lesion with combined sensory and motor deficit; Complete anosmia after olfactory nerve injury.",

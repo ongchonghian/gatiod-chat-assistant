@@ -371,13 +371,34 @@ function buildInterpreterAuditEvent(
   sourceText: string,
 ): ConsensusOrchestratorAuditEvent {
   if (result.ok) {
+    // Build a structured snapshot of the interpretation for audit / replay /
+    // shadow regrade. Privacy stance: we deliberately do NOT include the
+    // original `sourceText` plaintext in the audit log — that already lives
+    // in `gatiod_sessions.history` and `gatiod_sessions.system_states.
+    // pendingConsensus.sourceText`, joinable here via `interpretationId`
+    // (which equals `pendingConsensus.interpretationId`). The
+    // `sourceTextHash` lets downstream pipelines verify the interpretation
+    // was produced for the same input without copying the plaintext.
+    //
+    // What we DO include:
+    //   - full `candidateSystems` (with confidence/status/evidence/rationale)
+    //   - full `candidateFindings` (with sourceSpan/findingType/missingFields/etc.)
+    //   - `unsupportedTerms`, `assumptions`
+    //   - `interpretationCreatedAt` (the model's stamp)
+    // The candidateFindings carry verbatim `sourceSpan` substrings — these
+    // are bounded clinical phrases (already shown in the rendered proposal),
+    // not free-form transcripts.
     return {
       eventType: "semantic_interpretation_created",
       payload: {
         interpretationId: result.interpretation.id,
         sourceTextHash: sha256(sourceText),
-        candidateSystems: result.interpretation.candidateSystems.map((s) => s.system),
+        candidateSystems: result.interpretation.candidateSystems,
+        candidateFindings: result.interpretation.candidateFindings,
+        unsupportedTerms: result.interpretation.unsupportedTerms,
+        assumptions: result.interpretation.assumptions,
         candidateFindingCount: result.interpretation.candidateFindings.length,
+        interpretationCreatedAt: result.interpretation.createdAt,
       },
     };
   }

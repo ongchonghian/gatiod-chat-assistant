@@ -1,0 +1,47 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e6]
+      - heading "GATIOD Assessment Assistant" [level=6] [ref=e8]
+      - generic [ref=e10]: Multi-System
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]: Chat API Mode
+      - group [ref=e15]:
+        - button "Legacy" [ref=e16] [cursor=pointer]
+        - button "V2" [pressed] [ref=e17] [cursor=pointer]: V2
+    - generic [ref=e18]:
+      - paragraph [ref=e160]: "Fall from height: Residual spinal pain attributable to injury with normal MRI; Legal blindness in left eye, best corrected visual acuity <6/60."
+      - generic [ref=e162]:
+        - paragraph [ref=e165]:
+          - text: I think this input contains findings across
+          - strong [ref=e166]: 2 GATIOD assessment areas
+          - text: ":"
+          - text: "1."
+          - strong [ref=e167]: Spine
+          - text: — ready for interpretation confirmation
+          - text: The text explicitly mentions 'spinal pain' which directly points to the spine system.
+          - text: "- Source: \"Residual spinal pain attributable to injury with normal MRI\""
+          - text: "Likely interpretation: Spinal pain with normal MRI"
+          - text: "Missing: spinal region, diagnosis category, fracture height loss percentage, ASIA grade, presence of motor or sensory deficit"
+          - text: "2."
+          - strong [ref=e168]: Visual
+          - text: — legacy/deferred
+          - text: The text explicitly mentions 'Legal blindness' and 'visual acuity' related to an 'eye', indicating the visual system.
+          - text: "- Source: \"Legal blindness in left eye, best corrected visual acuity <6/60\""
+          - text: "Likely interpretation: Left eye legal blindness with best corrected visual acuity <6/60"
+          - text: "Missing: visual field deficit, diplopia zone"
+          - text: "Note: Visual is currently handled by legacy assessment mode."
+          - text: How would you like to proceed?
+        - generic [ref=e169]:
+          - button "Proceed" [ref=e170] [cursor=pointer]
+          - button "Edit interpretation" [ref=e171] [cursor=pointer]
+          - button "Choose system first" [ref=e172] [cursor=pointer]
+          - button "Reject" [ref=e173] [cursor=pointer]
+    - generic [ref=e28]:
+      - textbox "Describe clinical findings…" [ref=e31]
+      - generic "Send" [ref=e32]:
+        - button [disabled]:
+          - img
+      - button "New assessment" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]

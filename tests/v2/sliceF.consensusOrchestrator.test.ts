@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runConsensusOrchestrator } from "../../src/v2/consensusOrchestrator.js";
 import {
   defaultV2SessionState,
@@ -106,6 +106,19 @@ function pendingFixture(
 }
 
 describe("Slice F — feature flag passthrough", () => {
+  let savedConsensus: string | undefined;
+  let savedInterpreter: string | undefined;
+  beforeEach(() => {
+    savedConsensus = process.env.SEMANTIC_CONSENSUS_ENABLED;
+    savedInterpreter = process.env.SEMANTIC_INTERPRETER_ENABLED;
+    delete process.env.SEMANTIC_CONSENSUS_ENABLED;
+    delete process.env.SEMANTIC_INTERPRETER_ENABLED;
+  });
+  afterEach(() => {
+    if (savedConsensus !== undefined) process.env.SEMANTIC_CONSENSUS_ENABLED = savedConsensus; else delete process.env.SEMANTIC_CONSENSUS_ENABLED;
+    if (savedInterpreter !== undefined) process.env.SEMANTIC_INTERPRETER_ENABLED = savedInterpreter; else delete process.env.SEMANTIC_INTERPRETER_ENABLED;
+  });
+
   it("returns passthrough when SEMANTIC_CONSENSUS_ENABLED is off", async () => {
     const client = mockClient(JSON.stringify(validInterpretation()));
     const norm = normalizeClinicalUtterance(SOURCE_TEXT);

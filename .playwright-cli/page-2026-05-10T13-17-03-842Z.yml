@@ -1,0 +1,139 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e6]
+      - heading "GATIOD Assessment Assistant" [level=6] [ref=e8]
+      - generic [ref=e10]: Multi-System
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]: Chat API Mode
+      - group [ref=e15]:
+        - button "Legacy" [ref=e16] [cursor=pointer]
+        - button "V2" [pressed] [ref=e17] [cursor=pointer]: V2
+    - generic [ref=e18]:
+      - paragraph [ref=e212]: "Fall from height: Lumbo-sacral prolapsed intervertebral disc with persistent pain, restricted motion and motor deficit; Right femoral neck/head fracture with avascular necrosis."
+      - paragraph [ref=e217]:
+        - text: I think this input contains findings across
+        - strong [ref=e218]: 2 GATIOD assessment areas
+        - text: ":"
+        - text: "1."
+        - strong [ref=e219]: Spine
+        - text: — ready for interpretation confirmation
+        - text: Explicit mention of a spinal region (Lumbo-sacral) and a specific diagnosis (prolapsed intervertebral disc) with associated symptoms.
+        - text: "- Source: \"Lumbo-sacral prolapsed intervertebral disc with persistent pain, restricted motion and motor deficit\""
+        - text: "Likely interpretation: Lumbo-sacral prolapsed intervertebral disc with persistent pain, restricted motion and motor deficit"
+        - text: "Missing: fracture height loss percentage, ASIA grade, specific motor or sensory deficit details"
+        - text: "2."
+        - strong [ref=e220]: Lower Limb
+        - text: — ready for interpretation confirmation
+        - text: Clear identification of a lower limb side (Right), bone (femoral neck/head), injury (fracture), and a related condition (avascular necrosis).
+        - text: "- Source: \"Right femoral neck/head fracture with avascular necrosis\""
+        - text: "Likely interpretation: Right femoral neck/head fracture with avascular necrosis"
+        - text: "Missing: ROM direction, shortening cm, DBE condition severity bracket"
+        - text: How would you like to proceed?
+      - paragraph [ref=e229]: Proceed
+      - paragraph [ref=e234]: For the fractures dislocations diagnosis, which severity row applies?
+      - paragraph [ref=e246]: b. Persistent radicular pain and/or localised motor weakness
+      - generic [ref=e249]:
+        - generic [ref=e250]:
+          - img [ref=e251]
+          - heading "Confirmation — Spine" [level=6] [ref=e253]
+          - generic [ref=e255]: Review required
+        - generic [ref=e256]:
+          - generic [ref=e257]:
+            - text: Region
+            - paragraph [ref=e258]: Lumbo-Sacral
+          - generic [ref=e259]:
+            - text: Entry 1
+            - paragraph [ref=e260]: "Intervertebral Disc: 3.1d Persistent pain + restricted motion with motor deficit (± sensory)"
+          - generic [ref=e261]:
+            - text: Entry 2
+            - paragraph [ref=e262]: "Fractures and Dislocations: b. Persistent radicular pain and/or localised motor weakness"
+        - separator [ref=e263]
+        - generic [ref=e265]:
+          - button "Confirm & Calculate" [ref=e266] [cursor=pointer]:
+            - img [ref=e268]
+            - text: Confirm & Calculate
+          - button "Edit values" [ref=e270] [cursor=pointer]:
+            - img [ref=e272]
+            - text: Edit values
+      - paragraph [ref=e280]: Confirmed.
+      - paragraph [ref=e285]:
+        - text: "System-generated GATIOD PI%: 25%"
+        - text: "Spine — Lumbo-Sacral:"
+        - text: "- Intervertebral Disc: 3.1d Persistent pain + restricted motion with motor deficit (± sensory) → 25% ← winner"
+        - text: "- Fractures and Dislocations: b. Persistent radicular pain and/or localised motor weakness → 25% (suppressed)"
+        - text: "Final PI%: 25%"
+        - strong [ref=e286]: "Calculation breakdown (winning entry):"
+        - text: "Base PI%: 25%"
+        - text: "---"
+        - strong [ref=e287]: Continuing with Lower Limb.
+        - text: "What type of lower-limb finding should I assess: amputation, ROM restriction, nerve deficit, shortening, or diagnosis-based injury?"
+      - paragraph [ref=e297]: DBE injury
+      - generic [ref=e300]:
+        - generic [ref=e301]:
+          - img [ref=e302]
+          - heading "Confirmation — Spine" [level=6] [ref=e304]
+          - generic [ref=e306]: Review required
+        - generic [ref=e307]:
+          - generic [ref=e308]:
+            - text: Region
+            - paragraph [ref=e309]: Lumbo-Sacral
+          - generic [ref=e310]:
+            - text: Entry 1
+            - paragraph [ref=e311]: "Intervertebral Disc: 3.1d Persistent pain + restricted motion with motor deficit (± sensory)"
+          - generic [ref=e312]:
+            - text: Entry 2
+            - paragraph [ref=e313]: "Fractures and Dislocations: b. Persistent radicular pain and/or localised motor weakness"
+        - separator [ref=e314]
+        - generic [ref=e316]:
+          - button "Confirm & Calculate" [ref=e317] [cursor=pointer]:
+            - img [ref=e319]
+            - text: Confirm & Calculate
+          - button "Edit values" [ref=e321] [cursor=pointer]:
+            - img [ref=e323]
+            - text: Edit values
+      - paragraph [ref=e331]: Confirmed.
+      - paragraph [ref=e336]:
+        - text: "System-generated GATIOD PI%: 25%"
+        - text: "Spine — Lumbo-Sacral:"
+        - text: "- Intervertebral Disc: 3.1d Persistent pain + restricted motion with motor deficit (± sensory) → 25% ← winner"
+        - text: "- Fractures and Dislocations: b. Persistent radicular pain and/or localised motor weakness → 25% (suppressed)"
+        - text: "Final PI%: 25%"
+        - strong [ref=e337]: "Calculation breakdown (winning entry):"
+        - text: "Base PI%: 25%"
+        - text: "---"
+        - strong [ref=e338]: Continuing with Lower Limb.
+        - text: "What type of lower-limb finding should I assess: amputation, ROM restriction, nerve deficit, shortening, or diagnosis-based injury?"
+      - paragraph [ref=e348]: Right femoral neck/head fracture with avascular necrosis
+      - generic [ref=e350]:
+        - generic [ref=e351]:
+          - generic [ref=e352]:
+            - img [ref=e353]
+            - heading "Confirmation — Lower Limb" [level=6] [ref=e355]
+            - generic [ref=e357]: Review required
+          - generic [ref=e358]:
+            - generic [ref=e359]:
+              - text: Side
+              - paragraph [ref=e360]: Right
+            - generic [ref=e361]:
+              - text: Dbe Selections
+              - paragraph [ref=e362]: "[Object Object]"
+          - separator [ref=e363]
+          - generic [ref=e365]:
+            - button "Confirm & Calculate" [ref=e366] [cursor=pointer]:
+              - img [ref=e368]
+              - text: Confirm & Calculate
+            - button "Edit values" [ref=e370] [cursor=pointer]:
+              - img [ref=e372]
+              - text: Edit values
+        - generic [ref=e374]:
+          - button "Confirm and calculate" [ref=e375] [cursor=pointer]
+          - button "Edit findings" [ref=e376] [cursor=pointer]
+    - generic [ref=e28]:
+      - textbox "Describe clinical findings…" [ref=e31]
+      - generic "Send" [ref=e32]:
+        - button [disabled]:
+          - img
+      - button "New assessment" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]

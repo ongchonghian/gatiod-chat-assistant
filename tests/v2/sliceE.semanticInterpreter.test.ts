@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildSemanticTaxonomyPromptSection,
   getSemanticSystemStatus,
@@ -383,6 +383,10 @@ function makeMockClient(modelOutput: string | (() => Promise<string>)): Semantic
 }
 
 describe("Slice E — runSemanticInterpreter pipeline", () => {
+  let saved: string | undefined;
+  beforeEach(() => { saved = process.env.SEMANTIC_INTERPRETER_ENABLED; delete process.env.SEMANTIC_INTERPRETER_ENABLED; });
+  afterEach(() => { if (saved !== undefined) process.env.SEMANTIC_INTERPRETER_ENABLED = saved; else delete process.env.SEMANTIC_INTERPRETER_ENABLED; });
+
   it("returns feature_flag_disabled when env var is unset", async () => {
     const client = makeMockClient("{}");
     const res = await runSemanticInterpreter({ client, sourceText: SOURCE_TEXT });

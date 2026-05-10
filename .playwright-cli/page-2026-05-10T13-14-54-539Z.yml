@@ -1,0 +1,30 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e6]
+        - heading "GATIOD Assessment Assistant" [level=6] [ref=e8]
+        - generic [ref=e10]: Multi-System
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: Chat API Mode
+        - group [ref=e15]:
+          - button "Legacy" [ref=e16] [cursor=pointer]
+          - button "V2" [pressed] [ref=e17] [cursor=pointer]: V2
+      - generic [ref=e199]:
+        - heading "GATIOD Assessment" [level=5] [ref=e200]
+        - paragraph [ref=e201]: Describe the clinical findings for your case. Covers upper and lower limb, spine, respiratory, renal, gastro, hearing, CNS, and visual systems — enter findings in any order.
+        - generic [ref=e202]:
+          - button "Left shoulder, flexion 120°, abduction 90°" [ref=e203] [cursor=pointer]
+          - button "L4/L5 disc herniation, moderate disability" [ref=e204] [cursor=pointer]
+          - button "Below knee amputation, right" [ref=e205] [cursor=pointer]
+          - button "Sensorineural hearing loss, both ears, 40dB" [ref=e206] [cursor=pointer]
+      - generic [ref=e28]:
+        - textbox "Describe clinical findings…" [ref=e31]
+        - generic "Send" [ref=e32]:
+          - button [disabled]:
+            - img
+        - button "New assessment" [active] [ref=e33] [cursor=pointer]:
+          - img [ref=e34]
+  - tooltip "New assessment" [ref=e207]:
+    - generic [ref=e208]: New assessment
