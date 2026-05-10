@@ -147,6 +147,9 @@ function coercePendingConsensus(raw: unknown): PendingConsensus | null {
     (s): s is GatiodSystemKey => typeof s === "string" && SYSTEM_KEYS.includes(s as GatiodSystemKey),
   );
   const awaiting = obj.awaiting === "edit_instruction" ? "edit_instruction" : "decision";
+  const candidateFindings = Array.isArray(obj.candidateFindings)
+    ? (obj.candidateFindings as PendingConsensus["candidateFindings"])
+    : undefined;
   return {
     interpretationId: obj.interpretationId,
     interpretationHash: obj.interpretationHash,
@@ -154,6 +157,7 @@ function coercePendingConsensus(raw: unknown): PendingConsensus | null {
     sourceText: obj.sourceText,
     message: obj.message,
     candidateSystems,
+    ...(candidateFindings ? { candidateFindings } : {}),
     createdAt: obj.createdAt,
     awaiting,
   };

@@ -21,3 +21,17 @@ These hold across the entire V2 codebase:
 5. **No silent fallback to legacy after a confirmed V2 failure.** Failures are visible, audited, and require explicit doctor choice.
 6. **`src/v2/systemRegistry.ts` is the only source of truth** for which systems are `structured_live`. `policyEngine.ts` and `chatServiceV2.ts` import from it.
 7. **Final PI% language requires successful `assess_*` tool evidence.** Lookup responses may show table values but must not use final/system-generated PI wording.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context repo — four contexts (`engine`, `v2`, `chat`, `rag`) each with their own `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md` and `CONTEXT-MAP.md`.

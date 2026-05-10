@@ -32,8 +32,20 @@ const RIGHT_AHL_RE = /\bright\s+(?:ear\s+)?(?:ahl\b|hearing\s+loss|average\s+hea
 const AGE_RE = /\bage\s*[:=]?\s*(\d{1,3})\b|\b(\d{2,3})\s*(?:years?\s+old|y\/o|yo)\b/i;
 
 // Affected ears for injury
-const AFFECTED_LEFT_RE  = /\bleft\s+(?:ear|side|hearing)\b/i;
-const AFFECTED_RIGHT_RE = /\bright\s+(?:ear|side|hearing)\b/i;
+// Affected-ear phrasings. Issue #12, RC-7: extend beyond the original
+// "left ear / left side / left hearing" baseline to natural workbook
+// variants — "left-sided", "on the left", "in the left ear", etc. The
+// alternations are split out as constants for readability.
+//
+// Patterns covered:
+//   - "left ear" / "right side" / "left hearing"             (baseline)
+//   - "left-sided" / "right-sided"                            (hyphen)
+//   - "in the left ear" / "in the right ear"                  (positional)
+//   - "on the left" / "on the right" (with later "ear"/"hearing" context)
+const AFFECTED_LEFT_RE  =
+  /\bleft\s+(?:ear|side|hearing)\b|\bleft-sided\b|\bin\s+the\s+left(?:\s+ear)?\b|\bon\s+the\s+left\b/i;
+const AFFECTED_RIGHT_RE =
+  /\bright\s+(?:ear|side|hearing)\b|\bright-sided\b|\bin\s+the\s+right(?:\s+ear)?\b|\bon\s+the\s+right\b/i;
 
 // Occupational exposure years: "25 years exposure", "exposed 20 years"
 const OCC_YEARS_RE = /\b(\d+)\s*years?\s+(?:of\s+)?(?:occupational\s+)?(?:noise\s+)?exposure\b|\bexposed\s+(?:for\s+)?(\d+)\s*years?\b/i;

@@ -547,11 +547,78 @@ function resolveEgfrDisambiguation(
 }
 
 /**
+ * Generic resolver driven by `obs.expectedAnswer` (Issue #12, RC-5/RC-6).
+ *
+ * When an observation declares its expected answer shape — enum / number /
+ * boolean / text — the doctor's reply is graduated into the named fact
+ * without a system-specific code path. This unblocks respiratory FVC/FEV1
+ * numerics, respiratory asthma prereq confirmations, renal sex, and spine
+ * diagnosis category, which previously had no resolver and stalled the
+ * conversation.
+ */
+function resolveByExpectedAnswer(
+  obs: PendingObservation,
+  text: string,
+): { resolved: true; factsPatch: V2SystemFacts } | { resolved: false } {
+  const ea = obs.expectedAnswer;
+  if (!ea) return { resolved: false };
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return { resolved: false };
+
+  const buildFact = (value: unknown) => ({
+    [ea.factKey]: {
+      value,
+      sourceText: text,
+      confidence: 0.9,
+      extractionMethod: "user_selected" as const,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    },
+  });
+
+  switch (ea.kind) {
+    case "enum": {
+      const norm = trimmed.toLowerCase();
+      const match = ea.choices.find(
+        (c) => c.toLowerCase() === norm || norm.includes(c.toLowerCase()),
+      );
+      if (!match) return { resolved: false };
+      return { resolved: true, factsPatch: buildFact(match) };
+    }
+    case "number": {
+      // Accept "45", "45%", "45 dB", "45.5 cm" etc. — first number token wins.
+      const m = trimmed.match(/-?\d+(?:\.\d+)?/);
+      if (!m) return { resolved: false };
+      const n = Number(m[0]);
+      if (!Number.isFinite(n)) return { resolved: false };
+      if (typeof ea.min === "number" && n < ea.min) return { resolved: false };
+      if (typeof ea.max === "number" && n > ea.max) return { resolved: false };
+      return { resolved: true, factsPatch: buildFact(n) };
+    }
+    case "boolean": {
+      const norm = trimmed.toLowerCase();
+      if (/^(yes|y|true|confirm|confirmed|ok|okay)$/.test(norm)) {
+        return { resolved: true, factsPatch: buildFact(true) };
+      }
+      if (/^(no|n|false|deny|denied|skip|reject)$/.test(norm)) {
+        return { resolved: true, factsPatch: buildFact(false) };
+      }
+      return { resolved: false };
+    }
+    case "text": {
+      return { resolved: true, factsPatch: buildFact(trimmed) };
+    }
+  }
+}
+
+/**
  * Try to resolve the oldest pending observation using the current utterance.
  * For sprint 1 handles: rom_measurement, nerve_deficit, other (rom_from_nerve).
  * For sprint 3 adds: severity_bracket (spine), other/spine_region.
  * For sprint 4 adds: other/egfr_disambiguation (renal policy fix §4).
  * For sprint 5 adds: hearing_value (hearing path/ahl/age/affected_ear), other/gastro_* subtypes.
+ * Issue #12 / Phase E: a generic `expectedAnswer`-driven resolver runs first
+ * for any observation that declares one.
  */
 export function tryResolvePendingObservation(
   state: V2SessionState,
@@ -565,15 +632,18 @@ export function tryResolvePendingObservation(
 
   const obs = systemState.pendingObservations[0];
   const text = utterance.normalizedText;
-  let resolution: { resolved: true; factsPatch: V2SystemFacts } | { resolved: false } = { resolved: false };
+  let resolution: { resolved: true; factsPatch: V2SystemFacts } | { resolved: false } =
+    resolveByExpectedAnswer(obs, text);
 
-  if (obs.type === "rom_measurement") {
+  // Fall through to system-specific handlers only when the generic
+  // expectedAnswer-based resolution did not match.
+  if (!resolution.resolved && obs.type === "rom_measurement") {
     resolution = resolveRomMeasurement(obs, text);
-  } else if (obs.type === "nerve_deficit") {
+  } else if (!resolution.resolved && obs.type === "nerve_deficit") {
     resolution = resolveNerveDeficit(obs, text);
-  } else if (obs.type === "severity_bracket") {
+  } else if (!resolution.resolved && obs.type === "severity_bracket") {
     resolution = resolveSpineSeverity(obs, text, state, system);
-  } else if (obs.type === "hearing_value") {
+  } else if (!resolution.resolved && obs.type === "hearing_value") {
     const subtype = (obs.parsed as Record<string, unknown>).subtype as string | undefined;
     if (subtype === "hearing_path") {
       resolution = resolveHearingPath(obs, text);
@@ -584,7 +654,7 @@ export function tryResolvePendingObservation(
     } else if (subtype === "hearing_affected_ear") {
       resolution = resolveHearingAffectedEar(obs, text);
     }
-  } else if (obs.type === "other") {
+  } else if (!resolution.resolved && obs.type === "other") {
     const subtype = (obs.parsed as Record<string, unknown>).subtype as string | undefined;
     if (subtype === "spine_region") {
       resolution = resolveSpineRegion(obs, text);

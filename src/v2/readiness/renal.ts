@@ -20,6 +20,11 @@ export function validateRenalReadiness(state: V2SystemState): ReadinessResult {
       reason: "missing_sex",
       clarificationQuestion: "What is the patient's sex? (Required for serum creatinine thresholds.)",
       candidateAnswers: ["Male", "Female"],
+      expectedAnswer: {
+        kind: "enum",
+        choices: ["Male", "Female"],
+        factKey: RENAL_FK_SEX,
+      },
     };
   }
 

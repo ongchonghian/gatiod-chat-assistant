@@ -32,11 +32,19 @@ export const RESP_FK_ASBESTOSIS_PROFUSION = "resp_asbestosis_profusion";
 const DIAGNOSIS_ASTHMA_RE     = /\b(occupational\s+asthma)\b/i;
 const DIAGNOSIS_ASBESTOSIS_RE = /\b(asbestosis|silicosis|asbestos\s+related|silica\s+(?:exposure|dust))\b/i;
 
-// PFT values: "FVC 65%", "FVC: 65"
-const FVC_RE  = /\bfvc\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
-const FEV1_RE = /\bfev[_\s]?1(?!\/fvc)\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
-const DLCO_RE = /\bdlco\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
-const VO2_RE  = /\bvo2\s*(?:max)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
+// PFT values. Patterns accept natural workbook phrasings — bare ("FVC 65"),
+// punctuated ("FVC: 65", "FVC = 65"), and connective forms with optional
+// "of"/"is"/"approximately"/"approx"/"measured" prefixes and an optional
+// trailing "% predicted". Examples that must all extract 65:
+//   "FVC 65", "FVC: 65", "FVC = 65", "FVC 65%", "FVC of 65%",
+//   "FVC of 65% predicted", "FVC predicted 65%", "FVC = 65% predicted".
+// Negative lookahead on FEV1 retained so "FEV1/FVC 75" does not fire FEV1.
+// (Issue #12, RC-9.)
+const PFT_CONNECTOR = "(?:\\s*[:=]\\s*|\\s+(?:of|is|approximately|approx\\.?|measured|predicted)\\s+|\\s+)";
+const FVC_RE  = new RegExp(`\\bfvc\\b${PFT_CONNECTOR}(\\d+(?:\\.\\d+)?)`, "i");
+const FEV1_RE = new RegExp(`\\bfev[_\\s]?1(?!\\s*/\\s*fvc)\\b${PFT_CONNECTOR}(\\d+(?:\\.\\d+)?)`, "i");
+const DLCO_RE = new RegExp(`\\bdlco\\b${PFT_CONNECTOR}(\\d+(?:\\.\\d+)?)`, "i");
+const VO2_RE  = new RegExp(`\\bvo2\\s*(?:max)?\\b${PFT_CONNECTOR}(\\d+(?:\\.\\d+)?)`, "i");
 
 // Dyspnoea
 const DYSP_NONE_RE     = /\bno\s+(?:dyspnoea|shortness\s+of\s+breath|\bsob\b|breathlessness)\b/i;

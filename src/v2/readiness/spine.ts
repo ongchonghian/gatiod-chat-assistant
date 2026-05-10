@@ -29,19 +29,25 @@ export function validateSpineReadiness(systemState: V2SystemState): ReadinessRes
   const entries = (facts[SP_FK_ENTRIES]?.value ?? []) as SpineCategoryEntryFact[];
 
   if (entries.length === 0) {
+    const choices = [
+      "Fractures / Dislocations",
+      "Spinal Cord / Cauda Equina Injury",
+      "Intervertebral Disc",
+      "Spondylolysis / Spondylolisthesis",
+      "Chronic Pain with Normal MRI",
+    ];
     return {
       ready: false,
       reason: "no_assessable_finding",
       missingFields: ["diagnosis_category"],
       clarificationQuestion:
         "What is the spinal diagnosis? (e.g. fracture/dislocation, cord injury, disc prolapse, spondylolysis, or chronic pain with normal MRI)",
-      candidateAnswers: [
-        "Fractures / Dislocations",
-        "Spinal Cord / Cauda Equina Injury",
-        "Intervertebral Disc",
-        "Spondylolysis / Spondylolisthesis",
-        "Chronic Pain with Normal MRI",
-      ],
+      candidateAnswers: choices,
+      expectedAnswer: {
+        kind: "enum",
+        choices,
+        factKey: "spine_diagnosis_category",
+      },
     };
   }
 

@@ -238,6 +238,30 @@ export interface PendingObservationSemanticAttribution {
   failureKind: SemanticMappingFailureKind;
 }
 
+/**
+ * Typed shape of the answer a PendingObservation expects from the doctor.
+ * Lets a generic resolver graduate the reply into a fact without a
+ * system-specific handler. (Issue #12, RC-6)
+ *
+ * - `enum`     — answer must equal one of `choices` (case-insensitive).
+ * - `number`   — answer is parsed as a number; optional unit/range
+ *                metadata for prefill, validation, and prompt rendering.
+ * - `boolean`  — yes/no, true/false, confirm/deny.
+ * - `text`     — free-form string (rare; reserved for cases where
+ *                downstream extraction does the parsing).
+ */
+export type PendingObservationExpectedAnswer =
+  | { kind: "enum"; choices: string[]; factKey: string }
+  | {
+      kind: "number";
+      factKey: string;
+      unit?: "dB" | "degrees" | "percent" | "cm" | "mmHg" | "mL/min" | "years";
+      min?: number;
+      max?: number;
+    }
+  | { kind: "boolean"; factKey: string }
+  | { kind: "text"; factKey: string };
+
 // D3 — unresolved observation waiting for a missing clinical field.
 export interface PendingObservation {
   id: string;
@@ -249,6 +273,9 @@ export interface PendingObservation {
     | "severity_bracket"
     | "hearing_value"
     | "visual_value"
+    | "respiratory_value"
+    | "renal_value"
+    | "spine_category"
     | "semantic_mapping_gap"
     | "other";
   sourceText: string;
@@ -263,6 +290,10 @@ export interface PendingObservation {
    *  doctor-facing message says: "I understood this as X, based on
    *  '<sourceSpan>', but I still need <missingField>." (REQ-SC-DISAGREE-001) */
   semanticAttribution?: PendingObservationSemanticAttribution;
+  /** Typed shape of the answer expected — when set, a generic resolver can
+   *  graduate the doctor's reply into the named fact without a
+   *  system-specific code path. (Issue #12, RC-6) */
+  expectedAnswer?: PendingObservationExpectedAnswer;
 }
 
 // D4 — system-level confirmation with a facts-hash snapshot.
@@ -396,6 +427,12 @@ export interface PendingConsensus {
   /** Doctor-facing rendered proposal message. */
   message: string;
   candidateSystems: GatiodSystemKey[];
+  /** Snapshot of the interpretation's candidate findings, preserved so that
+   *  when the doctor accepts the consensus the resulting ExtractionContext
+   *  carries the exact set of agreed findings (not an empty list). Optional
+   *  for backwards compatibility with sessions persisted before this field
+   *  was introduced (issue #12, RC-2). New code must always populate it. */
+  candidateFindings?: SemanticCandidateFinding[];
   createdAt: string;
   /** "decision" — awaiting Proceed / Edit / Reject / Assess X first / Skip / Use legacy.
    *  "edit_instruction" — Edit was chosen; awaiting the doctor's correction text. */
@@ -665,6 +702,12 @@ export interface ReadinessResult {
   missingFields?: string[];
   clarificationQuestion?: string;
   candidateAnswers?: string[];
+  /** Optional typed-answer schema. When set, the chat service writes a
+   *  PendingObservation carrying this `expectedAnswer`, so the doctor's
+   *  next reply is graduated by the generic resolver in
+   *  `pendingObservationResolver.ts` instead of stalling. (Issue #12, RC-5/RC-6)
+   */
+  expectedAnswer?: PendingObservationExpectedAnswer;
 }
 
 export interface BuildProvenance {

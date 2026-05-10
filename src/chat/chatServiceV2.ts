@@ -35,6 +35,72 @@ import { buildGlobalCvcOffer, renderGlobalCvcResult, shouldOfferGlobalCvc } from
 import { buildLegacyConfirmation, buildStructuredConfirmation } from "../v2/confirmationBuilder.js";
 import { V2_SYSTEM_REGISTRY, isStructuredLiveSystem } from "../v2/systemRegistry.js";
 import { tryResolvePendingObservation } from "../v2/pendingObservationResolver.js";
+import { buildNextClaimStep } from "../v2/claimPlan.js";
+import { randomUUID } from "crypto";
+import type { PendingObservation, ReadinessResult } from "../v2/contracts.js";
+
+/**
+ * When a readiness validator declares an `expectedAnswer` for the missing
+ * field, write a PendingObservation onto the system state so the next
+ * turn's reply is graduated by the generic resolver in
+ * `pendingObservationResolver.ts` instead of going through normal extraction
+ * (which doesn't know what the doctor is answering). Issue #12, RC-5.
+ */
+export function writeReadinessAsPendingObservation(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+  readiness: ReadinessResult,
+  sourceText: string,
+): V2SessionState {
+  if (!readiness.expectedAnswer) return state;
+  const sysState = state.systems[system];
+  // Don't duplicate if there's already a pending observation for the same
+  // factKey (re-asking the same readiness question is normal).
+  const factKey = readiness.expectedAnswer.factKey;
+  const alreadyPending = sysState.pendingObservations.some(
+    (po) => po.expectedAnswer?.factKey === factKey,
+  );
+  if (alreadyPending) return state;
+
+  const obs: PendingObservation = {
+    id: `po-readiness-${randomUUID()}`,
+    system,
+    type: classifyReadinessObsType(system),
+    sourceText,
+    parsed: { subtype: factKey },
+    missingFields: readiness.missingFields ?? [factKey],
+    clarificationQuestion: readiness.clarificationQuestion ?? "Please provide the missing field.",
+    candidateAnswers: readiness.candidateAnswers,
+    expectedAnswer: readiness.expectedAnswer,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  return {
+    ...state,
+    systems: {
+      ...state.systems,
+      [system]: {
+        ...sysState,
+        pendingObservations: [...sysState.pendingObservations, obs],
+      },
+    },
+  };
+}
+
+function classifyReadinessObsType(system: GatiodSystemKey): PendingObservation["type"] {
+  switch (system) {
+    case "renal":
+      return "renal_value";
+    case "respiratory":
+      return "respiratory_value";
+    case "spine":
+      return "spine_category";
+    case "hearing":
+      return "hearing_value";
+    default:
+      return "other";
+  }
+}
 import {
   runConsensusOrchestrator,
   type ConsensusOrchestratorResult,
@@ -69,82 +135,98 @@ interface NextSystemHandoff {
 }
 
 /**
- * After a system finishes calculating, look for OTHER systems whose facts were
- * collected from the same multi-system utterance but never got their turn to
- * be confirmed/calculated. Returns a handoff prompt for the next such system,
- * driving a "now let's do hearing" continuation rather than the chat going
- * silent after the first system. (REQ-B1.5)
+ * Translate the unified ClaimStep returned by `buildNextClaimStep` into the
+ * legacy `NextSystemHandoff` shape used by the post-calc rendering path.
+ *
+ * After a system finishes calculating, the unified claim plan picks the next
+ * actionable component across all known signals (extracted facts, pending
+ * observations, claim component overrides — including detected/legacy_deferred
+ * /unsupported overrides set by the consensus orchestrator). Issue #12 / RC-1.
+ *
+ * Exported for unit testing — the live calculation path consumes it through
+ * the post-calc handoff branch below.
  */
-function buildNextSystemHandoff(
+export function buildNextSystemHandoff(
   state: V2SessionState,
   justCompleted: GatiodSystemKey
 ): NextSystemHandoff | undefined {
-  for (const sys of SYSTEM_KEY_LIST) {
-    if (sys === justCompleted) continue;
-    const sysState = state.systems[sys];
-    if (sysState.status === "calculated") continue;
+  const step = buildNextClaimStep(state, { justCompleted });
+  if (!step) return undefined;
 
-    const hasFacts = Object.keys(sysState.extractedFacts).length > 0;
-    const hasPendingObs = sysState.pendingObservations.length > 0;
-    if (!hasFacts && !hasPendingObs) continue;
-
-    const cap = V2_SYSTEM_REGISTRY[sys];
-    const displayName = SYSTEM_DISPLAY_NAMES[sys];
-
-    if (cap.mode === "structured_live" && cap.readinessValidator) {
-      const readiness = cap.readinessValidator(sysState);
-
-      if (readiness.ready) {
-        // System is ready — present its confirmation right now so the doctor
-        // can either confirm or edit without re-typing the original case.
-        const confirmResult = buildStructuredConfirmation(sys, sysState.extractedFacts);
-        if (!confirmResult.ok) {
-          // Defense: readiness said ready but builder refused. Skip handoff for
-          // this system rather than present a half-formed confirmation.
-          continue;
-        }
-        const append =
-          `**Continuing with ${displayName}.** I captured these findings from your earlier message:\n\n${confirmResult.message}`;
+  switch (step.kind) {
+    case "confirm_system": {
+      const sysState = state.systems[step.system];
+      const displayName = SYSTEM_DISPLAY_NAMES[step.system];
+      const confirmResult = buildStructuredConfirmation(step.system, sysState.extractedFacts);
+      if (!confirmResult.ok) {
+        // Defense: claim plan flagged ready but builder refused. Skip rather
+        // than present a half-formed confirmation.
+        return undefined;
+      }
+      return {
+        system: step.system,
+        appendMessage: `**Continuing with ${displayName}.** I captured these findings from your earlier message:\n\n${confirmResult.message}`,
+        chips: ["Confirm and calculate", "Edit findings"],
+        pendingConfirmation: true,
+      };
+    }
+    case "clarify_system": {
+      const sysState = state.systems[step.system];
+      const obs = sysState.pendingObservations[0];
+      const chips = obs?.candidateAnswers ?? [];
+      return {
+        system: step.system,
+        appendMessage: step.message,
+        chips,
+        pendingConfirmation: false,
+      };
+    }
+    case "legacy_deferred":
+    case "unsupported": {
+      const displayName = SYSTEM_DISPLAY_NAMES[step.system];
+      return {
+        system: step.system,
+        appendMessage: step.message,
+        chips: step.chips ?? [`Use legacy for ${displayName}`, `Skip ${displayName}`],
+        pendingConfirmation: false,
+      };
+    }
+    case "claim_plan": {
+      const recommended =
+        step.components.find(
+          (c) => c.status === "ready_for_confirmation" || c.status === "confirmation_pending",
+        ) ??
+        step.components.find(
+          (c) => c.status === "needs_clarification" || c.status === "detected",
+        );
+      if (!recommended) return undefined;
+      const ready =
+        recommended.status === "ready_for_confirmation" ||
+        recommended.status === "confirmation_pending";
+      if (ready) {
+        const sysState = state.systems[recommended.system];
+        const confirmResult = buildStructuredConfirmation(recommended.system, sysState.extractedFacts);
+        if (!confirmResult.ok) return undefined;
+        const displayName = SYSTEM_DISPLAY_NAMES[recommended.system];
         return {
-          system: sys,
-          appendMessage: append,
+          system: recommended.system,
+          appendMessage: `${step.message}\n\n**Continuing with ${displayName}.** I captured these findings from your earlier message:\n\n${confirmResult.message}`,
           chips: ["Confirm and calculate", "Edit findings"],
           pendingConfirmation: true,
         };
       }
-
-      if (readiness.reason === "pending_observations" && hasPendingObs) {
-        const obs = sysState.pendingObservations[0];
-        const append =
-          `**Continuing with ${displayName}.** ${obs.clarificationQuestion}`;
-        return {
-          system: sys,
-          appendMessage: append,
-          chips: obs.candidateAnswers ?? [],
-          pendingConfirmation: false,
-        };
-      }
-
-      const q = readiness.clarificationQuestion ?? `What additional details do you have for ${displayName}?`;
       return {
-        system: sys,
-        appendMessage: `**Continuing with ${displayName}.** ${q}`,
-        chips: readiness.candidateAnswers ?? [],
+        system: recommended.system,
+        appendMessage: step.message,
+        chips: step.chips ?? [],
         pendingConfirmation: false,
       };
     }
-
-    // Legacy (non-structured-live) system with collected work — surface it.
-    return {
-      system: sys,
-      appendMessage:
-        `I also captured findings for **${displayName}** from your earlier message. ` +
-        `Would you like to assess that next?`,
-      chips: [`Yes — assess ${displayName}`, "Skip for now"],
-      pendingConfirmation: false,
-    };
+    case "offer_global_cvc":
+      // Global-CVC offer is handled by the dedicated `shouldOfferGlobalCvc`
+      // branch below; the post-calc handoff itself returns undefined.
+      return undefined;
   }
-  return undefined;
 }
 
 interface ProcessChatV2Options {
@@ -156,6 +238,20 @@ interface ProcessChatV2Options {
    *  Gemini-backed client (constructed at first invocation when the
    *  feature flag is on). Tests pass a stub. */
   semanticModelClient?: SemanticModelClient;
+}
+
+/** Issue #12 / RC-3: in the chat path, the consensus orchestrator runs by
+ *  default. An explicit `SEMANTIC_CONSENSUS_ENABLED=false` (or `=0`) acts
+ *  as an emergency kill-switch. Same for the interpreter flag. Tests that
+ *  call `runConsensusOrchestrator` directly are unaffected because the
+ *  orchestrator's own env-var defaults are still missing→off. */
+function isConsensusKillSwitched(): boolean {
+  const flag = process.env.SEMANTIC_CONSENSUS_ENABLED;
+  return flag === "false" || flag === "0";
+}
+function isInterpreterKillSwitched(): boolean {
+  const flag = process.env.SEMANTIC_INTERPRETER_ENABLED;
+  return flag === "false" || flag === "0";
 }
 
 /** Lazily-constructed default model client. Built only when the consensus
@@ -365,6 +461,12 @@ export async function processChatV2(
             : pendingCap.readinessValidator!(resolvedState.systems[pendingSystem]);
         if (!readiness.ready) {
           const clarification = readiness.clarificationQuestion ?? "Additional information is required before calculating.";
+          resolvedState = writeReadinessAsPendingObservation(
+            resolvedState,
+            pendingSystem,
+            readiness,
+            userMessage,
+          );
           resolvedState = { ...resolvedState, pendingClarification: clarification, pendingConfirmation: null };
           const enveloped = toSystemStateEnvelope(resolvedState, raw);
           saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
@@ -485,6 +587,8 @@ export async function processChatV2(
     replyText: effectiveUserMessage,
     normalized,
     modelClient: opts?.semanticModelClient ?? getDefaultSemanticClient(),
+    forceConsensusEnabled: !isConsensusKillSwitched(),
+    forceInterpreterEnabled: !isInterpreterKillSwitched(),
   });
 
   for (const audit of orchestratorResult.auditEvents) {
@@ -856,12 +960,36 @@ export async function processChatV2(
         message = renderGlobalCvcResult(globalCvcCall.result);
         nextState = setPendingGlobalCvcConfirmation(nextState, null);
         nextState = setPendingClarification(nextState, "");
+        // Issue #12, RC-7: emit a component-level trace alongside the
+        // single-number global PI. Without this, three scenarios (XSC-00086,
+        // XSC-00109, XSC-00258) produced wrong combined PIs with no way to
+        // separate "wrong component subtotal" from "wrong CVC formula".
+        const cvcResult = (globalCvcCall.result ?? {}) as Record<string, unknown>;
+        const componentTrace: Array<{
+          system: GatiodSystemKey;
+          piPercent: number | null;
+          factsHash?: string;
+          factKeys: string[];
+        }> = [];
+        for (const sys of SYSTEM_KEY_LIST) {
+          const sysState = nextState.systems[sys];
+          if (sysState.status !== "calculated") continue;
+          componentTrace.push({
+            system: sys,
+            piPercent: sysState.piPercent,
+            factsHash: sysState.confirmation?.factsHash,
+            factKeys: Object.keys(sysState.extractedFacts ?? {}),
+          });
+        }
         logAuditEvent({
           sessionId,
           userId: opts?.userId,
           eventType: "v2_global_cvc_executed",
           eventData: {
-            globalPiPercent: ((globalCvcCall.result ?? {}) as Record<string, unknown>).globalPiPercent,
+            globalPiPercent: cvcResult.globalPiPercent,
+            cvcInputs: Array.isArray(cvcResult.cvcInputs) ? cvcResult.cvcInputs : undefined,
+            componentTrace,
+            assessCallArgs: globalCvcCall.args,
           },
         });
       } else {

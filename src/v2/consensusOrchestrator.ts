@@ -122,7 +122,8 @@ function buildExtractionContext(
     sourceText: pending.sourceText,
     sourceHash: pending.sourceHash,
     acceptedSystems: [...pending.candidateSystems],
-    acceptedFindings,
+    acceptedFindings:
+      acceptedFindings.length > 0 ? acceptedFindings : pending.candidateFindings ?? [],
     focusSystem,
   };
 }
@@ -152,6 +153,7 @@ function buildPendingConsensusFromInterpretation(
     sourceText: interpretation.sourceText,
     message: rendered.message,
     candidateSystems: interpretation.candidateSystems.map((s) => s.system),
+    candidateFindings: interpretation.candidateFindings,
     createdAt: interpretation.createdAt,
     awaiting: "decision",
   };

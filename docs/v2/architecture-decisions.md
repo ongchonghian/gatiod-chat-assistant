@@ -503,3 +503,45 @@ export function validateSystemRegistry(): void {
 **Startup integrity check:** `validateSystemRegistry()` must be called during server startup before accepting requests.
 
 **Invariant:** A system is migrated only if the shared registry marks it `structured_live` AND provides all four components (`extractor`, `readinessValidator`, `argBuilder`, `resultRenderer`).
+
+## D13 — Cross-system orchestration via the unified claim plan
+
+**Decision:** After a system completes its calculation, the next user-facing step is derived from `buildNextClaimStep` (`src/v2/claimPlan.ts`), not from the legacy extracted-facts gate. The previous `buildNextSystemHandoff` is kept as a thin shape adapter (translating `ClaimStep` into the legacy `NextSystemHandoff` envelope consumed by the chat-render path) and will be removed when no callers remain.
+
+**Why:** The legacy gate considered a system actionable only when it had `extractedFacts.length > 0` or `pendingObservations.length > 0`. Systems that were semantically detected (`claimComponentOverrides[X].status === "detected"`), legacy-deferred, unsupported, or accepted-but-not-yet-extracted were silently dropped after the first system's calculation. The cross-system regression run (issue #12) measured this as 39 of 46 outright failures: the chat would calculate the first system and then go silent.
+
+**Invariants:**
+
+1. No detected, accepted, deferred, unsupported, or skipped system may disappear from the post-calc step merely because it has no extracted facts.
+2. The claim-plan derivation priority (REQ-MS-PLAN-001) is the single source of truth for "what system comes next." `chatServiceV2.ts` does not run a parallel iteration over `state.systems`.
+3. Legacy/unsupported components remain non-actionable in the picker (slice B, sliceB.claimPlan.test.ts:386); they show in the structured 3+ plan but require an explicit doctor action.
+
+## D14 — Pending observations carry typed expected-answer schemas
+
+**Decision:** A `PendingObservation` may declare `expectedAnswer: { kind: "enum" | "number" | "boolean" | "text"; factKey: string; ... }`. When set, the resolver in `pendingObservationResolver.ts` graduates the doctor's reply into the named fact via a generic path, before any system-specific branch runs. Readiness validators may also declare an `expectedAnswer`; the chat service then writes a PendingObservation carrying that schema so the next turn's reply can be graduated automatically.
+
+**Why:** The resolver previously had hand-coded handlers per chip family. New chip families (respiratory FVC/FEV1/DLCO, asthma prereqs, renal sex, spine diagnosis category) emit but never resolved, stalling the flow. A typed answer schema makes the contract explicit and removes the per-family code path.
+
+**Invariants:**
+
+1. A clarification chip whose answer maps to a single fact should declare `expectedAnswer.factKey`. Multi-fact clarifications (e.g. asthma prereq sequence requiring all three) are split into per-field readiness rounds.
+2. The generic resolver runs before system-specific resolvers; system-specific handlers only execute when `expectedAnswer` is absent or did not match.
+3. Range-bounded numeric answers (`min`/`max`) reject out-of-range values with `resolved: false`, blocking graduation.
+
+## D15 — Semantic preservation default-on at the chat layer
+
+**Decision:** In the chat path (`chatServiceV2.ts`), the consensus orchestrator runs by default. Only an explicit `SEMANTIC_CONSENSUS_ENABLED=false` (or `=0`) — and the analogous `SEMANTIC_INTERPRETER_ENABLED` — disables it. The orchestrator's own env-var defaults remain "missing → off" so unit tests of `runConsensusOrchestrator` are unaffected.
+
+**Why:** The previous default-off semantics meant production runs without explicit flag-setting received no semantic preservation. Multi-system claims fell back to the deterministic router + legacy handoff and dropped systems silently (D13).
+
+**Kill switch:** Set `SEMANTIC_CONSENSUS_ENABLED=false` in the environment to disable the path during incident response.
+
+## D16 — PendingConsensus carries candidate findings
+
+**Decision:** `PendingConsensus.candidateFindings: SemanticCandidateFinding[]` is populated from the interpretation when a consensus is pending, and threaded into `ExtractionContext.acceptedFindings` when the doctor accepts the consensus. The field is optional in the type for backwards compatibility with sessions persisted before this change; new sessions always populate it.
+
+**Why:** Previously `ExtractionContext.acceptedFindings` was hard-coded to `[]`, weakening attribution in extractors and downstream "I understood X but still need Y" prompts. (Issue #12, RC-2.)
+
+## D17 — Loop guard (deferred)
+
+**Decision (deferred):** A per-turn state-progression guard that hashes the relevant state slice before/after each gate (pending-observation → consensus → router → policy → confirmation → handoff → CVC offer) and aborts with an explicit "no progress" diagnostic when no slice changes after a full pass. Tracked as future work; the four cross-system test timeouts in issue #12 were 30-second test-level API waits, not in-process loops, so this is not a regression blocker but is recommended hygiene as the gate count grows.

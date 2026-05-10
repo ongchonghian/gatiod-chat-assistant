@@ -12,8 +12,18 @@
 - [consensusOrchestrator.ts](file://src/v2/consensusOrchestrator.ts)
 - [systemTraceAdapters.ts](file://src/v2/systemTraceAdapters.ts)
 - [calculationTraceBuilder.ts](file://src/v2/calculationTraceBuilder.ts)
+- [semanticSchemas.ts](file://src/v2/semanticSchemas.ts)
+- [semanticInterpreterValidator.ts](file://src/v2/semanticInterpreterValidator.ts)
 - [gatiod_holistic_prd.md](file://docs/gatiod_holistic_prd.md)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Enhanced consensus orchestrator audit payload with expanded buildInterpreterAuditEvent functionality
+- Added comprehensive candidate systems data, candidate findings details, unsupported terms, and assumptions arrays
+- Implemented privacy-preserving design with SHA-256 hashing for source text protection
+- Updated audit event taxonomy to include structured interpretation snapshots
+- Expanded compliance reporting capabilities with detailed semantic interpretation data
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -30,6 +40,8 @@
 ## Introduction
 This document explains the audit logging and compliance system that ensures complete interaction traceability and medico-legal compliance for the GATIOD chat assistant. The system captures every clinically relevant event across both the legacy and V2 pipelines, enabling full reconstruction of how a final PI% was determined. It documents the event logging model, data retention characteristics, and compliance reporting capabilities, with practical examples for both newcomers and experienced developers.
 
+**Updated** The system now includes enhanced consensus orchestrator audit payloads that capture comprehensive semantic interpretation data with privacy-preserving design, including detailed candidate systems information, candidate findings with source spans, unsupported terms, and assumptions arrays.
+
 ## Project Structure
 The audit and compliance system spans several layers:
 - Database layer with schema initialization and indexes
@@ -40,6 +52,7 @@ The audit and compliance system spans several layers:
 - V2 consensus and extraction pipeline emitting granular audit events
 - Global CVC orchestration with explicit audit events for offers and changes
 - Calculation trace builders that generate deterministic, auditable traces
+- Enhanced semantic interpretation audit events with structured payloads
 
 ```mermaid
 graph TB
@@ -105,6 +118,7 @@ Sessions --> DB
 - V2 pipeline: Emits detailed events for normalization, routing, policy decisions, extractions, and consensus.
 - Global CVC: Emits explicit events for offers, executions, exclusions, and staleness.
 - Calculation traces: Produce deterministic, auditable calculation traces for each system.
+- Enhanced consensus orchestrator: Captures comprehensive semantic interpretation data with privacy-preserving design.
 
 **Section sources**
 - [auditLog.ts:8-91](file://src/db/auditLog.ts#L8-L91)
@@ -114,6 +128,7 @@ Sessions --> DB
 - [chatServiceV2.ts:278-730](file://src/chat/chatServiceV2.ts#L278-L730)
 - [globalCvc.ts:45-109](file://src/v2/globalCvc.ts#L45-L109)
 - [systemTraceAdapters.ts:523-555](file://src/v2/systemTraceAdapters.ts#L523-L555)
+- [consensusOrchestrator.ts:371-420](file://src/v2/consensusOrchestrator.ts#L371-L420)
 
 ## Architecture Overview
 The audit and compliance architecture ensures that every decision and calculation is traceable:
@@ -122,6 +137,7 @@ The audit and compliance architecture ensures that every decision and calculatio
 - V2 introduces granular events for semantic interpretation, extraction warnings, and multi-system extractions.
 - Global CVC events explicitly track offers, exclusions, and staleness to prevent silent changes.
 - Calculation traces are built deterministically and can be attached to audit records for full transparency.
+- Enhanced consensus orchestrator captures comprehensive semantic interpretation data with privacy-preserving design.
 
 ```mermaid
 sequenceDiagram
@@ -137,6 +153,7 @@ V1->>Audit : logAuditEvent(session_start/user_message)
 V2->>Audit : logAuditEvent(v2_normalization/v2_route/v2_policy)
 V2->>Audit : logAuditEvent(v2_extraction_warning/v2_multi_system_extraction)
 V2->>Audit : logAuditEvent(v2_global_cvc_offered/executed/excluded/reenincluded)
+V2->>Audit : logAuditEvent(semantic_interpretation_created/semantic_interpretation_schema_failed)
 V1->>Audit : logAuditEvent(tool_call/calculation_result/error)
 Audit->>DB : INSERT INTO gatiod_audit_log
 API-->>Client : Response with sessionId/message
@@ -159,14 +176,18 @@ The audit logger defines a comprehensive event taxonomy covering:
 - V2 normalization and routing: v2_normalization, v2_route
 - Policy decisions: v2_policy
 - Extraction and confirmations: v2_extraction_warning, v2_multi_system_extraction, v2_pending_observation
-- Consensus and semantic interpretation: v2_semantic_consensus_gate, semantic_interpretation_created, semantic_interpretation_accepted, semantic_interpretation_rejected, semantic_interpretation_edited
+- Consensus and semantic interpretation: v2_semantic_consensus_gate, semantic_interpretation_created, semantic_interpretation_accepted, semantic_interpretation_rejected, semantic_interpretation_edited, semantic_interpretation_schema_failed
 - Legacy fallback and deferred components: semantic_legacy_deferred_component, semantic_legacy_fallback_requested
 - Global CVC: v2_global_cvc_offered, v2_global_cvc_executed, v2_global_cvc_component_excluded, v2_global_cvc_component_reincluded, v2_global_cvc_stale, v2_global_cvc_declined
 - Specialized events: semantic_to_structured_extraction_started, semantic_to_structured_extraction_failed, semantic_multi_region_spine_detected, v2_component_skipped_by_user, spine_multi_region_unsupported
 
+**Updated** The semantic_interpretation_created event now includes comprehensive structured data including candidate systems, candidate findings, unsupported terms, and assumptions arrays, all protected by SHA-256 hashing for privacy.
+
 Implementation highlights:
 - Non-blocking writes: failures are logged and do not crash the main flow.
 - Centralized insertion and retrieval: consistent schema and indexing for fast queries.
+- Privacy-preserving design: source text plaintext is hashed and not included in audit payloads.
+- Comprehensive semantic interpretation capture: full structured data for replay and shadow grading.
 
 Practical examples:
 - A user message triggers a user_message event with message metadata.
@@ -174,6 +195,7 @@ Practical examples:
 - V2 normalization emits v2_normalization with confidence and unresolved terms.
 - Multi-system extractions emit v2_multi_system_extraction with systems and route confidence.
 - Global CVC offer emits v2_global_cvc_offered with component systems and values.
+- Semantic interpretation creation emits semantic_interpretation_created with full structured data and source text hash.
 
 **Section sources**
 - [auditLog.ts:8-91](file://src/db/auditLog.ts#L8-L91)
@@ -247,10 +269,13 @@ The V2 pipeline emits granular events:
 - semantic_* events for interpretation lifecycle
 - Global CVC events: v2_global_cvc_offered, v2_global_cvc_executed, v2_global_cvc_component_excluded, v2_global_cvc_component_reincluded, v2_global_cvc_stale, v2_global_cvc_declined
 
+**Updated** The semantic_interpretation_created event now includes comprehensive structured data including candidate systems with confidence scores, statuses, evidence, and rationale; candidate findings with source spans, finding types, proposed mappings, and missing fields; unsupported terms and assumptions arrays; and interpretation creation timestamps.
+
 These events support:
 - Medico-legal traceability of semantic interpretation and deterministic extraction
 - Compliance validation of multi-system assessments
 - Transparent Global CVC offers and exclusions
+- Replay and shadow grading capabilities through structured interpretation snapshots
 
 **Section sources**
 - [chatServiceV2.ts:278-730](file://src/chat/chatServiceV2.ts#L278-L730)
@@ -260,15 +285,52 @@ The consensus orchestrator emits:
 - v2_semantic_consensus_gate for gate decisions
 - semantic_interpretation_created, semantic_interpretation_accepted, semantic_interpretation_rejected, semantic_interpretation_edited
 - v2_semantic_router_comparison for comparison events
+- **Updated** semantic_interpretation_schema_failed for validation failures
+
+**Enhanced** The buildInterpreterAuditEvent function now creates comprehensive audit payloads that include:
+- Full candidate systems data with confidence scores, statuses, evidence, and rationale
+- Complete candidate findings with source spans, finding types, proposed mappings, and missing fields
+- Unsupported terms and assumptions arrays
+- Interpretation creation timestamp
+- Source text hash for privacy-preserving verification
+- Candidate finding count for quick validation
 
 These events capture:
-- The semantic proposal lifecycle
-- Doctor’s acceptance or rejection of interpretations
+- The semantic proposal lifecycle with comprehensive structured data
+- Doctor's acceptance or rejection of interpretations
 - Routing comparisons and decisions
+- Validation failures with structured error information
 
 **Section sources**
 - [consensusOrchestrator.ts:45-82](file://src/v2/consensusOrchestrator.ts#L45-L82)
 - [consensusOrchestrator.ts:179-200](file://src/v2/consensusOrchestrator.ts#L179-L200)
+- [consensusOrchestrator.ts:371-420](file://src/v2/consensusOrchestrator.ts#L371-L420)
+
+### Enhanced Semantic Interpretation Audit Payload
+The buildInterpreterAuditEvent function creates comprehensive audit payloads with privacy-preserving design:
+
+**Privacy-Preserving Design:**
+- Source text plaintext is hashed using SHA-256 and not included in audit payloads
+- Source text hash enables downstream verification without exposing sensitive content
+- Interpretation ID serves as join key for retrieving original source text from session storage
+
+**Comprehensive Data Capture:**
+- candidateSystems: Full system records with system keys, confidence scores (0-1), statuses, evidence arrays, and rationale explanations
+- candidateFindings: Complete finding records with system assignments, source spans, finding types, proposed mappings, confidence scores, completeness indicators, and missing field lists
+- unsupportedTerms: Array of terms not supported by the model
+- assumptions: Array of interpretive assumptions made during processing
+- candidateFindingCount: Quick count for validation and reporting
+- interpretationCreatedAt: Timestamp of interpretation creation
+
+**Structured Validation:**
+- JSON.stringify serialization for audit log persistence
+- Round-trip validation ensuring payload integrity
+- SHA-256 hash verification for data integrity
+
+**Section sources**
+- [consensusOrchestrator.ts:371-420](file://src/v2/consensusOrchestrator.ts#L371-L420)
+- [semanticSchemas.ts:69-107](file://src/v2/semanticSchemas.ts#L69-L107)
+- [semanticInterpreterValidator.ts:157-210](file://src/v2/semanticInterpreterValidator.ts#L157-L210)
 
 ### Global CVC Audit Events
 Global CVC emits:
@@ -325,6 +387,7 @@ The audit and compliance system exhibits strong cohesion within the persistence 
 - auditLog.ts depends on database.ts
 - sessionStore.ts depends on database.ts
 - API routes depend on chat services and audit log
+- **Updated** consensusOrchestrator.ts depends on semanticSchemas.ts and semanticInterpreterValidator.ts for structured payload validation
 
 ```mermaid
 graph LR
@@ -334,6 +397,8 @@ ChatV2["chatServiceV2.ts"] --> Audit
 ChatV2 --> Sessions
 ChatV2 --> Consensus["consensusOrchestrator.ts"]
 ChatV2 --> GCVC["globalCvc.ts"]
+Consensus --> Schemas["semanticSchemas.ts"]
+Consensus --> Validator["semanticInterpreterValidator.ts"]
 Audit --> DB["database.ts"]
 Sessions --> DB
 Routes["chatRoutes.ts"] --> ChatV1
@@ -346,6 +411,7 @@ Routes --> ChatV2
 - [auditLog.ts:6](file://src/db/auditLog.ts#L6)
 - [sessionStore.ts:8](file://src/db/sessionStore.ts#L8)
 - [chatRoutes.ts:7-10](file://src/api/chatRoutes.ts#L7-L10)
+- [consensusOrchestrator.ts:22-43](file://src/v2/consensusOrchestrator.ts#L22-L43)
 
 **Section sources**
 - [chatService.ts:16-17](file://src/chat/chatService.ts#L16-L17)
@@ -353,6 +419,7 @@ Routes --> ChatV2
 - [auditLog.ts:6](file://src/db/auditLog.ts#L6)
 - [sessionStore.ts:8](file://src/db/sessionStore.ts#L8)
 - [chatRoutes.ts:7-10](file://src/api/chatRoutes.ts#L7-L10)
+- [consensusOrchestrator.ts:22-43](file://src/v2/consensusOrchestrator.ts#L22-L43)
 
 ## Performance Considerations
 - Non-blocking audit writes: audit logging failures do not impact main flow latency.
@@ -360,8 +427,8 @@ Routes --> ChatV2
 - Indexed audit columns: efficient filtering and sorting for compliance reports.
 - JSON column usage: flexible payloads without schema churn.
 - Shadow-mode evaluation: v2 shadow mode runs alongside production without affecting latency.
-
-[No sources needed since this section provides general guidance]
+- **Updated** SHA-256 hashing overhead: minimal performance impact for privacy protection.
+- **Updated** Structured payload serialization: optimized JSON.stringify for audit log persistence.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -370,15 +437,21 @@ Common issues and resolutions:
 - Session reset confusion: confirm session_reset event is emitted and session status updated to abandoned.
 - V2 extraction warnings: review v2_extraction_warning payloads for actionable remediation.
 - Global CVC staleness: verify snapshot verification and re-offer logic.
+- **Updated** Semantic interpretation audit failures: check semantic_interpretation_schema_failed events for validation issues.
+- **Updated** Privacy violations: ensure source text is not appearing in audit payloads (only hashes should be present).
+- **Updated** Structured payload corruption: verify JSON.stringify round-trip integrity for audit log persistence.
 
 **Section sources**
 - [auditLog.ts:69-72](file://src/db/auditLog.ts#L69-L72)
 - [chatService.ts:179-182](file://src/chat/chatService.ts#L179-L182)
 - [chatServiceV2.ts:590-611](file://src/chat/chatServiceV2.ts#L590-L611)
 - [globalCvc.ts:126-158](file://src/v2/globalCvc.ts#L126-L158)
+- [consensusOrchestrator.ts:407-420](file://src/v2/consensusOrchestrator.ts#L407-L420)
 
 ## Conclusion
 The audit logging and compliance system provides complete, deterministic traceability for every PI% calculation. By capturing events across both legacy and V2 pipelines, maintaining persistent sessions, and emitting granular audit events for semantic interpretation, extraction, and Global CVC decisions, the system meets medico-legal requirements while enabling robust compliance reporting and validation.
+
+**Updated** The enhanced consensus orchestrator audit payload with comprehensive semantic interpretation data and privacy-preserving design ensures complete traceability while protecting sensitive patient information, enabling replay and shadow grading capabilities for regulatory compliance and quality assurance.
 
 ## Appendices
 
@@ -387,17 +460,32 @@ The audit logging and compliance system provides complete, deterministic traceab
 - Filter events by type for policy decisions, confirmations, and tool executions.
 - Cross-reference with session history for contextual reconstruction.
 - Export traces and calculation details for regulatory submissions.
+- **Updated** Analyze semantic_interpretation_created events for comprehensive compliance validation.
 
 **Section sources**
 - [chatRoutes.ts:76-81](file://src/api/chatRoutes.ts#L76-L81)
 - [auditLog.ts:75-90](file://src/db/auditLog.ts#L75-L90)
 
 ### Practical Examples
-- Audit event capture: user_message, tool_call, calculation_result, v2_normalization, v2_extraction_warning, v2_global_cvc_offered.
+- Audit event capture: user_message, tool_call, calculation_result, v2_normalization, v2_extraction_warning, v2_global_cvc_offered, **Updated** semantic_interpretation_created with comprehensive structured data.
 - Trail generation: chronological retrieval ordered by created_at for full replay.
 - Compliance validation: verify that every PI% has a corresponding calculation_result and confirmation events; ensure Global CVC exclusions are audited with component_excluded/reenincluded events.
+- **Updated** Semantic interpretation validation: ensure semantic_interpretation_created events contain full candidate systems, findings, unsupported terms, and assumptions arrays with proper SHA-256 hashing.
 
 **Section sources**
 - [chatService.ts:55-154](file://src/chat/chatService.ts#L55-L154)
 - [chatServiceV2.ts:278-730](file://src/chat/chatServiceV2.ts#L278-L730)
 - [globalCvc.ts:298-360](file://src/v2/globalCvc.ts#L298-L360)
+- [consensusOrchestrator.ts:371-420](file://src/v2/consensusOrchestrator.ts#L371-L420)
+
+### Privacy-Preserving Audit Data Model
+The enhanced audit system implements privacy-preserving design patterns:
+- Source text plaintext is never stored in audit logs
+- SHA-256 hashes are used for verification and correlation
+- Interpretation IDs serve as join keys for retrieving original content
+- Structured payloads contain only necessary clinical data for compliance
+- JSON serialization ensures audit log persistence integrity
+
+**Section sources**
+- [consensusOrchestrator.ts:371-420](file://src/v2/consensusOrchestrator.ts#L371-L420)
+- [semanticSchemas.ts:95-107](file://src/v2/semanticSchemas.ts#L95-L107)
