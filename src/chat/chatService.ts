@@ -145,7 +145,7 @@ export async function processChat(
     const functionResponses: Part[] = [];
     for (const fc of functionCalls) {
       const { name, args } = fc.functionCall;
-      const result = handleToolCall(name, (args ?? {}) as Record<string, unknown>);
+      const result = handleToolCall(name, (args ?? {}) as Record<string, unknown>, sessionId);
       toolCallLog.push({ name, result });
 
       logAuditEvent({ sessionId, userId: opts?.userId, eventType: "tool_call", eventData: { tool: name, success: (result as { success: boolean }).success } });

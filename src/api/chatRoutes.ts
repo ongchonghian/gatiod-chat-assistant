@@ -8,6 +8,7 @@ import { processChat, clearSession } from "../chat/chatService.js";
 import { processChatV2 } from "../chat/chatServiceV2.js";
 import { getSessionAuditTrail } from "../db/auditLog.js";
 import { listSessionsForUser } from "../db/sessionStore.js";
+import { listInvestigations, getInvestigationsBySession } from "../db/investigationLog.js";
 
 export const chatRouter = Router();
 
@@ -87,4 +88,17 @@ chatRouter.get("/chat/sessions/:userId", (req: Request, res: Response) => {
   res.json({ userId: req.params.userId, sessions: sessions.map((s) => ({
     id: s.id, claimId: s.claimId, status: s.status, createdAt: s.createdAt, updatedAt: s.updatedAt,
   })) });
+});
+
+/** List all flagged step investigations (admin/review use). */
+chatRouter.get("/investigations", (_req: Request, res: Response) => {
+  const investigations = listInvestigations();
+  res.json({ investigations });
+});
+
+/** List investigations for a specific session. */
+chatRouter.get("/investigations/session/:sessionId", (req: Request, res: Response) => {
+  const sid = req.params.sessionId as string;
+  const investigations = getInvestigationsBySession(sid);
+  res.json({ sessionId: sid, investigations });
 });

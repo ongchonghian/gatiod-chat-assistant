@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { Box, Paper, Typography, Collapse, IconButton, Chip, Divider } from "@mui/material";
+import { Box, Paper, Typography, Collapse, IconButton, Chip, Divider, Button } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
+import DecisionReplay from "./DecisionReplay";
+import { buildUpperLimbTrace, type AssessmentResult } from "../utils/traceBuilder";
 
 interface ToolCall {
   name: string;
@@ -15,26 +18,10 @@ interface CategoryData {
   notes: string[];
 }
 
-interface Conflict {
-  joint: string;
-  romPercent: number;
-  dbePercent: number;
-  winner: string;
-}
-
-interface AssessmentResult {
-  finalPercent: number;
-  amputation: CategoryData;
-  rom: CategoryData;
-  neurological: CategoryData;
-  dbe: CategoryData;
-  dbeRomConflicts: Conflict[];
-  cvcInputs: number[];
-}
-
 interface BreakdownViewProps {
   content: string;
   toolCalls?: ToolCall[];
+  onChallenge: (stepId: string, stepTitle: string, concern: string) => void;
 }
 
 const SYSTEM_LABELS: Record<string, string> = {
@@ -91,7 +78,8 @@ function CategorySection({ data, color }: { data: CategoryData; color: string })
   );
 }
 
-export default function BreakdownView({ content, toolCalls }: BreakdownViewProps) {
+export default function BreakdownView({ content, toolCalls, onChallenge }: BreakdownViewProps) {
+  const [replayOpen, setReplayOpen] = useState(false);
   const extracted = extractResult(toolCalls);
 
   if (!extracted) {
@@ -104,6 +92,8 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
 
   const { result, systemLabel } = extracted;
 
+  const traceSteps = buildUpperLimbTrace(result);
+
   const categories: { data: CategoryData; color: string }[] = [
     { data: result.amputation, color: "#c4342d" },
     { data: result.rom, color: "#1a3a5c" },
@@ -111,7 +101,13 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
     { data: result.dbe, color: "#d4880f" },
   ].filter((cat) => cat.data != null);
 
+  function handleChallenge(stepId: string, stepTitle: string, concern: string) {
+    setReplayOpen(false);
+    onChallenge(stepId, stepTitle, concern);
+  }
+
   return (
+    <>
     <Paper sx={{ overflow: "hidden", border: "2px solid", borderColor: "primary.main", borderRadius: 3 }}>
       {/* Header with final PI */}
       <Box sx={{ px: 2.5, py: 2, bgcolor: "primary.main", display: "flex", alignItems: "center", gap: 1.5 }}>
@@ -176,6 +172,33 @@ export default function BreakdownView({ content, toolCalls }: BreakdownViewProps
           </Box>
         </>
       )}
+
+      {/* Decision Replay trigger */}
+      <Divider />
+      <Box sx={{ px: 2.5, py: 1.25, display: "flex", justifyContent: "flex-end" }}>
+        <Button
+          size="small"
+          startIcon={<AccountTreeOutlinedIcon sx={{ fontSize: "0.9rem !important" }} />}
+          onClick={() => setReplayOpen(true)}
+          sx={{
+            fontSize: "0.75rem",
+            textTransform: "none",
+            color: "text.secondary",
+            fontWeight: 500,
+            "&:hover": { color: "primary.main" },
+          }}
+        >
+          How was this calculated?
+        </Button>
+      </Box>
     </Paper>
+
+    <DecisionReplay
+      open={replayOpen}
+      onClose={() => setReplayOpen(false)}
+      steps={traceSteps}
+      onChallenge={handleChallenge}
+    />
+    </>
   );
 }

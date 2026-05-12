@@ -483,4 +483,19 @@ export const MULTI_SYSTEM_TOOL_DECLARATIONS: any[] = [
     description: "Combine all calculated system subtotals into a global PI% using the CVC formula. Call this after two or more systems have been individually assessed.",
     parameters: { type: SchemaType.OBJECT, properties: { systemSubtotals: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: { system: { type: SchemaType.STRING }, piPercent: { type: SchemaType.NUMBER } }, required: ["system", "piPercent"] } } }, required: ["systemSubtotals"] },
   },
+  {
+    name: "register_investigation",
+    description: "Register a disputed calculation step for expert clinical review when the doctor's concern cannot be resolved through conversation. Use this when: (1) the doctor disagrees with how a GATIOD rule was applied and the rule application is genuinely ambiguous, (2) the case presents an edge case not clearly covered by the GATIOD guide, or (3) a calculation ambiguity exists that requires clinical expert judgement. Do NOT use this to avoid answering — first attempt to resolve through clarification.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        stepId: { type: SchemaType.STRING, description: "ID of the disputed step (e.g. 'step_rom', 'step_conflict_resolution')" },
+        stepTitle: { type: SchemaType.STRING, description: "Human-readable name of the disputed step" },
+        doctorConcern: { type: SchemaType.STRING, description: "Verbatim or close paraphrase of what the doctor said was wrong" },
+        clinicalContext: { type: SchemaType.STRING, description: "Brief summary of the clinical context and why this needs expert review — include what rule is in dispute and why it is ambiguous" },
+        investigationType: { type: SchemaType.STRING, enum: ["rule_dispute", "edge_case", "calculation_ambiguity"], description: "Category of the investigation" },
+      },
+      required: ["stepId", "stepTitle", "doctorConcern", "clinicalContext", "investigationType"],
+    },
+  },
 ];

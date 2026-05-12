@@ -37,6 +37,7 @@ import {
 } from "../engine/index.js";
 import { diagnosisCategories, getSeveritiesForCategory } from "../engine/spineAssessmentData.js";
 import { searchDictionary } from "../rag/dictionaryIndex.js";
+import { saveInvestigation, type InvestigationType } from "../db/investigationLog.js";
 
 export interface ToolResult {
   success: boolean;
@@ -44,7 +45,7 @@ export interface ToolResult {
   error?: string;
 }
 
-export function handleToolCall(name: string, args: Record<string, unknown>): ToolResult {
+export function handleToolCall(name: string, args: Record<string, unknown>, sessionId?: string): ToolResult {
   try {
     switch (name) {
       // ─── Assessment tools (one per system) ─────────────────────────
@@ -92,6 +93,9 @@ export function handleToolCall(name: string, args: Record<string, unknown>): Too
         return handleLookupShortening(args);
       case "lookup_lower_dbe_condition":
         return handleLookupLowerDbe(args);
+
+      case "register_investigation":
+        return handleRegisterInvestigation(args, sessionId);
 
       default:
         return { success: false, error: `Unknown tool: ${name}` };
@@ -429,6 +433,27 @@ function handleLookupLowerDbe(args: Record<string, unknown>): ToolResult {
       maxPercent: cond.maxPercent,
       description: cond.description,
       applicableJoints: cond.anatomicalKeys.map((k) => LOWER_ANATOMICAL_LABELS[k] ?? k),
+    },
+  };
+}
+
+function handleRegisterInvestigation(args: Record<string, unknown>, sessionId?: string): ToolResult {
+  if (!sessionId) return { success: false, error: "Session ID unavailable — cannot register investigation." };
+
+  const investigation = saveInvestigation({
+    sessionId,
+    stepId: args.stepId as string,
+    stepTitle: args.stepTitle as string,
+    doctorConcern: args.doctorConcern as string,
+    clinicalContext: args.clinicalContext as string,
+    investigationType: args.investigationType as InvestigationType,
+  });
+
+  return {
+    success: true,
+    data: {
+      investigationId: investigation.id,
+      message: `Investigation registered with reference ${investigation.id}. A clinical expert will review this case.`,
     },
   };
 }

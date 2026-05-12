@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Box, Paper, TextField, IconButton, Typography, CircularProgress, Button, Tooltip, ToggleButtonGroup, ToggleButton,
+  Box, Paper, TextField, IconButton, Typography, CircularProgress, Button, Tooltip, ToggleButtonGroup, ToggleButton, Alert,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import GavelIcon from "@mui/icons-material/Gavel";
 import ConfirmationCard from "./ConfirmationCard";
 import BreakdownView from "./BreakdownView";
 import ToolCallIndicator from "./ToolCallIndicator";
@@ -31,6 +32,10 @@ interface ApiResponse {
   error?: string;
 }
 
+interface InvestigationRegistered {
+  id: string;
+}
+
 const CONFIRMATION_PATTERN = /\*\*Confirmation\s*[—–-]/i;
 const RESULT_PATTERN = /Assessment Result.*?(\d+)%\s*PI/i;
 const API_MODE_STORAGE_KEY = "gatiod_chat_api_mode";
@@ -46,10 +51,20 @@ function detectMessageType(content: string, toolCalls?: ToolCall[]): "confirmati
   return "text";
 }
 
+function extractInvestigation(toolCalls?: ToolCall[]): InvestigationRegistered | null {
+  const call = toolCalls?.find(
+    (tc) => tc.name === "register_investigation" && tc.result?.success
+  );
+  if (!call) return null;
+  const data = call.result.data as { investigationId?: string } | undefined;
+  return data?.investigationId ? { id: data.investigationId } : null;
+}
+
 export default function ChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [lastInvestigation, setLastInvestigation] = useState<InvestigationRegistered | null>(null);
   const [apiMode, setApiMode] = useState<ApiMode>(() => {
     const fromStorage = localStorage.getItem(API_MODE_STORAGE_KEY);
     return fromStorage === "v2" ? "v2" : "legacy";
@@ -78,6 +93,7 @@ export default function ChatPanel() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
+    setLastInvestigation(null);
 
     try {
       const endpoint = apiMode === "v2" ? "/api/chat/v2" : "/api/chat";
@@ -118,6 +134,9 @@ export default function ChatPanel() {
         setLastResult(assessCall.result.data as Record<string, unknown>);
       }
 
+      const investigation = extractInvestigation(data.toolCalls);
+      if (investigation) setLastInvestigation(investigation);
+
       const assistantMsg: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -152,8 +171,14 @@ export default function ChatPanel() {
     setMessages([]);
     setSessionId(null);
     setLastResult(null);
+    setLastInvestigation(null);
     setInput("");
   }, [sessionId]);
+
+  const handleChallenge = useCallback((stepId: string, stepTitle: string, concern: string) => {
+    void stepId;
+    sendMessage(`[STEP_CHALLENGE: ${stepTitle}]\n${concern}\n[/STEP_CHALLENGE]`);
+  }, [sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -254,7 +279,7 @@ export default function ChatPanel() {
                   <ConfirmationCard content={msg.content} onConfirm={() => sendMessage("Confirmed.")} onEdit={(text) => sendMessage(text)} />
                 ) : type === "breakdown" ? (
                   <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                    <BreakdownView content={msg.content} toolCalls={msg.toolCalls} />
+                    <BreakdownView content={msg.content} toolCalls={msg.toolCalls} onChallenge={handleChallenge} />
                     {msg.toolCalls && <ToolCallIndicator toolCalls={msg.toolCalls} />}
                   </Box>
                 ) : (
@@ -316,6 +341,20 @@ export default function ChatPanel() {
 
         <div ref={messagesEndRef} />
       </Box>
+
+      {/* Investigation registered banner */}
+      {lastInvestigation && (
+        <Alert
+          icon={<GavelIcon fontSize="small" />}
+          severity="info"
+          onClose={() => setLastInvestigation(null)}
+          sx={{ mb: 1, fontSize: "0.82rem", "& .MuiAlert-message": { lineHeight: 1.5 } }}
+        >
+          <strong>Investigation registered — {lastInvestigation.id}</strong>
+          <br />
+          A clinical expert will review this case. You can continue the assessment in the meantime.
+        </Alert>
+      )}
 
       {/* Report export */}
       {lastResult && <ReportExport result={lastResult} />}
