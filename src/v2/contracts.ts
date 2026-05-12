@@ -366,6 +366,7 @@ export type SemanticFindingType =
   | "gastro_subsystem"
   | "cns_component"
   | "visual_component"
+  | "structural"
   | "other";
 
 /** Completeness of a candidate finding. `calculation_ready` is intentionally absent —
@@ -484,7 +485,7 @@ export type ClaimOverrideStatus =
 export interface ClaimComponentOverride {
   status: ClaimOverrideStatus;
   reason?: string;
-  source?: "semantic_consensus" | "user_choice" | "safe_fail" | "legacy_policy";
+  source?: "semantic_consensus" | "user_choice" | "safe_fail" | "legacy_policy" | "system_registry";
   sourceText?: string;
   createdAt: string;
   updatedAt: string;
@@ -630,6 +631,62 @@ export type ClaimStep =
       components: ClaimAssessmentComponent[];
     };
 
+// ── ADR-0004 Extractor comparison UI ─────────────────────────────────────────
+//
+// When both the primary (regex) and shadow (LLM) extractors run on the same
+// utterance, the pipeline stops and the doctor chooses which output is
+// accurate — or asks to re-state the values when both are wrong.
+
+/**
+ * Set when both the primary (regex) and shadow (LLM) extractors ran on the
+ * same utterance. The pipeline stops until the doctor chooses which output is
+ * more accurate (ADR-0004 comparison UI).
+ *
+ * Cleared when the doctor picks "Use A", "Use B", "Both correct", or
+ * "Both wrong". In the "Both wrong" case, `PendingSlotCorrection` is set
+ * instead so the doctor can re-state the correct values.
+ */
+export interface PendingExtractorComparison {
+  /** Session-unique ID for this comparison offer. */
+  id: string;
+  system: GatiodSystemKey;
+  /** The raw source utterance both extractors ran on. */
+  sourceText: string;
+  /**
+   * Primary (regex) extraction result — not yet applied to state.
+   * Applied if doctor picks "Use A (live)" or "Both correct".
+   */
+  primaryResult: StructuredExtractionResult;
+  /**
+   * Shadow (LLM) extraction result — not yet applied to state.
+   * Applied if doctor picks "Use B (LLM)".
+   */
+  shadowResult: StructuredExtractionResult;
+  /** Doctor-facing comparison message rendered from both results. */
+  message: string;
+  /** True when at least one fact key has conflicting values between extractors. */
+  hasConflicts: boolean;
+  /** Offered chips: always ["Use A (live)", "Use B (LLM)", "Both wrong"],
+   *  plus "Both correct" when `!hasConflicts`. */
+  chips: string[];
+  createdAt: string;
+}
+
+/**
+ * Set when the doctor chose "Both wrong" on an extractor comparison.
+ * The doctor must re-state the correct values. On the next turn, the primary
+ * extractor re-runs on the correction utterance without showing the comparison
+ * again (suppressed by the pipeline for this system).
+ */
+export interface PendingSlotCorrection {
+  /** Session-unique ID for this correction offer. */
+  id: string;
+  system: GatiodSystemKey;
+  /** Doctor-facing message explaining what was wrong and what to do next. */
+  message: string;
+  createdAt: string;
+}
+
 export interface V2SessionState {
   version: 1;
   systems: Record<GatiodSystemKey, V2SystemState>;
@@ -649,6 +706,18 @@ export interface V2SessionState {
   claimComponentOverrides: Partial<Record<GatiodSystemKey, ClaimComponentOverride>>;
   /** Calculated systems explicitly excluded from Global CVC by doctor choice (REQ-GC-EXCLUSION-001). */
   globalCvcExclusions: Partial<Record<GatiodSystemKey, GlobalCvcExclusion>>;
+  /**
+   * Set when both primary and shadow extractors ran and produced output that
+   * the doctor must review (ADR-0004 comparison UI). Pipeline stops here.
+   * Cleared once the doctor picks a side or requests re-entry.
+   */
+  pendingExtractorComparison: PendingExtractorComparison | null;
+  /**
+   * Set when the doctor chose "Both wrong" — they must re-state the correct
+   * values. On the next turn the primary extractor runs without shadow so the
+   * comparison loop cannot re-trigger.
+   */
+  pendingSlotCorrection: PendingSlotCorrection | null;
 }
 
 export interface ChatV2Response {

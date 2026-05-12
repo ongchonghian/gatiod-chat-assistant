@@ -6,7 +6,26 @@ Refer to [architecture-decisions.md](architecture-decisions.md) for the binding 
 
 ---
 
-## Sprint 1 — Foundations + Upper Limb (current)
+## Sprint progress — 2026-05-11
+
+| Sprint | Systems | Status | ADR-0001 gate |
+|---|---|---|---|
+| Sprint 1 | upper\_limb | ✓ COMPLETE | CLEARED (93.6% safe, 80.2% exact, n=1991) |
+| Sprint 2 | lower\_limb | ✓ COMPLETE | CLEARED (85.7% safe, 72.4% exact, n=1164) — borderline |
+| Sprint 3 | spine | ✓ COMPLETE | CLEARED (100% safe, 96.8% exact, n=132) |
+| Sprint 4 | respiratory, renal | ✓ COMPLETE | CLEARED (respiratory 100% safe N/A exact; renal 100%/100%) |
+| Sprint 5 | gastro\_digestive, hearing | ✓ COMPLETE | CLEARED (gastro 100% safe N/A exact; hearing 100%/100%) |
+| Sprint 6 | cns, visual | ⬤ IN PROGRESS | DEFERRED — components wired, mode: `legacy`, ADR-0002 open |
+| Sprint 7 | hardening, legacy disable | NOT STARTED | — |
+
+All 4 policy fixes from [policy-fixes.md](policy-fixes.md) are applied in the
+extractors. All 7 live systems have calibration reports in
+`tests/v2/excelScenarios/`. The `structured_shadow` runtime phase was skipped
+for all systems — promotion was evidenced via Excel calibration only.
+
+---
+
+## Sprint 1 — Foundations + Upper Limb — ✓ COMPLETE
 
 **Goal:** Make V2 authoritative for upper-limb ROM-only and ROM+nerve-gate cases.
 
@@ -42,7 +61,7 @@ Refer to [architecture-decisions.md](architecture-decisions.md) for the binding 
 
 ---
 
-## Sprint 2 — Lower Limb
+## Sprint 2 — Lower Limb — ✓ COMPLETE
 
 **Goal:** Migrate lower limb to `structured_live`. Reuses the framework from sprint 1.
 
@@ -59,7 +78,7 @@ Refer to [architecture-decisions.md](architecture-decisions.md) for the binding 
 
 ---
 
-## Sprint 3 — Spine
+## Sprint 3 — Spine — ✓ COMPLETE
 
 **Goal:** Migrate spine to `structured_live`.
 
@@ -78,7 +97,7 @@ Refer to [architecture-decisions.md](architecture-decisions.md) for the binding 
 
 ---
 
-## Sprint 4 — Respiratory + Renal
+## Sprint 4 — Respiratory + Renal — ✓ COMPLETE
 
 **Goal:** Migrate two simpler systems together. Both have well-defined input schemas with no clinical-judgement gates.
 
@@ -95,7 +114,7 @@ Refer to [architecture-decisions.md](architecture-decisions.md) for the binding 
 
 ---
 
-## Sprint 5 — Gastro-digestive + Hearing
+## Sprint 5 — Gastro-digestive + Hearing — ✓ COMPLETE
 
 **Goal:** Migrate gastro and hearing.
 
@@ -112,11 +131,33 @@ Refer to [architecture-decisions.md](architecture-decisions.md) for the binding 
 
 ---
 
-## Sprint 6 — CNS + Visual (most complex; biggest policy fixes)
+## Sprint 6 — CNS + Visual — ⬤ IN PROGRESS
 
 **Goal:** Migrate CNS and visual. These are the systems with the largest pre-existing slot-policy mismatches. Schedule last because the fixes are the most disruptive to current behaviour.
 
+**Current state (2026-05-11):** All four components are **fully wired** for both
+CNS and Visual (extractor, readiness validator, arg builder, result renderer
+all present and non-empty). Mode remains `"legacy"` for both pending ADR-0002
+resolution. Policy fixes §1 (CNS Section B) and §2 (visual diplopia zones) are
+**confirmed applied** in the extractors. ADR-0001 promotion is explicitly deferred
+for CNS and Visual per ADR-0002 (decision still proposed/open). When ADR-0002
+resolves, the path forward is: run Excel shadow runner → verify calibration thresholds → flip mode.
+
+**Blocking item:** ADR-0002 ([docs/adr/0002-cns-visual-structured-migration.md](../../docs/adr/0002-cns-visual-structured-migration.md)) — open decision on when and how CNS and Visual move from `legacy` to `structured_shadow` and eventually to `structured_live`.
+
 ### Tickets
+
+| Ticket | Output | Status |
+|---|---|---|
+| **V2-501** | CNS structured extractor. Policy fix §1 applied (correct Section B components). | ✓ DONE |
+| **V2-502** | CNS Section A and Section C extractors (epilepsy/dementia; paralysis brackets). | ✓ DONE |
+| **V2-503** | CNS readiness + arg builder + renderer. | ✓ DONE |
+| **V2-504** | Visual structured extractor. Policy fix §2 applied (correct diplopia zones). | ✓ DONE |
+| **V2-505** | Visual readiness + arg builder + renderer. | ✓ DONE |
+| **V2-506** | Golden tests for both (25+ each). | ✓ DONE (71 test cases for CNS, 58 for visual) |
+| **V2-507** | Flip `cns` and `visual` to `"structured_live"`. | ✗ BLOCKED — ADR-0002 |
+
+### Original ticket descriptions
 
 | Ticket | Output |
 |---|---|
@@ -132,9 +173,12 @@ Refer to [architecture-decisions.md](architecture-decisions.md) for the binding 
 
 ---
 
-## Sprint 7 — Hardening + Legacy disable
+## Sprint 7 — Hardening + Legacy disable — NOT STARTED
 
 **Goal:** Reach Stage 5 — legacy disabled except admin/fallback.
+
+**Prerequisite:** Sprint 6 must complete (CNS and Visual flipped to `structured_live`).
+None of the Sprint 7 tickets are unblocked until that happens.
 
 ### Tickets
 

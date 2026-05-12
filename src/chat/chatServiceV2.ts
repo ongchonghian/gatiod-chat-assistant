@@ -17,13 +17,22 @@ import {
   getInstances,
   setPendingClarification,
   setPendingConfirmation,
+  setPendingExtractorComparison,
   setPendingGlobalCvcConfirmation,
+  setPendingSlotCorrection,
   toSystemStateEnvelope,
   updateExtractedValues,
   updateSlotSignals,
   upsertInstance,
   withRoute,
 } from "../v2/stateMachine.js";
+import {
+  buildComparisonOffer,
+  buildSlotCorrectionOffer,
+  isComparisonEnabled,
+  mergeExtractionResults,
+  resolveComparisonChoice,
+} from "../v2/slotSchemas/extractorComparison.js";
 import {
   canCreateInstance,
   parseInstanceId,
@@ -382,6 +391,171 @@ export async function processChatV2(
     },
   });
 
+  // ── ADR-0004: per-turn extraction control sets ─────────────────────────────
+  // skipExtractionSystems: systems whose facts are already applied this turn
+  //   (comparison choice resolved) — skip the extraction loop for them.
+  // suppressShadowForSystems: systems where shadow should not run this turn
+  //   (prevents the comparison dialog re-triggering after "Both wrong").
+  const skipExtractionSystems = new Set<GatiodSystemKey>();
+  const suppressShadowForSystems = new Set<GatiodSystemKey>();
+
+  // ── ADR-0004 Gate 1: pending slot correction ───────────────────────────────
+  // The doctor chose "Both wrong" on the previous turn and is now re-stating
+  // the correct values. Clear the correction marker so the primary extractor
+  // runs normally this turn. Shadow is suppressed to avoid re-triggering the
+  // comparison dialog for this system.
+  {
+    const pendingCorrection = loadedState.pendingSlotCorrection;
+    if (pendingCorrection) {
+      loadedState = setPendingSlotCorrection(loadedState, null);
+      suppressShadowForSystems.add(pendingCorrection.system);
+      logAuditEvent({
+        sessionId,
+        userId: opts?.userId,
+        eventType: "v2_extractor_comparison_resolved",
+        eventData: {
+          system: pendingCorrection.system,
+          choice: "correction_utterance",
+          correctionId: pendingCorrection.id,
+        },
+      });
+      // Fall through — primary extractor re-runs on doctor's correction message.
+    }
+  }
+
+  // ── ADR-0004 Gate 2: pending extractor comparison ─────────────────────────
+  // The doctor is choosing which extractor output is accurate. Resolve the
+  // choice and either apply the chosen result (Use A / Use B / Both correct)
+  // or enter field-by-field correction (Both wrong). In all cases return early
+  // after this block so the pending-observation gate sees the correct state.
+  {
+    const pendingComparison = loadedState.pendingExtractorComparison;
+    if (pendingComparison) {
+      const choice = resolveComparisonChoice(userMessage, pendingComparison);
+
+      if (!choice) {
+        // Unrecognised reply — re-present the comparison message.
+        const enveloped = toSystemStateEnvelope(loadedState, raw);
+        saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+        const compGrounding = retrieveGrounding(normalized.normalizedText);
+        const compRoute = routeUtterance(normalized, compGrounding, loadedState);
+        return {
+          sessionId,
+          message: pendingComparison.message,
+          route: compRoute,
+          grounding: compGrounding,
+          needsClarification: true,
+          clarificationQuestion: pendingComparison.message,
+          suggestedChips: pendingComparison.chips,
+          toolPlan: { proposed: [], actual: [] },
+          policy: {
+            action: "clarify",
+            reason: "extractor_comparison_pending",
+            requiresConfirmation: false,
+            clarificationQuestion: pendingComparison.message,
+            chips: pendingComparison.chips,
+            proposedTools: [],
+          },
+          shadowMode: shadow,
+        };
+      }
+
+      logAuditEvent({
+        sessionId,
+        userId: opts?.userId,
+        eventType: "v2_extractor_comparison_resolved",
+        eventData: {
+          comparisonId: pendingComparison.id,
+          system: pendingComparison.system,
+          choice,
+          hasConflicts: pendingComparison.hasConflicts,
+        },
+      });
+
+      if (choice === "both_wrong") {
+        // Doctor rejected both outputs — ask them to re-state the correct values.
+        const slotCorrection = buildSlotCorrectionOffer(pendingComparison);
+        const newState = setPendingSlotCorrection(
+          setPendingExtractorComparison(loadedState, null),
+          slotCorrection,
+        );
+        const enveloped = toSystemStateEnvelope(newState, raw);
+        saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+        const corrGrounding = retrieveGrounding(normalized.normalizedText);
+        const corrRoute = routeUtterance(normalized, corrGrounding, newState);
+        return {
+          sessionId,
+          message: slotCorrection.message,
+          route: corrRoute,
+          grounding: corrGrounding,
+          needsClarification: true,
+          clarificationQuestion: slotCorrection.message,
+          suggestedChips: [],
+          toolPlan: { proposed: [], actual: [] },
+          policy: {
+            action: "clarify",
+            reason: "awaiting_slot_correction",
+            requiresConfirmation: false,
+            clarificationQuestion: slotCorrection.message,
+            chips: [],
+            proposedTools: [],
+          },
+          shadowMode: shadow,
+        };
+      }
+
+      // "use_primary" | "use_shadow" | "both_correct" — apply the chosen result.
+      const chosenResult =
+        choice === "use_shadow"
+          ? pendingComparison.shadowResult
+          : choice === "both_correct"
+            ? mergeExtractionResults(
+                pendingComparison.primaryResult,
+                pendingComparison.shadowResult,
+              )
+            : pendingComparison.primaryResult;
+
+      // Apply to state. Any PendingObservations generated by this result will
+      // be picked up by the pending-observation gate below.
+      loadedState = applyStructuredExtraction(
+        loadedState,
+        pendingComparison.system,
+        chosenResult,
+      );
+      loadedState = setPendingExtractorComparison(loadedState, null);
+      // Skip re-extraction and suppress shadow for this system this turn.
+      skipExtractionSystems.add(pendingComparison.system);
+      suppressShadowForSystems.add(pendingComparison.system);
+      // For structured_live systems: if the readiness validator fails after
+      // applying the chosen extraction (e.g. side is still missing), proactively
+      // write the failing condition as a pending observation. Without this the
+      // pending-observation gate below has nothing to intercept on the next turn
+      // and the laterality reply ("Left") falls through to the policy engine.
+      {
+        const resolvedCap = V2_SYSTEM_REGISTRY[pendingComparison.system];
+        if (resolvedCap.mode === "structured_live" && resolvedCap.readinessValidator) {
+          const readiness = resolvedCap.readinessValidator(
+            loadedState.systems[pendingComparison.system],
+          );
+          if (!readiness.ready && readiness.expectedAnswer) {
+            loadedState = writeReadinessAsPendingObservation(
+              loadedState,
+              pendingComparison.system,
+              readiness,
+              pendingComparison.sourceText,
+            );
+          }
+        }
+      }
+      // Substitute the chip text with the original clinical utterance so the
+      // pending-observation gate and policy engine see clinical input rather
+      // than "Use B (LLM)" / "Use A (live)" (which produce unresolved terms).
+      effectiveUserMessage = pendingComparison.sourceText;
+      normalized = normalizeClinicalUtterance(pendingComparison.sourceText);
+      // Fall through — pending-observation gate + policy engine handle next step.
+    }
+  }
+
   // ── V2-007a: pending-observation resolver gate ─────────────────────────────
   // Must run before grounding/route — short replies like "Flexion" lack context
   // to route correctly. Resolve against the pending observation first.
@@ -682,15 +856,109 @@ export async function processChatV2(
   }
 
   if (extractionTargets.length > 0 && !confirmationReply) {
+    // Whether a comparison offer was stored this turn. Once true, subsequent
+    // shadow-capable systems fall back to calibration-only logging to avoid
+    // presenting multiple comparison dialogs in a single turn.
+    let comparisonStoredThisTurn = false;
+
     for (const targetSystem of extractionTargets) {
+      // Skip systems whose facts were already applied by Gate 2 this turn
+      // (doctor resolved a pending comparison choice).
+      if (skipExtractionSystems.has(targetSystem)) continue;
+
       const cap = V2_SYSTEM_REGISTRY[targetSystem];
       if ((cap.mode === "structured_live" || cap.mode === "structured_shadow") && cap.extractor) {
-        const extractionResult = cap.extractor(
-          normalized,
-          nextState.systems[targetSystem],
-          grounding.ontologyMatches,
-          activeExtractionContext,
-        );
+        // Run primary extractor and (optionally) shadow extractor concurrently.
+        // ADR-0004: shadow is suppressed when:
+        //   - suppressShadowForSystems contains this system (post-"Both wrong" turn).
+        //   - A comparison offer is already stored for another system this turn.
+        //   - LLM_EXTRACTOR_COMPARISON_ENABLED is not set (calibration-only mode).
+        const runShadow =
+          Boolean(cap.shadowExtractor) &&
+          !suppressShadowForSystems.has(targetSystem) &&
+          !comparisonStoredThisTurn;
+
+        const [extractionResult, shadowResult] = await Promise.all([
+          Promise.resolve(cap.extractor(
+            normalized,
+            nextState.systems[targetSystem],
+            grounding.ontologyMatches,
+            activeExtractionContext,
+          )),
+          runShadow
+            ? Promise.resolve(cap.shadowExtractor!(
+                normalized,
+                nextState.systems[targetSystem],
+                grounding.ontologyMatches,
+                activeExtractionContext,
+              )).catch((err: unknown) => {
+                logAuditEvent({
+                  sessionId,
+                  userId: opts?.userId,
+                  eventType: "v2_shadow_extraction_failed",
+                  eventData: { system: targetSystem, error: String(err) },
+                });
+                return null;
+              })
+            : Promise.resolve(null),
+        ]);
+
+        // ── ADR-0004: comparison gate ──────────────────────────────────────────
+        // When the comparison UI is enabled and the shadow extractor produced a
+        // result, store a PendingExtractorComparison and skip applying the
+        // primary result this turn — the doctor must choose first.
+        // Skip the comparison when both extractors produced nothing — there is
+        // nothing to compare and the dialog would just block the pipeline.
+        const bothEmpty =
+          shadowResult != null &&
+          Object.keys(extractionResult.extractedFactsPatch).length === 0 &&
+          extractionResult.pendingObservationsToAdd.length === 0 &&
+          Object.keys(shadowResult.extractedFactsPatch).length === 0 &&
+          shadowResult.pendingObservationsToAdd.length === 0;
+        if (shadowResult && isComparisonEnabled() && !bothEmpty) {
+          const comparison = buildComparisonOffer(
+            targetSystem,
+            normalized.raw,
+            extractionResult,
+            shadowResult,
+          );
+          nextState = setPendingExtractorComparison(nextState, comparison);
+          logAuditEvent({
+            sessionId,
+            userId: opts?.userId,
+            eventType: "v2_extractor_comparison_shown",
+            eventData: {
+              comparisonId: comparison.id,
+              system: targetSystem,
+              hasConflicts: comparison.hasConflicts,
+              primaryKeys: Object.keys(extractionResult.extractedFactsPatch),
+              shadowKeys: Object.keys(shadowResult.extractedFactsPatch),
+            },
+          });
+          comparisonStoredThisTurn = true;
+          continue; // Primary result not applied — doctor must choose a side.
+        }
+
+        // ── Shadow calibration logging (comparison disabled or secondary system)
+        if (shadowResult) {
+          const primaryKeys = Object.keys(extractionResult.extractedFactsPatch).sort();
+          const shadowKeys  = Object.keys(shadowResult.extractedFactsPatch).sort();
+          logAuditEvent({
+            sessionId,
+            userId: opts?.userId,
+            eventType: "v2_shadow_extraction",
+            eventData: {
+              system: targetSystem,
+              primaryExtractedKeys: primaryKeys,
+              shadowExtractedKeys:  shadowKeys,
+              agreedKeys:           primaryKeys.filter((k) => shadowKeys.includes(k)),
+              primaryPendingCount:  extractionResult.pendingObservationsToAdd.length,
+              shadowPendingCount:   shadowResult.pendingObservationsToAdd.length,
+              shadowWarnings:       shadowResult.warnings,
+            },
+          });
+        }
+
         if (extractionResult.warnings.length > 0) {
           logAuditEvent({
             sessionId,
@@ -770,6 +1038,34 @@ export async function processChatV2(
         },
       });
     }
+  }
+
+  // ── ADR-0004: comparison stored — stop pipeline until doctor chooses ───────
+  // The extraction loop built a PendingExtractorComparison for at least one
+  // system. Save state and return the comparison message. The policy engine
+  // and tool execution are bypassed — they run on the doctor's NEXT turn after
+  // Gate 2 resolves the comparison and applies the chosen result.
+  if (nextState.pendingExtractorComparison) {
+    const comparison = nextState.pendingExtractorComparison;
+    const enveloped = toSystemStateEnvelope(nextState, raw);
+    saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+    return {
+      sessionId,
+      message: comparison.message,
+      route,
+      grounding,
+      needsClarification: false,
+      suggestedChips: comparison.chips,
+      toolPlan: { proposed: [], actual: [] },
+      policy: {
+        action: "clarify",
+        reason: "extractor_comparison_pending",
+        requiresConfirmation: false,
+        chips: comparison.chips,
+        proposedTools: [],
+      },
+      shadowMode: shadow,
+    };
   }
 
   // ── Slice H — semantic-attributed pending observations ────────────────────

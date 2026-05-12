@@ -260,7 +260,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 20%\n\nUpper limb — left:\n- Amputation stream: 20%\n- No nerve deficit, or DBE included.\n\nFinal PI%: 20%\n\n---\n\n**Continuing with Lower Limb.** What type of lower-limb finding"
+      "finalMessage": "System-generated GATIOD PI%: 20%\n\nUpper limb — left:\n- Amputation stream: 20%\n- No nerve deficit, or DBE included.\n\nFinal PI%: 20%\n\n---\n\nContinuing with **Lower Limb**. What type of lower-limb finding"
     },
     {
       "rowId": "XSC-00043",
@@ -535,7 +535,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 5%\n\nSpine — Thoraco-Lumbar:\n- Fractures and Dislocations: Compression or burst fractures of <25% with residual pain → 5% ← winner\n\nFinal PI%: 5%\n\n---\n\n**Continuing with Up"
+      "finalMessage": "System-generated GATIOD PI%: 5%\n\nSpine — Thoraco-Lumbar:\n- Fractures and Dislocations: Compression or burst fractures of <25% with residual pain → 5% ← winner\n\nFinal PI%: 5%\n\n---\n\nContinuing with **Up"
     },
     {
       "rowId": "XSC-00068",
@@ -817,7 +817,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 15%\n\nHearing — Injury/Accident:\n- Left ear: 15%\n\nFinal PI%: 15%\n\n---\n\n**Continuing with Upper Limb.** What type of upper-limb finding should I assess: amputation, ROM rest"
+      "finalMessage": "System-generated GATIOD PI%: 15%\n\nHearing — Injury/Accident:\n- Left ear: 15%\n\nFinal PI%: 15%\n\n---\n\nContinuing with **Upper Limb**. What type of upper-limb finding should I assess: amputation, ROM rest"
     },
     {
       "rowId": "XSC-00108",
@@ -835,7 +835,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 8%\n\nHearing — Injury/Accident:\n- Right ear: 8%\n\nFinal PI%: 8%\n\n---\n\n**Continuing with Upper Limb.** Which shoulder movement does 80° apply to?"
+      "finalMessage": "System-generated GATIOD PI%: 8%\n\nHearing — Injury/Accident:\n- Right ear: 8%\n\nFinal PI%: 8%\n\n---\n\nContinuing with **Upper Limb**. Which shoulder movement does 80° apply to?"
     },
     {
       "rowId": "XSC-00109",
@@ -853,7 +853,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 15%\n\nHearing — Injury/Accident:\n- Left ear: 15%\n\nFinal PI%: 15%\n\n---\n\n**Continuing with Upper Limb.** For the ulnar nerve: is the deficit sensory, motor, or combined? Tota"
+      "finalMessage": "System-generated GATIOD PI%: 15%\n\nHearing — Injury/Accident:\n- Left ear: 15%\n\nFinal PI%: 15%\n\n---\n\nContinuing with **Upper Limb**. For the ulnar nerve: is the deficit sensory, motor, or combined? Tota"
     },
     {
       "rowId": "XSC-00110",
@@ -909,7 +909,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 8%\n\nHearing — Injury/Accident:\n- Right ear: 8%\n\nFinal PI%: 8%\n\n---\n\n**Continuing with Upper Limb.** Which wrist movement does 20° apply to?"
+      "finalMessage": "System-generated GATIOD PI%: 8%\n\nHearing — Injury/Accident:\n- Right ear: 8%\n\nFinal PI%: 8%\n\n---\n\nContinuing with **Upper Limb**. Which wrist movement does 20° apply to?"
     },
     {
       "rowId": "XSC-00126",
@@ -927,7 +927,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 3%\n\nHearing — Injury/Accident:\n- Left ear: 3%\n\nFinal PI%: 3%\n\n---\n\n**Continuing with Upper Limb.** Which shoulder movement does 80° apply to?"
+      "finalMessage": "System-generated GATIOD PI%: 3%\n\nHearing — Injury/Accident:\n- Left ear: 3%\n\nFinal PI%: 3%\n\n---\n\nContinuing with **Upper Limb**. Which shoulder movement does 80° apply to?"
     },
     {
       "rowId": "XSC-00127",
@@ -961,7 +961,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 15%\n\nHearing — Injury/Accident:\n- Left ear: 15%\n\nFinal PI%: 15%\n\n---\n\n**Continuing with Lower Limb.** What type of lower-limb finding should I assess: amputation, ROM rest"
+      "finalMessage": "System-generated GATIOD PI%: 15%\n\nHearing — Injury/Accident:\n- Left ear: 15%\n\nFinal PI%: 15%\n\n---\n\nContinuing with **Lower Limb**. What type of lower-limb finding should I assess: amputation, ROM rest"
     },
     {
       "rowId": "XSC-00129",
@@ -979,7 +979,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 3%\n\nHearing — Injury/Accident:\n- Left ear: 3%\n\nFinal PI%: 3%\n\n---\n\n**Continuing with Lower Limb.** What type of lower-limb finding should I assess: amputation, ROM restric"
+      "finalMessage": "System-generated GATIOD PI%: 3%\n\nHearing — Injury/Accident:\n- Left ear: 3%\n\nFinal PI%: 3%\n\n---\n\nContinuing with **Lower Limb**. What type of lower-limb finding should I assess: amputation, ROM restric"
     },
     {
       "rowId": "XSC-00130",
@@ -1500,7 +1500,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 5%\n\nSpine — Thoraco-Lumbar:\n- Fractures and Dislocations: Compression or burst fractures of <25% with residual pain → 5% ← winner\n\nFinal PI%: 5%\n\n---\n\n**Continuing with Ga"
+      "finalMessage": "System-generated GATIOD PI%: 5%\n\nSpine — Thoraco-Lumbar:\n- Fractures and Dislocations: Compression or burst fractures of <25% with residual pain → 5% ← winner\n\nFinal PI%: 5%\n\n---\n\nContinuing with **Ga"
     },
     {
       "rowId": "XSC-00219",
@@ -1518,7 +1518,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 5%\n\nSpine — Thoraco-Lumbar:\n- Fractures and Dislocations: Compression or burst fractures of <25% with residual pain → 5% ← winner\n\nFinal PI%: 5%\n\n---\n\n**Continuing with Ga"
+      "finalMessage": "System-generated GATIOD PI%: 5%\n\nSpine — Thoraco-Lumbar:\n- Fractures and Dislocations: Compression or burst fractures of <25% with residual pain → 5% ← winner\n\nFinal PI%: 5%\n\n---\n\nContinuing with **Ga"
     },
     {
       "rowId": "XSC-00220",
@@ -1554,7 +1554,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 25%\n\nSpine — Lumbo-Sacral:\n- Intervertebral Disc: 3.1d Persistent pain + restricted motion with motor deficit (± sensory) → 25% ← winner\n\nFinal PI%: 25%\n\n---\n\n**Continuing"
+      "finalMessage": "System-generated GATIOD PI%: 25%\n\nSpine — Lumbo-Sacral:\n- Intervertebral Disc: 3.1d Persistent pain + restricted motion with motor deficit (± sensory) → 25% ← winner\n\nFinal PI%: 25%\n\n---\n\nContinuing w"
     },
     {
       "rowId": "XSC-00222",
@@ -1636,7 +1636,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 20%\n\nSpine — Cervical:\n- Intervertebral Disc: 3.1c Persistent pain + restricted motion with sensory deficit → 20% ← winner\n\nFinal PI%: 20%\n\n---\n\n**Continuing with Renal.**"
+      "finalMessage": "System-generated GATIOD PI%: 20%\n\nSpine — Cervical:\n- Intervertebral Disc: 3.1c Persistent pain + restricted motion with sensory deficit → 20% ← winner\n\nFinal PI%: 20%\n\n---\n\nContinuing with **Renal**."
     },
     {
       "rowId": "XSC-00227",
@@ -1952,7 +1952,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 50%\n\nSpine — Lumbo-Sacral:\n- Fractures and Dislocations: c. Paraparesis or tetraparesis (ASIA D) → 50% ← winner\n\nFinal PI%: 50%\n\n---\n\n**Continuing with Upper Limb.** For t"
+      "finalMessage": "System-generated GATIOD PI%: 50%\n\nSpine — Lumbo-Sacral:\n- Fractures and Dislocations: c. Paraparesis or tetraparesis (ASIA D) → 50% ← winner\n\nFinal PI%: 50%\n\n---\n\nContinuing with **Upper Limb**. For t"
     },
     {
       "rowId": "XSC-00262",
@@ -2600,7 +2600,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 30%\n\nHearing — Injury/Accident:\n- Right ear: 30%\n\nFinal PI%: 30%\n\n---\n\n**Continuing with Lower Limb.** Which knee movement does 80° apply to?"
+      "finalMessage": "System-generated GATIOD PI%: 30%\n\nHearing — Injury/Accident:\n- Right ear: 30%\n\nFinal PI%: 30%\n\n---\n\nContinuing with **Lower Limb**. Which knee movement does 80° apply to?"
     },
     {
       "rowId": "XSC-00358",
@@ -2652,7 +2652,7 @@
       "globalCvcExecuted": false,
       "finalPiMatches": false,
       "turnCount": 2,
-      "finalMessage": "System-generated GATIOD PI%: 15%\n\nHearing — Injury/Accident:\n- Left ear: 15%\n\nFinal PI%: 15%\n\n---\n\n**Continuing with Lower Limb.** What type of lower-limb finding should I assess: amputation, ROM rest"
+      "finalMessage": "System-generated GATIOD PI%: 15%\n\nHearing — Injury/Accident:\n- Left ear: 15%\n\nFinal PI%: 15%\n\n---\n\nContinuing with **Lower Limb**. What type of lower-limb finding should I assess: amputation, ROM rest"
     }
   ]
 }

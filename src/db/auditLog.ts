@@ -46,7 +46,13 @@ export type AuditEventType =
   | "semantic_to_structured_extraction_failed"
   | "semantic_multi_region_spine_detected"
   | "v2_component_skipped_by_user"
-  | "spine_multi_region_unsupported";
+  | "spine_multi_region_unsupported"
+  // ADR-0004 — LLM shadow extractor calibration events
+  | "v2_shadow_extraction"
+  | "v2_shadow_extraction_failed"
+  // ADR-0004 — Extractor comparison UI events
+  | "v2_extractor_comparison_shown"
+  | "v2_extractor_comparison_resolved";
 
 export interface AuditEntry {
   sessionId: string;

@@ -6,8 +6,10 @@ import type {
   GlobalCvcExclusion,
   PendingConfirmation,
   PendingConsensus,
+  PendingExtractorComparison,
   PendingGlobalCvcConfirmation,
   PendingObservation,
+  PendingSlotCorrection,
   RouteDecision,
   SlotSignals,
   StructuredExtractionResult,
@@ -70,6 +72,8 @@ export function defaultV2SessionState(): V2SessionState {
     pendingConsensus: null,
     claimComponentOverrides: {},
     globalCvcExclusions: {},
+    pendingExtractorComparison: null,
+    pendingSlotCorrection: null,
   };
 }
 
@@ -218,6 +222,28 @@ export function coerceV2State(raw: unknown): V2SessionState {
   merged.globalCvcExclusions = coerceGlobalCvcExclusions(
     (candidate as unknown as Record<string, unknown>).globalCvcExclusions,
   );
+
+  // ADR-0004 extractor comparison UI — hydrate from persisted state so chip
+  // selections ("Use A (live)" / "Use B (LLM)") resolve correctly on the next
+  // HTTP turn. Shape-check before casting; malformed entries fall back to null.
+  const rawComparison = (candidate as unknown as Record<string, unknown>).pendingExtractorComparison;
+  merged.pendingExtractorComparison =
+    rawComparison &&
+    typeof rawComparison === "object" &&
+    typeof (rawComparison as Record<string, unknown>).id === "string" &&
+    typeof (rawComparison as Record<string, unknown>).message === "string" &&
+    Array.isArray((rawComparison as Record<string, unknown>).chips)
+      ? (rawComparison as PendingExtractorComparison)
+      : null;
+
+  const rawSlotCorrection = (candidate as unknown as Record<string, unknown>).pendingSlotCorrection;
+  merged.pendingSlotCorrection =
+    rawSlotCorrection &&
+    typeof rawSlotCorrection === "object" &&
+    typeof (rawSlotCorrection as Record<string, unknown>).id === "string" &&
+    typeof (rawSlotCorrection as Record<string, unknown>).message === "string"
+      ? (rawSlotCorrection as PendingSlotCorrection)
+      : null;
 
   // Coerce instancesBySystem
   const rawInstances = candidate.instancesBySystem as Record<string, unknown[]> | undefined;
@@ -790,6 +816,24 @@ export function applyInstanceToolResult(
   }
 
   return next;
+}
+
+// ── ADR-0004 extractor comparison state setters ───────────────────────────────
+
+/** Store or clear a pending extractor comparison (ADR-0004 comparison UI). */
+export function setPendingExtractorComparison(
+  state: V2SessionState,
+  comparison: PendingExtractorComparison | null,
+): V2SessionState {
+  return { ...state, pendingExtractorComparison: comparison };
+}
+
+/** Store or clear a pending slot correction (ADR-0004 "both wrong" path). */
+export function setPendingSlotCorrection(
+  state: V2SessionState,
+  correction: PendingSlotCorrection | null,
+): V2SessionState {
+  return { ...state, pendingSlotCorrection: correction };
 }
 
 // ── Legacy system-level helpers below (unchanged) ─────────────────────────────

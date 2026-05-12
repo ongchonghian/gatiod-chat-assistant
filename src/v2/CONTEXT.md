@@ -6,8 +6,22 @@ The deterministic structured assessment pipeline. Receives a normalized utteranc
 
 ### Per-system capability components
 
+**Slot schema**:
+A `SlotDefinition[]` declared in `src/v2/slotSchemas/<system>.ts` and registered as `V2SystemCapability.slotSchema`. Required for all `structured_live` systems; validated at startup by `validateSystemRegistry()`. The single source of truth for: which fact keys a system owns, their types and allowed values, the D2 inference boundary (`clinicalInferenceAllowed`), and the clarification spec (`question`, `candidateAnswers`, `expectedAnswer`) used when a field cannot be extracted verbatim. Three consumers — the structured extractor, `deriveReadinessValidator`, and the arg builder — all read from the same schema.
+_Avoid_: "slot config", "field definitions", "extraction schema"
+
+**`SlotDefinition`**:
+One entry in a slot schema. Shape: `{ factKey, label, description, valueType, allowedValues?, unit?, clinicalInferenceAllowed, clarification?, required_when }`. `required_when` is a `SlotCondition<TKey>` parameterised by the system's own fact keys — compiler-enforced, cannot reference `PresenceSignals` keys.
+
+**`SlotCondition`**:
+The condition language for `required_when`. Variants: `"always" | "never" | { fact, eq } | { fact, in } | { fact, present } | { and: SlotCondition[] }`. No `OR` or `NOT` — not needed by any current system.
+
+**`deriveReadinessValidator`**:
+A shared function in `src/v2/slotSchemas/deriveReadinessValidator.ts`. Takes `(defs: SlotDefinition<TKey>[], facts: V2SystemFacts)` and evaluates every slot's `required_when` against `extractedFacts`. Accepts only `extractedFacts` — never `PresenceSignals`. Per-system readiness validators migrate to this incrementally; the imperative validators are kept until migration is complete.
+_Avoid_: "generic readiness checker", "condition evaluator"
+
 **Structured extractor**:
-A per-system function (`src/v2/extractors/<system>.ts`) that turns a normalized utterance into a `StructuredExtractionResult`. Enforces the D2 inference boundary — never infers clinical fields that must be stated.
+A per-system function (`src/v2/extractors/<system>.ts`) that turns a normalized utterance into a `StructuredExtractionResult`. In the target architecture (ADR-0004), backed by an LLM call using the system's slot schema rather than regex pattern tables. Enforces the D2 inference boundary — never infers clinical fields that must be stated; emits a `PendingObservation` with the slot's `clarification` spec when a D2-forbidden field cannot be extracted verbatim.
 _Avoid_: "extractor", "parser" (too generic)
 
 **StructuredExtractionResult**:
@@ -47,6 +61,10 @@ An allowlist of systems that are `structured_live` but have not yet satisfied th
 
 **State machine**:
 `src/v2/stateMachine.ts` — owns `V2SessionState` shape, `defaultV2SessionState()`, and `coerceV2State()` (the hydration boundary that handles missing nullable fields from older sessions).
+
+**PresenceSignals** (formerly `SlotSignals`):
+Boolean presence flags set by the structured extractor via `StructuredExtractionResult.slotSignalsPatch`. Semantically distinct from `extractedFacts`: a `PresenceSignal` answers "is this category present?" (boolean); a fact answers "what is the value?" (typed). Key names overlap between the two (e.g. `cns_section`) — `SlotCondition<TKey>` prevents conflation at the type level. `PresenceSignals` are retained for `legacy` and `structured_shadow` systems; `deriveReadinessValidator` reads only `extractedFacts` and never touches them.
+_Avoid_: "SlotSignals" (old name), "signals" without qualifier
 
 **Slot evaluator**:
 `src/v2/slotEvaluator.ts` — the legacy per-system signal and value extractor. **Must not run** for `structured_live` systems; those get signals exclusively from `StructuredExtractionResult.slotSignalsPatch`. Retained for `legacy` and `structured_shadow` systems.

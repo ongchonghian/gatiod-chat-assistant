@@ -1,7 +1,7 @@
 // Global CVC offer-then-combine flow (Q4) — derived soft queue,
 // explicit confirmation, vanilla CVC. The scaffold-collapse case finally
 // produces a final combined PI%, which was the user-visible win in slice 3.
-import { describe, expect, it, beforeAll } from "vitest";
+import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { processChatV2 } from "../../src/chat/chatServiceV2.js";
 import {
   buildGlobalCvcOffer,
@@ -13,8 +13,26 @@ import {
 import { defaultV2SessionState } from "../../src/v2/stateMachine.js";
 import type { V2SessionState } from "../../src/v2/contracts.js";
 
+let _savedExtractorFlag: string | undefined;
+let _savedComparisonFlag: string | undefined;
 beforeAll(() => {
   process.env.GATIOD_DB_PATH = ":memory:";
+  _savedExtractorFlag = process.env.LLM_EXTRACTOR_ENABLED;
+  _savedComparisonFlag = process.env.LLM_EXTRACTOR_COMPARISON_ENABLED;
+  process.env.LLM_EXTRACTOR_ENABLED = "false";
+  process.env.LLM_EXTRACTOR_COMPARISON_ENABLED = "false";
+});
+afterAll(() => {
+  if (_savedExtractorFlag !== undefined) {
+    process.env.LLM_EXTRACTOR_ENABLED = _savedExtractorFlag;
+  } else {
+    delete process.env.LLM_EXTRACTOR_ENABLED;
+  }
+  if (_savedComparisonFlag !== undefined) {
+    process.env.LLM_EXTRACTOR_COMPARISON_ENABLED = _savedComparisonFlag;
+  } else {
+    delete process.env.LLM_EXTRACTOR_COMPARISON_ENABLED;
+  }
 });
 
 function withCalculatedSystems(

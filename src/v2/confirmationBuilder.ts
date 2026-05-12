@@ -140,7 +140,23 @@ function buildStructuredBody(system: GatiodSystemKey, facts: V2SystemFacts): Con
       }
       return {
         ok: true,
-        message: entries.map(([k, f]) => line(formatKey(k), titleCase(String(f!.value)))).join("\n"),
+        message: entries.map(([k, f]) => {
+          const v = f!.value;
+          const display =
+            v === null || v === undefined
+              ? "(none)"
+              : typeof v === "object"
+                ? Object.entries(v as Record<string, unknown>)
+                    .filter(([, ev]) => ev != null && ev !== "none")
+                    .map(([ek, ev]) =>
+                      typeof ev === "object"
+                        ? `${ek}: ${JSON.stringify(ev)}`
+                        : `${ek}: ${ev}`
+                    )
+                    .join(", ") || JSON.stringify(v)
+                : titleCase(String(v));
+          return line(formatKey(k), display);
+        }).join("\n"),
       };
     }
   }

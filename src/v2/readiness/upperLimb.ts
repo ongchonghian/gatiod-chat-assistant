@@ -32,6 +32,7 @@ export function validateUpperLimbReadiness(systemState: V2SystemState): Readines
       missingFields: ["side"],
       clarificationQuestion: "Which upper limb is affected — left or right?",
       candidateAnswers: ["Left", "Right"],
+      expectedAnswer: { kind: "enum", factKey: FK_SIDE, choices: ["left", "right"] },
     };
   }
 

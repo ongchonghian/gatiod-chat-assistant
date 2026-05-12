@@ -17,6 +17,31 @@ import type { UpperLimbValue } from "../../engine/upperLimbData.js";
 
 const FINGER_KEYS = ["thumb", "index", "middle", "ring", "little"] as const;
 
+// Normalize human-readable level names (produced by old LLM schema) to engine IDs.
+// Thumb uses different IDs for "one phalanx" (ip) and "with metacarpal" (cmc).
+const THUMB_LEVEL_MAP: Record<string, string> = {
+  one_phalanx: "ip",
+  both_phalanges: "mp",
+  two_phalanges: "mp",
+  three_phalanges: "mp",
+  metacarpal: "cmc",
+  metacarpal_only: "mc_only",
+  mc_only: "mc_only",
+};
+const NON_THUMB_LEVEL_MAP: Record<string, string> = {
+  one_phalanx: "dip",
+  two_phalanges: "pip",
+  three_phalanges: "mp",
+  metacarpal: "mc",
+  metacarpal_only: "mc_only",
+  mc_only: "mc_only",
+};
+
+function normalizeFingerLevel(finger: string, level: string): string {
+  const map = finger === "thumb" ? THUMB_LEVEL_MAP : NON_THUMB_LEVEL_MAP;
+  return map[level] ?? level;
+}
+
 export function buildUpperLimbArgs(facts: V2SystemFacts): BuildResult<UpperLimbValue> {
   const warnings: string[] = [];
   const userSupplied: string[] = [];
@@ -45,7 +70,7 @@ export function buildUpperLimbArgs(facts: V2SystemFacts): BuildResult<UpperLimbV
   const fingers: Record<string, string> = {};
   if (facts[FK_FINGER_AMPUTATIONS]) {
     const raw = facts[FK_FINGER_AMPUTATIONS].value as Record<string, string>;
-    for (const f of FINGER_KEYS) fingers[f] = raw[f] ?? "none";
+    for (const f of FINGER_KEYS) fingers[f] = normalizeFingerLevel(f, raw[f] ?? "none");
     userSupplied.push("finger_amputations");
   } else {
     for (const f of FINGER_KEYS) fingers[f] = "none";

@@ -9,16 +9,56 @@ This document describes the five rollout stages and the gate criteria each syste
 
 ---
 
+## Current rollout status — 2026-05-11
+
+**Active stage: Stage 3+ (partially into Stage 4)**
+
+7 of 9 systems are `structured_live`. CNS and Visual remain `legacy` pending
+ADR-0002 resolution. All four policy fixes are applied. ADR-0001 calibration
+reports exist for all 7 live systems and all meet their promotion thresholds.
+
+### Per-system ADR-0001 evidence
+
+| System | Mode | Safe-outcome | Threshold | Exact-calc | Threshold | Gate |
+|---|---|---:|---:|---:|---:|---|
+| hearing | `structured_live` | 100.0% | ≥ 95% | 100.0% | ≥ 90% | **CLEARED** |
+| spine | `structured_live` | 100.0% | ≥ 95% | 96.8% | ≥ 90% | **CLEARED** |
+| renal | `structured_live` | 100.0% | ≥ 90% | 100.0% | ≥ 80% | **CLEARED** |
+| respiratory | `structured_live` | 100.0% | ≥ 90% | N/A (0 exact rows) | ≥ 80% | **CLEARED** |
+| gastro_digestive | `structured_live` | 100.0% | ≥ 85% | N/A (0 exact rows) | ≥ 70% | **CLEARED** |
+| upper_limb | `structured_live` | 93.6% | ≥ 85% | 80.2% | ≥ 70% | **CLEARED** |
+| lower_limb | `structured_live` | 85.7% | ≥ 85% | 72.4% | ≥ 70% | **CLEARED** (borderline) |
+| cns | `legacy` | — | deferred | — | deferred | DEFERRED — ADR-0002 open |
+| visual | `legacy` | — | deferred | — | deferred | DEFERRED — ADR-0002 open |
+
+Sample sizes: upper\_limb n=1991, lower\_limb n=1164, spine n=132, gastro n=44,
+hearing n=45, renal n=10, respiratory n=16.
+
+**Note on `structured_shadow` runtime mode:** In practice, the per-system shadow
+comparison phase (the `GATIOD_EXTRACTOR_SHADOW=true` runtime path) was skipped
+for all 7 currently-live systems. Systems moved from `legacy` (components wired)
+directly to `structured_live` backed by Excel calibration evidence. All 7 systems
+remain on the `PROVISIONAL_STRUCTURED_LIVE` allowlist even though their
+ADR-0001 evidence now meets the promotion thresholds. The runtime shadow
+infrastructure stays available for CNS and Visual when ADR-0002 is resolved.
+
+---
+
 ## Stages
 
-| Stage | Default route | Registry state | What doctors experience |
-|---|---|---|---|
-| 0 (current) | Legacy | All systems `legacy`; V2 runs as shadow only | Legacy responses; V2 logs only |
-| 1 | Legacy | Upper limb `structured_shadow`; others `legacy` | Same as stage 0; V2 internal testing via `/api/chat/v2` |
-| 2 | V2 (upper limb only) | Upper limb `structured_live`; others `legacy` | V2 owns upper-limb assessments; other systems still legacy |
-| 3 | V2 (limbs + spine) | Upper, lower, spine `structured_live`; others `legacy` | V2 owns all musculoskeletal; others still legacy |
-| 4 | V2 (all systems) | All systems `structured_live` | V2 owns all assessments |
-| 5 | V2 only | All `structured_live`; legacy disabled except admin/fallback | Legacy is reachable only via explicit `/api/chat/legacy` admin route or doctor-selected fallback after V2 failure |
+| Stage | Status | Default route | Registry state | What doctors experience |
+|---|---|---|---|---|
+| 0 | ✓ COMPLETE | Legacy | All systems `legacy`; V2 runs as shadow only | Legacy responses; V2 logs only |
+| 1 | — SKIPPED ¹ | Legacy | Upper limb `structured_shadow`; others `legacy` | Same as stage 0; V2 internal testing via `/api/chat/v2` |
+| 2 | ✓ COMPLETE | V2 (upper limb only) | Upper limb `structured_live`; others `legacy` | V2 owns upper-limb assessments; other systems still legacy |
+| 3 | ✓ COMPLETE | V2 (limbs + spine) | Upper, lower, spine `structured_live`; others `legacy` | V2 owns all musculoskeletal; others still legacy |
+| 4 | ⬤ IN PROGRESS | V2 (all systems) | All systems `structured_live` | V2 owns all assessments |
+| 5 | NOT STARTED | V2 only | All `structured_live`; legacy disabled except admin/fallback | Legacy is reachable only via explicit `/api/chat/legacy` admin route or doctor-selected fallback after V2 failure |
+
+¹ Stage 1 was skipped. Systems moved from `legacy` (components wired) directly to
+`structured_live` backed by Excel calibration evidence, bypassing the runtime
+`structured_shadow` phase. CNS and Visual components are fully wired and ready
+for a formal shadow run when ADR-0002 is resolved.
 
 ---
 
@@ -45,12 +85,16 @@ The `structured_shadow` mode is mandatory for at least one release cycle before 
 
 In addition to per-system gates, each stage requires:
 
-| Stage | Additional gate |
-|---|---|
-| 1 → 2 | Shadow comparison shows ≥99% agreement on PI% for upper limb across last N sessions; no `v2_failure` events of severity > advisory in the last release window. |
-| 2 → 3 | Lower limb and spine clear per-system gates; legacy fallback rate for upper limb in stage 2 is below an agreed threshold (e.g. <2% of confirmed assessments). |
-| 3 → 4 | Remaining systems (respiratory, renal, gastro, hearing, CNS, visual) clear per-system gates; policy fixes from [policy-fixes.md](policy-fixes.md) all applied. |
-| 4 → 5 | All systems running `structured_live` for at least one full release cycle; legacy fallback rate aggregated across all systems is below the agreed threshold; admin override route (`/api/chat/legacy`) ready for cases where legacy is genuinely needed. |
+| Transition | Status | Additional gate |
+|---|---|---|
+| 1 → 2 | ✓ COMPLETE ¹ | Shadow comparison shows ≥99% agreement on PI% for upper limb across last N sessions; no `v2_failure` events of severity > advisory in the last release window. |
+| 2 → 3 | ✓ COMPLETE | Lower limb and spine clear per-system gates; legacy fallback rate for upper limb in stage 2 is below an agreed threshold (e.g. <2% of confirmed assessments). |
+| 3 → 4 | ⬤ PARTIAL | Remaining systems clear per-system gates; all policy fixes applied. **Cleared:** respiratory, renal, gastro, hearing (all ADR-0001 evidence meets thresholds; all policy fixes applied). **Blocking:** CNS and visual deferred per ADR-0002 — components wired, mode stays `legacy`. |
+| 4 → 5 | NOT STARTED | All systems running `structured_live` for at least one full release cycle; legacy fallback rate aggregated across all systems is below the agreed threshold; admin override route (`/api/chat/legacy`) ready for cases where legacy is genuinely needed. |
+
+¹ The specific 99% shadow-comparison metric was not tracked via runtime shadow logs.
+Upper limb promotion was evidenced by ADR-0001 calibration (93.6% safe-outcome,
+80.2% exact-calc on n=1991 rows), which met the 85%/70% per-system threshold.
 
 ---
 

@@ -10,6 +10,7 @@ This directory holds the architectural decisions and sprint plans for migrating 
 | [sprints.md](sprints.md) | Sprint-by-sprint breakdown. Sprint 1 is upper limb; subsequent sprints follow the same template per system. |
 | [policy-fixes.md](policy-fixes.md) | Confirmed bugs in current V2 slot policy (CNS Section B, visual diplopia, gastro subsystem, renal eGFR). |
 | [rollout-plan.md](rollout-plan.md) | The five-stage rollout, promotion gates, and shadow-mode invariants. |
+| [shadow-to-live.md](shadow-to-live.md) | Shadow mode purpose, the full legacy → shadow → live process, all gating criteria, and the pre-switch checklist. |
 
 ## Core invariants
 

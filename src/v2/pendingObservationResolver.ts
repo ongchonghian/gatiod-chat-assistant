@@ -44,6 +44,30 @@ import {
   HEARING_FK_AGE,
   HEARING_FK_AFFECTED_EARS,
 } from "./extractors/hearing.js";
+import {
+  bracketIdFromChip,
+  G1A_CHIPS, G1B_CHIPS, G1C_CHIPS, G2_CHIPS, G3_CHIPS, G4_CHIPS,
+  B_OLFACTION_CHIPS, B_FACIAL_CHIPS, B_EQUILIBRIUM_CHIPS,
+  B_SWALLOWING_CHIPS, B_STATION_GAIT_CHIPS, B_RESPIRATION_CHIPS, LIMB_CHIPS,
+  CNS_FK_G1A, CNS_FK_G1B, CNS_FK_G1C,
+  CNS_FK_G2, CNS_FK_G3, CNS_FK_G4,
+  CNS_FK_B_OLFACTION, CNS_FK_B_FACIAL, CNS_FK_B_EQUILIBRIUM,
+  CNS_FK_B_SWALLOWING, CNS_FK_B_STATION_GAIT, CNS_FK_B_RESPIRATION,
+  CNS_FK_C_LIMBS,
+} from "./extractors/cns.js";
+import {
+  GROUP1_SUBCATEGORIES, GROUP2_BRACKETS, GROUP3_BRACKETS, GROUP4_BRACKETS,
+  OLFACTION_BRACKETS, FACIAL_NERVE_BRACKETS, EQUILIBRIUM_BRACKETS,
+  SWALLOWING_BRACKETS, STATION_GAIT_BRACKETS, RESPIRATION_BRACKETS,
+  PARALYSED_LIMB_OPTIONS,
+  type SeverityBracket,
+} from "../engine/cnsAssessmentData.js";
+import {
+  acuityIdFromChip, fieldIdFromChip, diplopiaIdFromChip,
+  VISUAL_FK_LEFT_ACUITY, VISUAL_FK_RIGHT_ACUITY,
+  VISUAL_FK_LEFT_FIELD, VISUAL_FK_RIGHT_FIELD,
+  VISUAL_FK_DIPLOPIA,
+} from "./extractors/visual.js";
 
 const DIRECTION_TEXT_MAP: Record<string, string> = {
   flexion: "flexion",
@@ -611,12 +635,145 @@ function resolveByExpectedAnswer(
   }
 }
 
+// ── CNS bracket pending obs resolvers ────────────────────────────────────────
+
+const CNS_BRACKET_SUBTYPE_MAP: Record<string, { factKey: string; brackets: SeverityBracket[] }> = {
+  cns_g1a_bracket: { factKey: CNS_FK_G1A, brackets: GROUP1_SUBCATEGORIES[0].brackets as unknown as SeverityBracket[] },
+  cns_g1b_bracket: { factKey: CNS_FK_G1B, brackets: GROUP1_SUBCATEGORIES[1].brackets as unknown as SeverityBracket[] },
+  cns_g1c_bracket: { factKey: CNS_FK_G1C, brackets: GROUP1_SUBCATEGORIES[2].brackets as unknown as SeverityBracket[] },
+  cns_g2_bracket:  { factKey: CNS_FK_G2,  brackets: GROUP2_BRACKETS },
+  cns_g3_bracket:  { factKey: CNS_FK_G3,  brackets: GROUP3_BRACKETS },
+  cns_g4_bracket:  { factKey: CNS_FK_G4,  brackets: GROUP4_BRACKETS },
+  cns_b_olfaction_bracket:    { factKey: CNS_FK_B_OLFACTION,    brackets: OLFACTION_BRACKETS    },
+  cns_b_facial_bracket:       { factKey: CNS_FK_B_FACIAL,       brackets: FACIAL_NERVE_BRACKETS },
+  cns_b_equilibrium_bracket:  { factKey: CNS_FK_B_EQUILIBRIUM,  brackets: EQUILIBRIUM_BRACKETS  },
+  cns_b_swallowing_bracket:   { factKey: CNS_FK_B_SWALLOWING,   brackets: SWALLOWING_BRACKETS   },
+  cns_b_station_gait_bracket: { factKey: CNS_FK_B_STATION_GAIT, brackets: STATION_GAIT_BRACKETS },
+  cns_b_respiration_bracket:  { factKey: CNS_FK_B_RESPIRATION,  brackets: RESPIRATION_BRACKETS  },
+};
+
+// Chip arrays for limb ID resolution
+const LIMB_LABEL_TO_ID = new Map(PARALYSED_LIMB_OPTIONS.map((o) => [o.label.toLowerCase(), o.id]));
+
+function resolveCnsPendingObs(
+  obs: PendingObservation,
+  text: string,
+): { resolved: true; factsPatch: V2SystemFacts } | { resolved: false } {
+  const subtype = (obs.parsed as Record<string, unknown>).subtype as string | undefined;
+  if (!subtype) return { resolved: false };
+
+  // Bracket selection
+  const bracketDef = CNS_BRACKET_SUBTYPE_MAP[subtype];
+  if (bracketDef) {
+    const bracketId = bracketIdFromChip(text, bracketDef.brackets)
+      ?? bracketIdFromChip(text.trim().toLowerCase(), bracketDef.brackets);
+    if (!bracketId) return { resolved: false };
+    return {
+      resolved: true,
+      factsPatch: { [bracketDef.factKey]: { value: bracketId, sourceText: text, confidence: 1.0, extractionMethod: "user_selected", createdAt: nowIso(), updatedAt: nowIso() } },
+    };
+  }
+
+  // Section C limb pick
+  if (subtype === "cns_c_limb_pick") {
+    const norm = text.trim().toLowerCase();
+    const limbId = LIMB_LABEL_TO_ID.get(norm)
+      ?? PARALYSED_LIMB_OPTIONS.find((o) => norm.includes(o.label.toLowerCase().slice(0, 10)))?.id;
+    if (!limbId) return { resolved: false };
+    return {
+      resolved: true,
+      factsPatch: {
+        [CNS_FK_C_LIMBS]: { value: [limbId], sourceText: text, confidence: 1.0, extractionMethod: "user_selected", createdAt: nowIso(), updatedAt: nowIso() },
+      },
+    };
+  }
+
+  // Spine-complication clarify — "Yes, this is spine" → we can't reroute here,
+  // just dismiss the observation so CNS doesn't block. The spine extractor will
+  // pick it up on the next turn when the doctor routes to spine.
+  if (subtype === "cns_spine_complication_clarify") {
+    return { resolved: true, factsPatch: {} };
+  }
+
+  return { resolved: false };
+}
+
+// ── Visual pending obs resolvers ──────────────────────────────────────────────
+
+function resolveVisualPendingObs(
+  obs: PendingObservation,
+  text: string,
+): { resolved: true; factsPatch: V2SystemFacts } | { resolved: false } {
+  const subtype = (obs.parsed as Record<string, unknown>).subtype as string | undefined;
+  if (!subtype) return { resolved: false };
+
+  // Diplopia zone selection
+  if (subtype === "visual_diplopia_zone") {
+    const dipId = diplopiaIdFromChip(text) ?? diplopiaIdFromChip(text.trim().toLowerCase());
+    if (!dipId) return { resolved: false };
+    return {
+      resolved: true,
+      factsPatch: { [VISUAL_FK_DIPLOPIA]: { value: dipId, sourceText: text, confidence: 1.0, extractionMethod: "user_selected", createdAt: nowIso(), updatedAt: nowIso() } },
+    };
+  }
+
+  // Acuity eye-side pick: which eye has acuityId stored in obs.parsed?
+  if (subtype === "visual_acuity_eye_pick") {
+    const acuityId = (obs.parsed as Record<string, unknown>).acuityId as string | undefined;
+    if (!acuityId) return { resolved: false };
+    const norm = text.trim().toLowerCase();
+    const isRight = /right/.test(norm);
+    const isLeft  = /left/.test(norm);
+    const isBoth  = /both/.test(norm);
+    if (!isRight && !isLeft && !isBoth) return { resolved: false };
+
+    const factsPatch: V2SystemFacts = {};
+    const makeF = (v: string) => ({ value: v, sourceText: text, confidence: 1.0, extractionMethod: "user_selected" as const, createdAt: nowIso(), updatedAt: nowIso() });
+    if (isRight || isBoth) factsPatch[VISUAL_FK_RIGHT_ACUITY] = makeF(acuityId);
+    if (isLeft  || isBoth) factsPatch[VISUAL_FK_LEFT_ACUITY]  = makeF(acuityId);
+    return { resolved: true, factsPatch };
+  }
+
+  // Acuity chip-pick for a named eye (e.g. right eye acuity clarification)
+  if (subtype === "visual_right_acuity_pick") {
+    const id = acuityIdFromChip(text);
+    if (!id) return { resolved: false };
+    return { resolved: true, factsPatch: { [VISUAL_FK_RIGHT_ACUITY]: { value: id, sourceText: text, confidence: 1.0, extractionMethod: "user_selected", createdAt: nowIso(), updatedAt: nowIso() } } };
+  }
+  if (subtype === "visual_left_acuity_pick") {
+    const id = acuityIdFromChip(text);
+    if (!id) return { resolved: false };
+    return { resolved: true, factsPatch: { [VISUAL_FK_LEFT_ACUITY]: { value: id, sourceText: text, confidence: 1.0, extractionMethod: "user_selected", createdAt: nowIso(), updatedAt: nowIso() } } };
+  }
+
+  // Field chip-pick for a named eye
+  if (subtype === "visual_right_field_pick") {
+    const id = fieldIdFromChip(text);
+    if (!id) return { resolved: false };
+    return { resolved: true, factsPatch: { [VISUAL_FK_RIGHT_FIELD]: { value: id, sourceText: text, confidence: 1.0, extractionMethod: "user_selected", createdAt: nowIso(), updatedAt: nowIso() } } };
+  }
+  if (subtype === "visual_left_field_pick") {
+    const id = fieldIdFromChip(text);
+    if (!id) return { resolved: false };
+    return { resolved: true, factsPatch: { [VISUAL_FK_LEFT_FIELD]: { value: id, sourceText: text, confidence: 1.0, extractionMethod: "user_selected", createdAt: nowIso(), updatedAt: nowIso() } } };
+  }
+
+  return { resolved: false };
+}
+
+// ── Unused parameter suppression (LIMB_CHIPS chip arrays imported but
+//    currently only used for display — suppress TS warning) ─────────────────
+void [G1A_CHIPS, G1B_CHIPS, G1C_CHIPS, G2_CHIPS, G3_CHIPS, G4_CHIPS,
+      B_OLFACTION_CHIPS, B_FACIAL_CHIPS, B_EQUILIBRIUM_CHIPS,
+      B_SWALLOWING_CHIPS, B_STATION_GAIT_CHIPS, B_RESPIRATION_CHIPS, LIMB_CHIPS];
+
 /**
  * Try to resolve the oldest pending observation using the current utterance.
  * For sprint 1 handles: rom_measurement, nerve_deficit, other (rom_from_nerve).
  * For sprint 3 adds: severity_bracket (spine), other/spine_region.
  * For sprint 4 adds: other/egfr_disambiguation (renal policy fix §4).
  * For sprint 5 adds: hearing_value (hearing path/ahl/age/affected_ear), other/gastro_* subtypes.
+ * REQ-A1/A4 adds: other/cns_* bracket subtypes, visual_value/visual_* subtypes.
  * Issue #12 / Phase E: a generic `expectedAnswer`-driven resolver runs first
  * for any observation that declares one.
  */
@@ -654,9 +811,13 @@ export function tryResolvePendingObservation(
     } else if (subtype === "hearing_affected_ear") {
       resolution = resolveHearingAffectedEar(obs, text);
     }
+  } else if (!resolution.resolved && obs.type === "visual_value") {
+    resolution = resolveVisualPendingObs(obs, text);
   } else if (!resolution.resolved && obs.type === "other") {
     const subtype = (obs.parsed as Record<string, unknown>).subtype as string | undefined;
-    if (subtype === "spine_region") {
+    if (subtype?.startsWith("cns_")) {
+      resolution = resolveCnsPendingObs(obs, text);
+    } else if (subtype === "spine_region") {
       resolution = resolveSpineRegion(obs, text);
     } else if (subtype === "egfr_disambiguation") {
       resolution = resolveEgfrDisambiguation(obs, text);

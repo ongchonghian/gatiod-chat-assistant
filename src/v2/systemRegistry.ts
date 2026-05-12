@@ -11,6 +11,26 @@ import type {
   V2SystemFacts,
   V2SystemState,
 } from "./contracts.js";
+import type { SlotDefinition } from "./slotSchemas/types.js";
+import { upperLimbSlotSchema } from "./slotSchemas/upperLimb.js";
+import { createUpperLimbLlmExtractor } from "./slotSchemas/upperLimbExtractor.js";
+import { lowerLimbSlotSchema } from "./slotSchemas/lowerLimb.js";
+import { createLowerLimbLlmExtractor } from "./slotSchemas/lowerLimbExtractor.js";
+import { renalSlotSchema } from "./slotSchemas/renal.js";
+import { createRenalLlmExtractor } from "./slotSchemas/renalExtractor.js";
+import { spineSlotSchema } from "./slotSchemas/spine.js";
+import { createSpineLlmExtractor } from "./slotSchemas/spineExtractor.js";
+import { respiratorySlotSchema } from "./slotSchemas/respiratory.js";
+import { createRespiratoryLlmExtractor } from "./slotSchemas/respiratoryExtractor.js";
+import { gastroSlotSchema } from "./slotSchemas/gastro.js";
+import { createGastroLlmExtractor } from "./slotSchemas/gastroExtractor.js";
+import { hearingSlotSchema } from "./slotSchemas/hearing.js";
+import { createHearingLlmExtractor } from "./slotSchemas/hearingExtractor.js";
+import { cnsSlotSchema } from "./slotSchemas/cns.js";
+import { createCnsLlmExtractor } from "./slotSchemas/cnsExtractor.js";
+import { visualSlotSchema } from "./slotSchemas/visual.js";
+import { createVisualLlmExtractor } from "./slotSchemas/visualExtractor.js";
+import { GeminiSemanticModelClient } from "./geminiSemanticModelClient.js";
 import { extractUpperLimb } from "./extractors/upperLimb.js";
 import { validateUpperLimbReadiness } from "./readiness/upperLimb.js";
 import { buildUpperLimbArgs } from "./argBuilders/upperLimb.js";
@@ -39,25 +59,55 @@ import { extractHearing } from "./extractors/hearing.js";
 import { validateHearingReadiness, validateHearingInstanceReadiness } from "./readiness/hearing.js";
 import { buildHearingArgs } from "./argBuilders/hearing.js";
 import { renderHearingResult } from "./renderers/hearingResult.js";
+import { extractCns } from "./extractors/cns.js";
+import { validateCnsReadiness } from "./readiness/cns.js";
+import { buildCnsArgs } from "./argBuilders/cns.js";
+import { renderCnsResult } from "./renderers/cnsResult.js";
+import { extractVisual } from "./extractors/visual.js";
+import { validateVisualReadiness } from "./readiness/visual.js";
+import { buildVisualArgs } from "./argBuilders/visual.js";
+import { renderVisualResult } from "./renderers/visualResult.js";
+
+// ── Lazy Gemini client for shadow extractors ──────────────────────────────────
+//
+// Constructed once on first call. Returns null if GEMINI_API_KEY is absent so
+// the registry entry can omit shadowExtractor cleanly — no startup crash in
+// environments without the key (e.g. default CI).
+
+let _geminiClient: GeminiSemanticModelClient | null = null;
+
+function getGeminiClient(): GeminiSemanticModelClient | null {
+  if (_geminiClient) return _geminiClient;
+  if (!process.env.GEMINI_API_KEY) return null;
+  _geminiClient = new GeminiSemanticModelClient();
+  return _geminiClient;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export type SystemMigrationMode = "legacy" | "structured_shadow" | "structured_live";
 
 /**
- * Deterministic extractor for one GATIOD system.
+ * Deterministic or LLM-backed extractor for one GATIOD system.
+ *
+ * The return type is `StructuredExtractionResult | Promise<StructuredExtractionResult>`:
+ *   - Regex extractors return synchronously (existing behaviour).
+ *   - LLM slot extractors (ADR-0004) return a Promise.
+ *
+ * Call sites must wrap in `await Promise.resolve(cap.extractor(...))` so both
+ * paths are handled without changing existing extractor implementations.
  *
  * The optional fourth parameter `extractionContext` carries accepted semantic
  * interpretation context (REQ-MS-EXTRACT-001). It is read-only and ephemeral;
  * it must NEVER be persisted into V2SystemState or treated as calculation-grade
- * fact. Extractors that don't need semantic hints can simply ignore it —
- * TypeScript permits a 3-parameter function to satisfy this 4-parameter type
- * because the extra parameter is optional.
+ * fact. Extractors that don't need semantic hints can simply ignore it.
  */
 export type StructuredExtractor = (
   utterance: NormalizedUtterance,
   systemState: V2SystemState,
   ontologyMatches?: OntologyMatch[],
   extractionContext?: ExtractionContext,
-) => StructuredExtractionResult;
+) => StructuredExtractionResult | Promise<StructuredExtractionResult>;
 
 export type ReadinessValidator = (systemState: V2SystemState) => ReadinessResult;
 
@@ -72,7 +122,23 @@ export type ResultRenderer = (toolResult: unknown, systemState: V2SystemState) =
 export interface V2SystemCapability {
   system: GatiodSystemKey;
   mode: SystemMigrationMode;
+  /**
+   * Slot schema — ADR-0004. Required for structured_live systems.
+   * Single source of truth for fact keys, value types, D2 inference boundary,
+   * clarification specs, and required_when conditions.
+   * Validated at startup by validateSystemRegistry().
+   */
+  slotSchema?: SlotDefinition[];
   extractor?: StructuredExtractor;
+  /**
+   * Shadow extractor — ADR-0004.
+   * Runs in parallel with the primary extractor on every live turn.
+   * Its output is NEVER applied to session state — audit-logged only.
+   * Used to collect calibration evidence for the LLM extractor before
+   * promotion. Requires LLM_EXTRACTOR_ENABLED=true + GEMINI_API_KEY.
+   * chatServiceV2 runs this fire-and-forget after the primary extractor.
+   */
+  shadowExtractor?: StructuredExtractor;
   readinessValidator?: ReadinessValidator;
   /** Instance-aware readiness validator. Takes precedence over readinessValidator
    *  when instances exist for the system. */
@@ -90,8 +156,23 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
     // Promoting trials whether the structured V2 path now produces
     // calculable facts in the calibration runner. Will be demoted if rate
     // doesn't improve.
+    //
+    // ADR-0004: slotSchema wired (pilot). LLM extractor runs as shadowExtractor —
+    // fire-and-forget alongside the regex extractor, never touches state.
+    // Requires LLM_EXTRACTOR_ENABLED=true + GEMINI_API_KEY to activate.
+    // When the shadow calibration run meets ADR-0001 thresholds:
+    //   1. Move createUpperLimbLlmExtractor(client) to extractor
+    //   2. Move validateUpperLimbReadinessFromSchema to readinessValidator
+    //   3. Remove shadowExtractor entry
     mode: "structured_live",
+    slotSchema: upperLimbSlotSchema,
     extractor: extractUpperLimb as StructuredExtractor,
+    shadowExtractor: (() => {
+      const client = getGeminiClient();
+      return client
+        ? (createUpperLimbLlmExtractor(client) as unknown as StructuredExtractor)
+        : undefined;
+    })(),
     readinessValidator: validateUpperLimbReadiness as ReadinessValidator,
     argBuilder: buildUpperLimbArgs as ToolArgBuilder,
     resultRenderer: renderUpperLimbResult as ResultRenderer,
@@ -101,8 +182,19 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
     // ADR-0001 provisional live (slice 18 trial): same justification as
     // upper_limb. Lower-limb extractor is broader and may benefit from
     // the same loose pattern in a follow-up slice.
+    //
+    // ADR-0004: slotSchema wired. LLM extractor runs as shadowExtractor —
+    // fire-and-forget alongside the regex extractor, never touches state.
+    // Requires LLM_EXTRACTOR_ENABLED=true + GEMINI_API_KEY to activate.
     mode: "structured_live",
+    slotSchema: lowerLimbSlotSchema,
     extractor: extractLowerLimb as StructuredExtractor,
+    shadowExtractor: (() => {
+      const client = getGeminiClient();
+      return client
+        ? (createLowerLimbLlmExtractor(client) as unknown as StructuredExtractor)
+        : undefined;
+    })(),
     readinessValidator: validateLowerLimbReadiness as ReadinessValidator,
     argBuilder: buildLowerLimbArgs as ToolArgBuilder,
     resultRenderer: renderLowerLimbResult as ResultRenderer,
@@ -114,8 +206,17 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
     // (29 of 30 exact rows produce the workbook PI%). Above the 95%/90%
     // gate. Remaining mismatch is the multi-region guard correctly
     // surfacing a side-less catalogue row.
+    //
+    // ADR-0004: slotSchema wired. LLM extractor runs as shadowExtractor.
     mode: "structured_live",
+    slotSchema: spineSlotSchema,
     extractor: extractSpine as StructuredExtractor,
+    shadowExtractor: (() => {
+      const client = getGeminiClient();
+      return client
+        ? (createSpineLlmExtractor(client) as unknown as StructuredExtractor)
+        : undefined;
+    })(),
     readinessValidator: validateSpineReadiness as ReadinessValidator,
     argBuilder: buildSpineArgs as ToolArgBuilder,
     resultRenderer: renderSpineResult as ResultRenderer,
@@ -128,8 +229,17 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
     // year). Without promotion, the new extraction work was masked by the
     // legacy slot-evaluator's PFT-only readiness path. Promoted to enable
     // the structured readiness validator that handles asthma prereqs.
+    //
+    // ADR-0004: slotSchema wired. LLM extractor runs as shadowExtractor.
     mode: "structured_live",
+    slotSchema: respiratorySlotSchema,
     extractor: extractRespiratory as StructuredExtractor,
+    shadowExtractor: (() => {
+      const client = getGeminiClient();
+      return client
+        ? (createRespiratoryLlmExtractor(client) as unknown as StructuredExtractor)
+        : undefined;
+    })(),
     readinessValidator: validateRespiratoryReadiness as ReadinessValidator,
     argBuilder: buildRespiratoryArgs as ToolArgBuilder,
     resultRenderer: renderRespiratoryResult as ResultRenderer,
@@ -141,8 +251,19 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
     // those rows exercise the calculation path through the engine's
     // clinical-severity bracket; the engine's output falls within the
     // workbook's expected range each time). Promoted with real evidence.
+    //
+    // ADR-0004: slotSchema wired. LLM extractor runs as shadowExtractor —
+    // fire-and-forget alongside the regex extractor, never touches state.
+    // Requires LLM_EXTRACTOR_ENABLED=true + GEMINI_API_KEY to activate.
     mode: "structured_live",
+    slotSchema: renalSlotSchema,
     extractor: extractRenal as StructuredExtractor,
+    shadowExtractor: (() => {
+      const client = getGeminiClient();
+      return client
+        ? (createRenalLlmExtractor(client) as unknown as StructuredExtractor)
+        : undefined;
+    })(),
     readinessValidator: validateRenalReadiness as ReadinessValidator,
     argBuilder: buildRenalArgs as ToolArgBuilder,
     resultRenderer: renderRenalResult as ResultRenderer,
@@ -156,8 +277,17 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
     // clarification_required since the doctor must pick a value within
     // the bracket. Same caveat as renal applies: open follow-up to add
     // exact-calculation evidence.
+    //
+    // ADR-0004: slotSchema wired. LLM extractor runs as shadowExtractor.
     mode: "structured_live",
+    slotSchema: gastroSlotSchema,
     extractor: extractGastro as StructuredExtractor,
+    shadowExtractor: (() => {
+      const client = getGeminiClient();
+      return client
+        ? (createGastroLlmExtractor(client) as unknown as StructuredExtractor)
+        : undefined;
+    })(),
     readinessValidator: validateGastroReadiness as ReadinessValidator,
     argBuilder: buildGastroArgs as ToolArgBuilder,
     resultRenderer: renderGastroResult as ResultRenderer,
@@ -166,15 +296,58 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
     system: "hearing",
     // ADR-0001 provisional live: retained to avoid deterministic-flow regression.
     // Must earn full structured_live via curated goldens + Excel shadow thresholds.
+    //
+    // ADR-0004: slotSchema wired. LLM extractor runs as shadowExtractor.
     mode: "structured_live",
+    slotSchema: hearingSlotSchema,
     extractor: extractHearing as StructuredExtractor,
+    shadowExtractor: (() => {
+      const client = getGeminiClient();
+      return client
+        ? (createHearingLlmExtractor(client) as unknown as StructuredExtractor)
+        : undefined;
+    })(),
     readinessValidator: validateHearingReadiness as ReadinessValidator,
     instanceReadinessValidator: validateHearingInstanceReadiness as InstanceAwareReadinessValidator,
     argBuilder: buildHearingArgs as ToolArgBuilder,
     resultRenderer: renderHearingResult as ResultRenderer,
   },
-  cns:               { system: "cns",               mode: "legacy" },
-  visual:            { system: "visual",            mode: "legacy" },
+  cns: {
+    system: "cns",
+    // Components wired (REQ-A1–A3) but mode stays legacy pending ADR-0001 calibration.
+    // ADR-0004: slotSchema wired. LLM extractor available as shadowExtractor once
+    // mode promotes to structured_shadow or structured_live.
+    mode: "legacy",
+    slotSchema: cnsSlotSchema,
+    extractor: extractCns as StructuredExtractor,
+    shadowExtractor: (() => {
+      const client = getGeminiClient();
+      return client
+        ? (createCnsLlmExtractor(client) as unknown as StructuredExtractor)
+        : undefined;
+    })(),
+    readinessValidator: validateCnsReadiness as ReadinessValidator,
+    argBuilder: buildCnsArgs as ToolArgBuilder,
+    resultRenderer: renderCnsResult as ResultRenderer,
+  },
+  visual: {
+    system: "visual",
+    // Components wired (REQ-A4–A6) but mode stays legacy pending ADR-0001 calibration.
+    // ADR-0004: slotSchema wired. LLM extractor available as shadowExtractor once
+    // mode promotes to structured_shadow or structured_live.
+    mode: "legacy",
+    slotSchema: visualSlotSchema,
+    extractor: extractVisual as StructuredExtractor,
+    shadowExtractor: (() => {
+      const client = getGeminiClient();
+      return client
+        ? (createVisualLlmExtractor(client) as unknown as StructuredExtractor)
+        : undefined;
+    })(),
+    readinessValidator: validateVisualReadiness as ReadinessValidator,
+    argBuilder: buildVisualArgs as ToolArgBuilder,
+    resultRenderer: renderVisualResult as ResultRenderer,
+  },
 };
 
 /**
@@ -352,12 +525,22 @@ export function requireStructuredCapability(system: GatiodSystemKey): Required<V
 export function validateSystemRegistry(): void {
   for (const [system, cap] of Object.entries(V2_SYSTEM_REGISTRY)) {
     if (cap.mode !== "structured_live") continue;
+
+    // slotSchema (ADR-0004): required for all structured_live systems.
+    // All 9 system schemas are now present — missing schema is a startup error.
+    if (!cap.slotSchema) {
+      throw new Error(
+        `${system} is structured_live but has no slotSchema. ` +
+        `Add src/v2/slotSchemas/${system}.ts (ADR-0004).`
+      );
+    }
+
     const missing = (
       [
-        !cap.extractor && "extractor",
+        !cap.extractor       && "extractor",
         !cap.readinessValidator && "readinessValidator",
-        !cap.argBuilder && "argBuilder",
-        !cap.resultRenderer && "resultRenderer",
+        !cap.argBuilder      && "argBuilder",
+        !cap.resultRenderer  && "resultRenderer",
       ] as (string | false)[]
     ).filter(Boolean) as string[];
     if (missing.length > 0) {

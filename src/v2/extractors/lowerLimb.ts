@@ -135,7 +135,7 @@ const NERVE_RE = /\b(lumbosacral(?:\s+plexus)?|femoral(?!\s+(?:neck|head|condyle
 const DEFICIT_RE = /\b(sensory|motor|combined)\b/i;
 const LOSS_RE = /\b(total|partial)\b/i;
 const SIDE_RE = /\b(left|right)\b/i;
-const SIDE_BILATERAL_RE = /\b(bilateral|both\s+sides?)\b/i;
+const SIDE_BILATERAL_RE = /\b(bilateral|both\s+(?:sides?|legs?)|left\s+and\s+right|right\s+and\s+left)\b/i;
 const ROM_FROM_NERVE_YES = /\b(due\s+to\s+nerve|from\s+nerve|because\s+of\s+nerve|rom\s+from\s+nerve)\b/i;
 const ROM_FROM_NERVE_NO = /\b(independent|not\s+(?:from|related\s+to)\s+nerve|separate\s+rom)\b/i;
 const NO_OTHER_FINDINGS_RE = /\bno\s+other\s+findings?\b/i;
@@ -294,8 +294,25 @@ export function extractLowerLimb(
   const warnings: string[] = [];
 
   // ── Side ───────────────────────────────────────────────────────────────────
-  if (SIDE_BILATERAL_RE.test(text)) {
+  // Also treat as bilateral when both "left" and "right" appear in the text
+  // (catches "left lower limb and right lower limb" which isn't adjacent).
+  const hasBothSides = /\bleft\b/i.test(text) && /\bright\b/i.test(text);
+  if (SIDE_BILATERAL_RE.test(text) || hasBothSides) {
     warnings.push("Bilateral lower limb: side must be specified per case; asking.");
+    // Bilateral detected — add a pending observation so the doctor picks a side
+    // and the comparison dialog has something to show (rather than both-empty).
+    pendingToAdd.push({
+      ...makeObservation(
+        "lower_limb",
+        "other",
+        raw,
+        { bilateral: true },
+        [LL_FK_SIDE],
+        "Bilateral leg involvement detected. Which lower limb are we assessing — left or right?",
+        ["Left", "Right"],
+      ),
+      expectedAnswer: { kind: "enum", factKey: LL_FK_SIDE, choices: ["left", "right"] },
+    });
   } else {
     const sideMatch = SIDE_RE.exec(text);
     if (sideMatch) {

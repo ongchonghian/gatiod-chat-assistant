@@ -33,6 +33,7 @@ export function validateLowerLimbReadiness(systemState: V2SystemState): Readines
       missingFields: ["side"],
       clarificationQuestion: "Which lower limb is affected — left or right?",
       candidateAnswers: ["Left", "Right"],
+      expectedAnswer: { kind: "enum", factKey: LL_FK_SIDE, choices: ["left", "right"] },
     };
   }
 

@@ -4,7 +4,7 @@
 // "compression/burst fracture <25%" phrasing, forcing an unnecessary chip
 // roundtrip. Both extractors share the same parser now, so the fix is verified
 // at both the entry point and the resolver.
-import { describe, expect, it, beforeAll } from "vitest";
+import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { processChatV2 } from "../../../src/chat/chatServiceV2.js";
 import { loadSession } from "../../../src/db/sessionStore.js";
 import { coerceV2State } from "../../../src/v2/stateMachine.js";
@@ -19,8 +19,26 @@ import {
   HEARING_FK_AFFECTED_EARS,
 } from "../../../src/v2/extractors/hearing.js";
 
+let _savedExtractorFlag: string | undefined;
+let _savedComparisonFlag: string | undefined;
 beforeAll(() => {
   process.env.GATIOD_DB_PATH = ":memory:";
+  _savedExtractorFlag = process.env.LLM_EXTRACTOR_ENABLED;
+  _savedComparisonFlag = process.env.LLM_EXTRACTOR_COMPARISON_ENABLED;
+  process.env.LLM_EXTRACTOR_ENABLED = "false";
+  process.env.LLM_EXTRACTOR_COMPARISON_ENABLED = "false";
+});
+afterAll(() => {
+  if (_savedExtractorFlag !== undefined) {
+    process.env.LLM_EXTRACTOR_ENABLED = _savedExtractorFlag;
+  } else {
+    delete process.env.LLM_EXTRACTOR_ENABLED;
+  }
+  if (_savedComparisonFlag !== undefined) {
+    process.env.LLM_EXTRACTOR_COMPARISON_ENABLED = _savedComparisonFlag;
+  } else {
+    delete process.env.LLM_EXTRACTOR_COMPARISON_ENABLED;
+  }
 });
 
 describe("Initial multi-system query — calculable severity in one pass", () => {
