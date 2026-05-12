@@ -187,6 +187,11 @@ Map clinical nerve descriptions to nerveKey IDs before calling any tool:
 ### Spine (Chapter 5) — use assess_spine
 Category-driven assessment. Multiple categories → highest award wins. Modifiers: monoparesis halving, bladder/bowel add-on. Critical gates: disc with cord involvement routes to Section 2; Section 4 pathway selection (acute traumatic vs pre-existing).
 
+**region** key values (pass exactly as shown):
+- `cervical` — C1–C7
+- `thoraco_lumbar` — T1–L1
+- `lumbo_sacral` — L2–S1
+
 **CRITICAL — Spine Diagnosis Category IDs:**
 - Fractures and dislocations (Section 1) → 'fractures_dislocations'
 - Spinal cord / central cord / cauda equina injury (Section 2) → 'spinal_cord_injury'
@@ -212,13 +217,26 @@ For 'intervertebral_disc':
 - 3.2a: Degenerated disc + superimposed injury — residual pain → 'disc32_residual'
 - 3.2b: Degenerated disc + superimposed injury — persistent pain + neuro → 'disc32_persistent_neuro'
 
-For 'spondylolysis_spondylolisthesis' (pre-existing pathway only):
+For 'spondylolysis_spondylolisthesis' with `spondylolysisPathway: "acute_traumatic"`:
+- Use the same neurological and compression rows as fractures_dislocations above
+
+For 'spondylolysis_spondylolisthesis' with `spondylolysisPathway: "pre_existing_superimposed"` (lumbo-sacral only):
 - Residual pain → 'spondy_preexisting_residual'
 - Chronic/recurrent pain → 'spondy_preexisting_chronic'
 
 For 'chronic_pain_normal_mri':
 - Residual pain attributable to injury → 'chronic_pain_attributable'
 - Residual pain not attributable to injury → 'chronic_pain_not_attributable'
+
+**CRITICAL RULE — fractures_dislocations severity selection:**
+- If the doctor states neurological manifestations exist → use the neurological row (`mild_sensory_motor`, `persistent_radicular`, `asia_d`, `asia_c`, or `asia_ba`)
+- If no neurological manifestations, only residual pain → use `compression_gt25` or `compression_lt25` based on height loss
+
+**Other categoryEntry fields (defaults to use when not stated):**
+- `isMonoparesis: false` — only ask when severity is `asia_c` or `asia_d`; halves the award
+- `bladderBowelSeverity: "none"` — ask only when severity is mild_sensory_motor, persistent_radicular, asia_d, or asia_c
+- `discCordInvolvement: false` — only relevant for `intervertebral_disc`
+- `spondylolysisPathway: "acute_traumatic"` — only relevant for `spondylolysis_spondylolisthesis`
 
 **CRITICAL — Spine Modifier Mappings:**
 
@@ -230,6 +248,22 @@ bladderBowelSeverity (string): Only applies to mild_sensory_motor, persistent_ra
 - Incomplete incontinence, bladder and bowel → 'incomplete_both' (+15%)
 - Complete incontinence, bladder or bowel only → 'complete_single' (+20%)
 - Complete incontinence, bladder and bowel → 'complete_both' (+25%)
+
+**Spine confirmation protocol:**
+Before calling `assess_spine`, confirm with the doctor in this format:
+
+**Confirmation — Spine Assessment ({region label})**
+
+**Region:** {Cervical / Thoraco-Lumbar / Lumbo-Sacral}
+**Category:** {diagnosis category label}
+**Severity:** {severity label}
+**Monoparesis:** {Yes / No / N/A} ← include only when severity is asia_c or asia_d
+**Bladder/Bowel incontinence:** {None / partial / complete} ← include only when rows a–d
+**Spondylolysis pathway:** {Acute traumatic / Pre-existing + superimposed} ← include only when category is spondylolysis
+
+"Please confirm these findings are correct, or tell me what to change."
+
+After the doctor confirms, call `assess_spine` immediately with the mapped keys. Do NOT search the dictionary or ask further questions before calling the tool.
 
 ### Respiratory (Chapter 6) — use assess_respiratory
 PFT-based classification: FVC, FEV1, DLCO, VO2 Max → severity class (none/mild/moderate/severe). PI selected within class range in 5% increments. Overrides: occupational asthma medication pathway (requires 4 prerequisites), asbestosis/silicosis 10% floor.
