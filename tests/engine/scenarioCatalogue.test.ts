@@ -13,7 +13,11 @@ import { handleToolCall } from "../../src/tools/toolHandlers.js";
 import {
   calculateUpperLimb,
   calculateLowerLimb,
+  calculateVisual,
   defaultUpperLimbValue,
+  defaultLowerLimbValue,
+  defaultVisualValue,
+  JOINT_INSTABILITY_TABLE,
   type UpperLimbValue,
 } from "../../src/engine/index.js";
 
@@ -993,6 +997,486 @@ describe("Tool robustness: invalid / unknown inputs", () => {
 
   it("assess_global_cvc with missing array returns error", () => {
     const result = handleToolCall("assess_global_cvc", {});
+    expect(result.success).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-03: Constrictive Tenosynovitis (Issue #6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function upperLimbWithDbe(conditionId: string, selectedPercent: number) {
+  const value = defaultUpperLimbValue();
+  value.dbe.selectedConditions = [{ conditionId, selectedPercent }];
+  return value;
+}
+
+function lowerLimbWithDbe(conditionId: string, selectedPercent: number) {
+  const value = defaultLowerLimbValue();
+  value.dbe.selectedConditions = [{ conditionId, selectedPercent }];
+  return value;
+}
+
+describe("GAP-03: Constrictive Tenosynovitis — short-form IDs", () => {
+  it("SPC-01834: tenosynovitis_mild → 1%", () => {
+    const result = calculateUpperLimb(upperLimbWithDbe("tenosynovitis_mild", 1));
+    expect(result.dbe.rawPercent).toBe(1);
+    expect(result.finalPercent).toBe(1);
+  });
+
+  it("SPC-01836: tenosynovitis_moderate → 2%", () => {
+    const result = calculateUpperLimb(upperLimbWithDbe("tenosynovitis_moderate", 2));
+    expect(result.dbe.rawPercent).toBe(2);
+    expect(result.finalPercent).toBe(2);
+  });
+
+  it("SPC-01838: tenosynovitis_severe → 5%", () => {
+    const result = calculateUpperLimb(upperLimbWithDbe("tenosynovitis_severe", 5));
+    expect(result.dbe.rawPercent).toBe(5);
+    expect(result.finalPercent).toBe(5);
+  });
+
+  it("lookup_dbe_condition returns tenosynovitis_mild correctly", () => {
+    const result = handleToolCall("lookup_dbe_condition", { conditionId: "tenosynovitis_mild" });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.exactMatch).toBe(true);
+    expect(data.minPercent).toBe(1);
+    expect(data.maxPercent).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-06: Bilateral Limb Loss (Issue #7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GAP-06: Bilateral limb loss → 100%", () => {
+  it("SPC-00001: assess_upper_limb bilateral: true → finalPercent 100", () => {
+    const result = handleToolCall("assess_upper_limb", { bilateral: true });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.finalPercent).toBe(100);
+    expect(data.bilateralCap).toBe(true);
+  });
+
+  it("SPC-00002: bilateral hands (upper) → finalPercent 100", () => {
+    const result = handleToolCall("assess_upper_limb", { bilateral: true, side: "left" });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.finalPercent).toBe(100);
+  });
+
+  it("SPC-00066: assess_lower_limb bilateral: true → finalPercent 100", () => {
+    const result = handleToolCall("assess_lower_limb", { bilateral: true });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.finalPercent).toBe(100);
+    expect(data.bilateralCap).toBe(true);
+  });
+
+  it("single-side upper limb is unaffected (no bilateral flag)", () => {
+    const value = defaultUpperLimbValue();
+    value.side = "left";
+    const result = calculateUpperLimb(value);
+    expect(result.finalPercent).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-01: Post-Traumatic OA — Upper Limb (Issue #8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GAP-01: Upper Limb OA DBE conditions", () => {
+  const cases: [string, number][] = [
+    ["oa_shoulder_glenohumeral_mild",     4],
+    ["oa_shoulder_glenohumeral_moderate", 8],
+    ["oa_shoulder_glenohumeral_severe",   18],
+    ["oa_elbow_ulnohumeral_mild",         3],
+    ["oa_elbow_ulnohumeral_moderate",     8],
+    ["oa_elbow_ulnohumeral_severe",       16],
+    ["oa_wrist_radiocarpal_mild",         4],
+    ["oa_wrist_radiocarpal_severe",       16],
+    ["oa_thumb_cmc_mild",                 3],
+    ["oa_index_middle_mcp_severe",        6],
+    ["oa_ring_little_dip_moderate",       1],
+  ];
+
+  for (const [conditionId, expectedPercent] of cases) {
+    it(`${conditionId} → ${expectedPercent}%`, () => {
+      const result = calculateUpperLimb(upperLimbWithDbe(conditionId, expectedPercent));
+      expect(result.dbe.rawPercent).toBe(expectedPercent);
+      expect(result.finalPercent).toBe(expectedPercent);
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-01: Post-Traumatic OA — Lower Limb (Issue #8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GAP-01: Lower Limb OA DBE conditions", () => {
+  const cases: [string, number][] = [
+    ["oa_hip_mild",              5],
+    ["oa_hip_moderate",          10],
+    ["oa_hip_severe",            20],
+    ["oa_knee_mild",             5],
+    ["oa_knee_severe",           20],
+    ["oa_ankle_moderate",        8],
+    ["oa_ankle_severe",          12],
+    ["oa_subtalar_mild",         2],
+    ["oa_first_mtp_severe",      5],
+    ["oa_second_fifth_mtp_mild", 0],
+  ];
+
+  for (const [conditionId, expectedPercent] of cases) {
+    it(`${conditionId} → ${expectedPercent}%`, () => {
+      const result = calculateLowerLimb(lowerLimbWithDbe(conditionId, expectedPercent));
+      expect(result.dbe.rawPercent).toBe(expectedPercent);
+      expect(result.finalPercent).toBe(expectedPercent);
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-02: Joint Instability Lookup Tool (Issue #9)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GAP-02: lookup_joint_instability tool", () => {
+  it("shoulder_glenohumeral subluxation_persistent → 4%", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "shoulder_glenohumeral",
+      instabilityType: "subluxation_persistent",
+    });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.piPercent).toBe(4);
+    expect(data.applicable).toBe(true);
+  });
+
+  it("shoulder_glenohumeral dislocation_recurrent → 10%", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "shoulder_glenohumeral",
+      instabilityType: "dislocation_recurrent",
+    });
+    expect((result.data as Record<string, unknown>).piPercent).toBe(10);
+  });
+
+  it("shoulder_glenohumeral dislocation_persistent_untreated → 16%", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "shoulder_glenohumeral",
+      instabilityType: "dislocation_persistent_untreated",
+    });
+    expect((result.data as Record<string, unknown>).piPercent).toBe(16);
+  });
+
+  it("elbow subluxation_persistent → 4%", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "elbow",
+      instabilityType: "subluxation_persistent",
+    });
+    expect((result.data as Record<string, unknown>).piPercent).toBe(4);
+  });
+
+  it("elbow dislocation_recurrent → 10%", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "elbow",
+      instabilityType: "dislocation_recurrent",
+    });
+    expect((result.data as Record<string, unknown>).piPercent).toBe(10);
+  });
+
+  it("wrist_radiocarpal dislocation_persistent_untreated → 12%", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "wrist_radiocarpal",
+      instabilityType: "dislocation_persistent_untreated",
+    });
+    expect((result.data as Record<string, unknown>).piPercent).toBe(12);
+  });
+
+  it("thumb_cmc dislocation_persistent_untreated → 8%", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "thumb_cmc",
+      instabilityType: "dislocation_persistent_untreated",
+    });
+    expect((result.data as Record<string, unknown>).piPercent).toBe(8);
+  });
+
+  it("index_middle_mcp subluxation_persistent → 2%", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "index_middle_mcp",
+      instabilityType: "subluxation_persistent",
+    });
+    expect((result.data as Record<string, unknown>).piPercent).toBe(2);
+  });
+
+  it("ring_little_pip dislocation_persistent_untreated → 3%", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "ring_little_pip",
+      instabilityType: "dislocation_persistent_untreated",
+    });
+    expect((result.data as Record<string, unknown>).piPercent).toBe(3);
+  });
+
+  it("shoulder_acromioclavicular dislocation_recurrent → N/A (applicable: false, piPercent: 0)", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "shoulder_acromioclavicular",
+      instabilityType: "dislocation_recurrent",
+    });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.applicable).toBe(false);
+    expect(data.piPercent).toBe(0);
+  });
+
+  it("unknown joint returns error", () => {
+    const result = handleToolCall("lookup_joint_instability", {
+      joint: "unknown_joint",
+      instabilityType: "subluxation_persistent",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("JOINT_INSTABILITY_TABLE has 15 joints", () => {
+    expect(JOINT_INSTABILITY_TABLE).toHaveLength(15);
+  });
+});
+
+describe("GAP-02: Joint instability — additional joint coverage", () => {
+  it("wrist_distal_carpal_row subluxation_persistent → 2%", () => {
+    const r = handleToolCall("lookup_joint_instability", { joint: "wrist_distal_carpal_row", instabilityType: "subluxation_persistent" });
+    expect((r.data as Record<string, unknown>).piPercent).toBe(2);
+  });
+
+  it("thumb_mcp dislocation_persistent_untreated → 6%", () => {
+    const r = handleToolCall("lookup_joint_instability", { joint: "thumb_mcp", instabilityType: "dislocation_persistent_untreated" });
+    expect((r.data as Record<string, unknown>).piPercent).toBe(6);
+  });
+
+  it("thumb_ip subluxation_persistent → 1%", () => {
+    const r = handleToolCall("lookup_joint_instability", { joint: "thumb_ip", instabilityType: "subluxation_persistent" });
+    expect((r.data as Record<string, unknown>).piPercent).toBe(1);
+  });
+
+  it("index_middle_dip dislocation_persistent_untreated → 2%", () => {
+    const r = handleToolCall("lookup_joint_instability", { joint: "index_middle_dip", instabilityType: "dislocation_persistent_untreated" });
+    expect((r.data as Record<string, unknown>).piPercent).toBe(2);
+  });
+
+  it("ring_little_dip subluxation_persistent → 0% (edge: table entry is 0)", () => {
+    const r = handleToolCall("lookup_joint_instability", { joint: "ring_little_dip", instabilityType: "subluxation_persistent" });
+    const data = r.data as Record<string, unknown>;
+    expect(data.piPercent).toBe(0);
+    expect(data.applicable).toBe(true);
+  });
+
+  it("shoulder_sternoclavicular subluxation_persistent → 2%", () => {
+    const r = handleToolCall("lookup_joint_instability", { joint: "shoulder_sternoclavicular", instabilityType: "subluxation_persistent" });
+    expect((r.data as Record<string, unknown>).piPercent).toBe(2);
+  });
+});
+
+describe("GAP-01: Upper Limb OA — remaining joints", () => {
+  const cases: [string, number][] = [
+    ["oa_shoulder_acromioclavicular_mild",     2],
+    ["oa_shoulder_acromioclavicular_moderate", 4],
+    ["oa_shoulder_sternoclavicular_severe",    6],
+    ["oa_radio_ulnar_joint_mild",              4],
+    ["oa_radio_ulnar_joint_severe",            16],
+    ["oa_wrist_distal_carpal_row_mild",        2],
+    ["oa_wrist_distal_carpal_row_severe",      8],
+    ["oa_thumb_mcp_mild",                      1],
+    ["oa_thumb_mcp_moderate",                  3],
+    ["oa_thumb_ip_severe",                     4],
+  ];
+
+  for (const [conditionId, expectedPercent] of cases) {
+    it(`${conditionId} → ${expectedPercent}%`, () => {
+      const result = calculateUpperLimb(upperLimbWithDbe(conditionId, expectedPercent));
+      expect(result.dbe.rawPercent).toBe(expectedPercent);
+      expect(result.finalPercent).toBe(expectedPercent);
+    });
+  }
+});
+
+describe("GAP-01: Lower Limb OA — remaining joints", () => {
+  const cases: [string, number][] = [
+    ["oa_patellofemoral_mild",     4],
+    ["oa_patellofemoral_moderate", 6],
+    ["oa_talonavicular_mild",      1],
+    ["oa_talonavicular_severe",    6],
+    ["oa_calcaneocuboid_mild",     1],
+    ["oa_calcaneocuboid_moderate", 4],
+    ["oa_tarsometatarsal_mild",    2],
+    ["oa_tarsometatarsal_severe",  8],
+    ["oa_second_mtp_moderate", 1],
+    ["oa_second_mtp_severe", 3],
+  ];
+
+  for (const [conditionId, expectedPercent] of cases) {
+    it(`${conditionId} → ${expectedPercent}%`, () => {
+      const result = calculateLowerLimb(lowerLimbWithDbe(conditionId, expectedPercent));
+      expect(result.dbe.rawPercent).toBe(expectedPercent);
+      expect(result.finalPercent).toBe(expectedPercent);
+    });
+  }
+});
+
+describe("GAP-01: Multi-compartment shoulder OA combined via CVC", () => {
+  it("shoulder mild: GH 4% + AC 2% + SC 2% combined via assess_global_cvc", () => {
+    const gh  = calculateUpperLimb(upperLimbWithDbe("oa_shoulder_glenohumeral_mild",     4));
+    const ac  = calculateUpperLimb(upperLimbWithDbe("oa_shoulder_acromioclavicular_mild", 2));
+    const sc  = calculateUpperLimb(upperLimbWithDbe("oa_shoulder_sternoclavicular_mild",  2));
+
+    expect(gh.finalPercent).toBe(4);
+    expect(ac.finalPercent).toBe(2);
+    expect(sc.finalPercent).toBe(2);
+
+    const cvc = handleToolCall("assess_global_cvc", {
+      systemSubtotals: [
+        { system: "oa_shoulder_gh",  piPercent: gh.finalPercent  },
+        { system: "oa_shoulder_ac",  piPercent: ac.finalPercent  },
+        { system: "oa_shoulder_sc",  piPercent: sc.finalPercent  },
+      ],
+    });
+    expect(cvc.success).toBe(true);
+    const data = cvc.data as Record<string, unknown>;
+    expect(data.globalPiPercent as number).toBeGreaterThan(4);
+    expect(data.globalPiPercent as number).toBeLessThanOrEqual(8);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-04: Bug fix — assess_visual correct field names (Issue #4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GAP-04: assess_visual — correct field names do not crash (SPC-02310–SPC-02359)", () => {
+  it("both eyes 6/6 acuity, full field, no modifiers → finalPercent 0", () => {
+    const val = defaultVisualValue();
+    val.leftEye.acuityId  = "6_6";
+    val.leftEye.fieldId   = "field_full";
+    val.rightEye.acuityId = "6_6";
+    val.rightEye.fieldId  = "field_full";
+    const result = calculateVisual(val);
+    expect(result.finalPercent).toBe(0);
+  });
+
+  it("left eye 6/60 acuity, full field → monocular cap 50%, right normal → combined >0", () => {
+    const val = defaultVisualValue();
+    val.leftEye.acuityId  = "6_60";
+    val.leftEye.fieldId   = "field_full";
+    val.rightEye.acuityId = "6_6";
+    val.rightEye.fieldId  = "field_full";
+    const result = calculateVisual(val);
+    expect(result.leftEye.cappedTotal).toBe(50);
+    expect(result.finalPercent).toBe(50);
+  });
+
+  it("both eyes lt_6_60 → legal blindness = 100%", () => {
+    const val = defaultVisualValue();
+    val.leftEye.acuityId  = "lt_6_60";
+    val.leftEye.fieldId   = "field_full";
+    val.rightEye.acuityId = "lt_6_60";
+    val.rightEye.fieldId  = "field_full";
+    const result = calculateVisual(val);
+    expect(result.legalBlindness).toBe(true);
+    expect(result.finalPercent).toBe(100);
+  });
+
+  it("assess_visual via handleToolCall with correct field names does not crash", () => {
+    const result = handleToolCall("assess_visual", {
+      leftEye:  { acuityId: "6_6",  fieldId: "field_full", functionalModifiers: [], specificConditions: [] },
+      rightEye: { acuityId: "6_12", fieldId: "field_full", functionalModifiers: [], specificConditions: [] },
+      diplopiaId: "",
+    });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(typeof data.finalPercent).toBe("number");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-05: Bug fix — assess_lower_limb discrepancyCm=0 returns 0%
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GAP-05: assess_lower_limb — discrepancyCm field prevents shortening inflation (SPC-01038–SPC-01067)", () => {
+  it("discrepancyCm: 0 → shortening rawPercent is 0, not 30", () => {
+    const val = defaultLowerLimbValue();
+    val.shortening.discrepancyCm = 0;
+    const result = calculateLowerLimb(val);
+    expect(result.shortening.rawPercent).toBe(0);
+  });
+
+  it("discrepancyCm: 2 → shortening rawPercent is 8%", () => {
+    const val = defaultLowerLimbValue();
+    val.shortening.discrepancyCm = 2;
+    const result = calculateLowerLimb(val);
+    expect(result.shortening.rawPercent).toBe(8);
+  });
+
+  it("discrepancyCm: 5 → shortening rawPercent is 20%", () => {
+    const val = defaultLowerLimbValue();
+    val.shortening.discrepancyCm = 5;
+    const result = calculateLowerLimb(val);
+    expect(result.shortening.rawPercent).toBe(20);
+  });
+
+  it("discrepancyCm: 7.5 → shortening rawPercent is 30% (max bracket)", () => {
+    const val = defaultLowerLimbValue();
+    val.shortening.discrepancyCm = 7.5;
+    const result = calculateLowerLimb(val);
+    expect(result.shortening.rawPercent).toBe(30);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Handler paths — assess_global_cvc, lookup_amputation_level, lookup_nerve
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Handler paths — toolHandlers.ts coverage (GAP suite)", () => {
+  it("assess_global_cvc combines two system subtotals", () => {
+    const result = handleToolCall("assess_global_cvc", {
+      systemSubtotals: [
+        { system: "upper_limb", piPercent: 35 },
+        { system: "lower_limb", piPercent: 20 },
+      ],
+    });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    expect(data.globalPiPercent).toBe(48);
+  });
+
+  it("assess_global_cvc with all-zero subtotals returns 0", () => {
+    const result = handleToolCall("assess_global_cvc", {
+      systemSubtotals: [{ system: "visual", piPercent: 0 }],
+    });
+    expect((result.data as Record<string, unknown>).globalPiPercent).toBe(0);
+  });
+
+  it("lookup_amputation_level arm above_elbow → 75%", () => {
+    const result = handleToolCall("lookup_amputation_level", { type: "arm", level: "above_elbow" });
+    expect(result.success).toBe(true);
+    expect((result.data as Record<string, unknown>).percent).toBe(75);
+  });
+
+  it("lookup_amputation_level finger ip for thumb → has percent", () => {
+    const result = handleToolCall("lookup_amputation_level", { type: "finger", level: "ip", finger: "thumb" });
+    expect(result.success).toBe(true);
+  });
+
+  it("lookup_nerve median_above combined total → has adjustedPercent > 0", () => {
+    const result = handleToolCall("lookup_nerve", { nerveKey: "median_above", deficitType: "combined", lossType: "total" });
+    expect(result.success).toBe(true);
+    expect((result.data as Record<string, unknown>).adjustedPercent as number).toBeGreaterThan(0);
+  });
+
+  it("lookup_rom_table shoulder flexion 0° → returns percent 13", () => {
+    const result = handleToolCall("lookup_rom_table", { joint: "shoulder", direction: "flexion", angle: 0, isAnkylosed: false });
+    expect(result.success).toBe(true);
+    expect((result.data as Record<string, unknown>).percent).toBe(13);
+  });
+
+  it("unknown tool name returns error", () => {
+    const result = handleToolCall("nonexistent_tool", {});
     expect(result.success).toBe(false);
   });
 });

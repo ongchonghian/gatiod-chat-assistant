@@ -22,7 +22,11 @@ export const TOOL_DECLARATIONS: any[] = [
         side: {
           type: SchemaType.STRING,
           enum: ["left", "right"],
-          description: "Which upper limb is being assessed.",
+          description: "Which upper limb is being assessed. Ignored when bilateral is true.",
+        },
+        bilateral: {
+          type: SchemaType.BOOLEAN,
+          description: "Set to true when both upper limbs are assessed together (e.g. bilateral amputation). When true, the tool returns 100% per GATIOD table and side is ignored.",
         },
         amputations: {
           type: SchemaType.OBJECT,
@@ -214,6 +218,18 @@ export const TOOL_DECLARATIONS: any[] = [
       required: ["conditionId"],
     },
   },
+  {
+    name: "lookup_joint_instability",
+    description: "Look up PI% for post-traumatic joint instability (GATIOD Chapter 3 Section B). Use this for subluxation or dislocation findings. For multi-compartment joints (shoulder), call once per affected compartment then combine via assess_global_cvc.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        joint: { type: SchemaType.STRING, description: "Joint key: shoulder_glenohumeral, shoulder_acromioclavicular, shoulder_sternoclavicular, elbow, wrist_radiocarpal, wrist_distal_carpal_row, thumb_cmc, thumb_mcp, thumb_ip, index_middle_mcp, index_middle_pip, index_middle_dip, ring_little_mcp, ring_little_pip, ring_little_dip." },
+        instabilityType: { type: SchemaType.STRING, enum: ["subluxation_persistent", "dislocation_recurrent", "dislocation_persistent_untreated"], description: "Type of instability." },
+      },
+      required: ["joint", "instabilityType"],
+    },
+  },
 ];
 
 // ─── Per-system assessment tools (Chapters 4–11) + Global CVC ───────────────
@@ -229,7 +245,11 @@ export const MULTI_SYSTEM_TOOL_DECLARATIONS: any[] = [
         side: {
           type: SchemaType.STRING,
           enum: ["left", "right"],
-          description: "Which lower limb is being assessed.",
+          description: "Which lower limb is being assessed. Ignored when bilateral is true.",
+        },
+        bilateral: {
+          type: SchemaType.BOOLEAN,
+          description: "Set to true when both lower limbs are assessed together (e.g. bilateral amputation). When true, the tool returns 100% per GATIOD table and side is ignored.",
         },
         amputations: {
           type: SchemaType.OBJECT,
@@ -455,27 +475,27 @@ export const MULTI_SYSTEM_TOOL_DECLARATIONS: any[] = [
           type: SchemaType.OBJECT,
           description: "Left eye findings.",
           properties: {
-            acuityId: { type: SchemaType.STRING, description: "Snellen acuity: 6_6|6_7.5|6_9|6_12|6_15|6_18|6_24|6_30|6_36|6_48|6_60|lt_6_60" },
-            fieldId: { type: SchemaType.STRING, description: "Visual field retained: field_full|field_110_120|field_100_110|field_90_100|field_80_90|field_70_80|field_60_70|field_50_60|field_40_50|field_30_40|field_20_30|field_lt20" },
-            functionalModifiers: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "Additive modifiers: accommodation|contrast_glare|colour|astigmatism" },
-            specificConditions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "Additive conditions: glaucoma|cataract|corneal|orbital|mydriasis" },
+            acuityId: { type: SchemaType.STRING, description: "Snellen acuity ID (e.g. '6_6', '6_12', '6_60', 'lt_6_60')." },
+            fieldId: { type: SchemaType.STRING, description: "Visual field loss ID (e.g. 'field_full', 'field_90_100'). Use 'field_full' if no field loss." },
+            functionalModifiers: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "List of functional modifier IDs (e.g. 'mod_photophobia'). Empty array if none." },
+            specificConditions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "List of specific ophthalmic condition IDs (e.g. 'cond_aphakia'). Empty array if none." },
           },
           required: ["acuityId", "fieldId", "functionalModifiers", "specificConditions"],
         },
         rightEye: {
           type: SchemaType.OBJECT,
-          description: "Right eye findings (same structure as leftEye).",
+          description: "Right eye findings.",
           properties: {
-            acuityId: { type: SchemaType.STRING, description: "Snellen acuity: 6_6|6_7.5|6_9|6_12|6_15|6_18|6_24|6_30|6_36|6_48|6_60|lt_6_60" },
-            fieldId: { type: SchemaType.STRING, description: "Visual field retained: field_full|field_110_120|field_100_110|field_90_100|field_80_90|field_70_80|field_60_70|field_50_60|field_40_50|field_30_40|field_20_30|field_lt20" },
-            functionalModifiers: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "Additive modifiers: accommodation|contrast_glare|colour|astigmatism" },
-            specificConditions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "Additive conditions: glaucoma|cataract|corneal|orbital|mydriasis" },
+            acuityId: { type: SchemaType.STRING, description: "Snellen acuity ID (e.g. '6_6', '6_12', '6_60', 'lt_6_60')." },
+            fieldId: { type: SchemaType.STRING, description: "Visual field loss ID (e.g. 'field_full', 'field_90_100'). Use 'field_full' if no field loss." },
+            functionalModifiers: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "List of functional modifier IDs (e.g. 'mod_photophobia'). Empty array if none." },
+            specificConditions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "List of specific ophthalmic condition IDs (e.g. 'cond_aphakia'). Empty array if none." },
           },
           required: ["acuityId", "fieldId", "functionalModifiers", "specificConditions"],
         },
-        diplopiaId: { type: SchemaType.STRING, description: "Binocular diplopia: dip_none|dip_uncorrectable|dip_central30|dip_30_60|dip_beyond60" },
+        diplopiaId: { type: SchemaType.STRING, description: "Diplopia condition ID. Omit or pass empty string if no diplopia." },
       },
-      required: ["leftEye", "rightEye", "diplopiaId"],
+      required: ["leftEye", "rightEye"],
     },
   },
   {

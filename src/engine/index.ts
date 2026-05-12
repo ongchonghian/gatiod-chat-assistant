@@ -38,6 +38,9 @@ export {
   DBE_CONDITIONS,
   UPPER_ANATOMICAL_LABELS,
   FINGER_LABELS,
+  JOINT_INSTABILITY_TABLE,
+  type InstabilityType,
+  type JointInstabilityEntry,
 } from "./upperLimbData.js";
 
 // ─── Lower Limb (Chapter 4) ─────────────────────────────────────────────────

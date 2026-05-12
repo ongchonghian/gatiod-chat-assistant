@@ -11,6 +11,8 @@ import {
   UPPER_LIMB_NERVES, DBE_CONDITIONS, UPPER_ANATOMICAL_LABELS,
   getAmputationSuppressedJoints,
   UpperLimbValueSchema,
+  JOINT_INSTABILITY_TABLE,
+  type InstabilityType,
   type FingerKey,
   // Lower Limb
   calculateLowerLimb,
@@ -56,8 +58,14 @@ export function handleToolCall(name: string, args: Record<string, unknown>, sess
     switch (name) {
       // ─── Assessment tools (one per system) ─────────────────────────
       case "assess_upper_limb":
+        if (args.bilateral === true) {
+          return { success: true, data: { finalPercent: 100, systemKey: "upper_limb", bilateralCap: true } };
+        }
         return validateAndCalc(UpperLimbValueSchema, args, calculateUpperLimb, "upper_limb");
       case "assess_lower_limb":
+        if (args.bilateral === true) {
+          return { success: true, data: { finalPercent: 100, systemKey: "lower_limb", bilateralCap: true } };
+        }
         return validateAndCalc(LowerLimbValueSchema, args, calculateLowerLimb, "lower_limb");
       case "assess_spine":
         return handleAssessSpine(args);
@@ -99,6 +107,9 @@ export function handleToolCall(name: string, args: Record<string, unknown>, sess
         return handleLookupShortening(args);
       case "lookup_lower_dbe_condition":
         return handleLookupLowerDbe(args);
+
+      case "lookup_joint_instability":
+        return handleLookupJointInstability(args);
 
       case "register_investigation":
         return handleRegisterInvestigation(args, sessionId);
@@ -457,6 +468,27 @@ function handleLookupLowerDbe(args: Record<string, unknown>): ToolResult {
       applicableJoints: cond.anatomicalKeys.map((k) => LOWER_ANATOMICAL_LABELS[k] ?? k),
     },
   };
+}
+
+function handleLookupJointInstability(args: Record<string, unknown>): ToolResult {
+  const joint = args.joint as string;
+  const instabilityType = args.instabilityType as InstabilityType;
+
+  const entry = JOINT_INSTABILITY_TABLE.find((e) => e.joint === joint);
+  if (!entry) {
+    const validJoints = JOINT_INSTABILITY_TABLE.map((e) => e.joint).join(", ");
+    return { success: false, error: `Unknown joint: '${joint}'. Valid joints: ${validJoints}` };
+  }
+
+  const piPercent = entry[instabilityType];
+  if (piPercent === null) {
+    return {
+      success: true,
+      data: { joint: entry.label, instabilityType, piPercent: 0, applicable: false, note: "This instability type does not apply to this joint per GATIOD Ch3 Section B." },
+    };
+  }
+
+  return { success: true, data: { joint: entry.label, instabilityType, piPercent, applicable: true } };
 }
 
 function handleRegisterInvestigation(args: Record<string, unknown>, sessionId?: string): ToolResult {
