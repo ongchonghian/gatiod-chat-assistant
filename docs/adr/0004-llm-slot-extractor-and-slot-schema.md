@@ -1,3 +1,10 @@
+---
+id: ADR-0004
+status: Proposed
+sprint_sections:
+  - "../v2/sprints.md#sprint-9--slot-schema--llm-slot-extractor-adr-0004--%E2%97%94-partial"
+---
+
 # 0004 — LLM slot extractor and slot schema
 
 ## Status

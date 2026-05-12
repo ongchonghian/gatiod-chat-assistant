@@ -10,6 +10,28 @@ Sprint tickets (V2-001 onwards) are tracked in [docs/v2/sprints.md](docs/v2/spri
 
 Known live bugs scheduled for fix during system migration: [docs/v2/policy-fixes.md](docs/v2/policy-fixes.md).
 
+Open requirements not yet closed by a sprint ticket: [docs/v2/requirements-known-issues.md](docs/v2/requirements-known-issues.md).
+
+## Keeping V2 docs in sync
+
+[docs/v2/sprints.md](docs/v2/sprints.md) is the work-tracker of record. Every ADR, every `REQ-*` in [docs/v2/requirements-known-issues.md](docs/v2/requirements-known-issues.md), and every `structured_live` system in [src/v2/systemRegistry.ts](src/v2/systemRegistry.ts) must be reflected there.
+
+Drift is caught by `npm run docs:verify`, which checks:
+
+1. Every `docs/adr/*.md` with `status: Accepted | Proposed` has its ID referenced in `sprints.md` (via the `sprint_sections` frontmatter field).
+2. Every `REQ-[A-Z]\d+` heading in `requirements-known-issues.md` is referenced at least once in `sprints.md`.
+3. Every entry in `PROVISIONAL_STRUCTURED_LIVE` cites an open `REQ-*` that exists in `requirements-known-issues.md`.
+
+Calibration freshness and ADR-0001 thresholds are enforced separately by `npm run check:adr-0001-promotion`.
+
+**Run `npm run docs:verify` before committing changes to `docs/v2/`, `docs/adr/`, or `src/v2/systemRegistry.ts`.** CI runs the same check and blocks merge on drift.
+
+When adding new artefacts:
+
+- **New ADR** → add the frontmatter block (`id`, `status`, `sprint_sections`) at the top of the file, and add a sprint section to `sprints.md` that references the ADR ID. Once superseded, set `status: Superseded` and the verifier stops requiring sprint coverage.
+- **New `REQ-*`** → add the heading to `requirements-known-issues.md` and a ticket to `sprints.md` that names the REQ ID.
+- **New `structured_live` system** → run calibration, commit the `<system>.calibration.generated.json`, and add the system to `PROVISIONAL_STRUCTURED_LIVE` with a `REQ-*` that will retire the entry.
+
 ## Core invariants
 
 These hold across the entire V2 codebase:

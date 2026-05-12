@@ -1,8 +1,16 @@
+---
+id: ADR-0002
+status: Proposed
+sprint_sections:
+  - "../v2/sprints.md#sprint-6--cns--visual--%E2%97%A4-final-step"
+superseded_by: null
+---
+
 # 0002 — CNS and Visual structured migration
 
 ## Status
 
-Proposed (2026-05-09).
+Proposed (2026-05-09). Open questions moved to [V2-508](../v2/sprints.md) — tracked there for resolution before V2-507 unblocks. Once V2-508 closes, update `status:` in the frontmatter to `Superseded` and set `superseded_by` to the resolving ADR or note.
 
 ## Context
 

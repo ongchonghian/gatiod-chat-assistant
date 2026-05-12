@@ -83,8 +83,9 @@ describe("validateStructuredLivePromotion (ADR-0001 CI hook)", () => {
 
   it("warns once per provisional system", () => {
     const result = validateStructuredLivePromotion();
-    expect(result.warnings).toHaveLength(PROVISIONAL_STRUCTURED_LIVE.length);
-    for (const system of PROVISIONAL_STRUCTURED_LIVE) {
+    const provisionalKeys = Object.keys(PROVISIONAL_STRUCTURED_LIVE);
+    expect(result.warnings).toHaveLength(provisionalKeys.length);
+    for (const system of provisionalKeys) {
       expect(
         result.warnings.some((w) => w.startsWith(`${system} is provisional`)),
         `expected a provisional warning for ${system}`,
@@ -97,7 +98,7 @@ describe("validateStructuredLivePromotion (ADR-0001 CI hook)", () => {
       .filter(([, cap]) => cap.mode === "structured_live")
       .map(([key]) => key)
       .sort();
-    expect([...PROVISIONAL_STRUCTURED_LIVE].sort()).toEqual(liveSystems);
+    expect(Object.keys(PROVISIONAL_STRUCTURED_LIVE).sort()).toEqual(liveSystems);
   });
 });
 

@@ -1,3 +1,10 @@
+---
+id: ADR-0001
+status: Accepted
+sprint_sections:
+  - "../v2/sprints.md#sprint-7--evidence--verification-backfill--not-started"
+---
+
 # 0001 — Structured-live promotion requires scenario evidence
 
 ## Status

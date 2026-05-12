@@ -1,3 +1,10 @@
+---
+id: ADR-0003
+status: Proposed
+sprint_sections:
+  - "../v2/sprints.md#sprint-8--semantic-consensus-adr-0003--%E2%97%94-partial"
+---
+
 # 0003 — Semantic consensus architecture
 
 ## Status

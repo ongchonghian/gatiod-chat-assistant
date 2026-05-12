@@ -11,6 +11,7 @@ This directory holds the architectural decisions and sprint plans for migrating 
 | [policy-fixes.md](policy-fixes.md) | Confirmed bugs in current V2 slot policy (CNS Section B, visual diplopia, gastro subsystem, renal eGFR). |
 | [rollout-plan.md](rollout-plan.md) | The five-stage rollout, promotion gates, and shadow-mode invariants. |
 | [shadow-to-live.md](shadow-to-live.md) | Shadow mode purpose, the full legacy → shadow → live process, all gating criteria, and the pre-switch checklist. |
+| [requirements-known-issues.md](requirements-known-issues.md) | Open `REQ-*` items not yet closed by a sprint ticket. Verified by `npm run docs:verify` — every `REQ-*` must be referenced in [sprints.md](sprints.md). |
 
 ## Core invariants
 

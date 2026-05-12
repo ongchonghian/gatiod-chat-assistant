@@ -5,6 +5,7 @@
 #   3. Excel fixture freshness    — regenerate from workbook, fail on diff
 #   4. Excel shadow suite         — opt-in, threshold-enforced (ADR-0001 §)
 #   5. ADR-0001 promotion check   — registry-time gate against latest evidence
+#   6. V2 docs cross-reference    — ADR ↔ sprints, REQ ↔ sprints, allowlist → REQ
 #
 # Each step is the authoritative form of one ADR-0001 commitment:
 #   - Step 3 enforces "the workbook and the fixture move together" (slice 6).
@@ -13,6 +14,8 @@
 #   - Step 5 enforces that every `structured_live` system has CURRENT
 #     evidence at threshold — historical permission to be live is not enough
 #     (slice 32).
+#   - Step 6 catches docs drift (new ADR with no sprint section, new REQ with
+#     no ticket, provisional allowlist citing a missing REQ).
 
 name: CI
 
@@ -57,3 +60,9 @@ jobs:
         #   - System flipped to live without running shadow.
         #   - Evidence dropped below threshold.
         run: npm run check:adr-0001-promotion
+
+      - name: V2 docs cross-reference check
+        # Catches drift between docs/adr/, requirements-known-issues.md,
+        # sprints.md, and PROVISIONAL_STRUCTURED_LIVE. See CLAUDE.md
+        # "Keeping V2 docs in sync".
+        run: npm run docs:verify

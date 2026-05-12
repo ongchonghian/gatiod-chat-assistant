@@ -372,15 +372,22 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
  * A system that is `structured_live` and NOT on this allowlist is treated as
  * having earned full promotion under ADR-0001.
  */
-export const PROVISIONAL_STRUCTURED_LIVE: readonly GatiodSystemKey[] = [
-  "spine",
-  "hearing",
-  "gastro_digestive",
-  "renal",
-  "respiratory",
-  "upper_limb",
-  "lower_limb",
-] as const;
+/**
+ * Per-system reason a `structured_live` system is still provisional. Each
+ * value is a REQ-* ID from `docs/v2/requirements-known-issues.md` whose
+ * completion will retire the entry (typically by running the calibration
+ * runner and committing fresh evidence). `npm run docs:verify` checks that
+ * every reason resolves to a real REQ-* heading.
+ */
+export const PROVISIONAL_STRUCTURED_LIVE: Readonly<Partial<Record<GatiodSystemKey, { reason: string }>>> = {
+  upper_limb:       { reason: "REQ-B4" },
+  lower_limb:       { reason: "REQ-B4" },
+  spine:            { reason: "REQ-B2" },
+  respiratory:      { reason: "REQ-B4" },
+  renal:            { reason: "REQ-B4" },
+  gastro_digestive: { reason: "REQ-B4" },
+  hearing:          { reason: "REQ-B3" },
+};
 
 export interface PromotionCheckResult {
   ok: boolean;
@@ -447,7 +454,7 @@ export function validateStructuredLivePromotion(
     const sysKey = system as GatiodSystemKey;
 
     // Allowlist check (original slice-1 behavior).
-    const onAllowlist = PROVISIONAL_STRUCTURED_LIVE.includes(sysKey);
+    const onAllowlist = sysKey in PROVISIONAL_STRUCTURED_LIVE;
 
     // Evidence check (slice 32). When no reader is provided, fall back to
     // allowlist mode. When a reader is provided, require evidence at or
