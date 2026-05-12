@@ -72,7 +72,9 @@ export async function processChat(
   });
 
   const toolCallLog: { name: string; result: unknown }[] = [];
-  let maxIterations = 10;
+  const MAX_ITERATIONS = 20;
+  let maxIterations = MAX_ITERATIONS;
+  let emptyStopRetries = 0;
 
   while (maxIterations-- > 0) {
     let response: GenerateContentResult;
@@ -98,12 +100,22 @@ export async function processChat(
     const candidate = response.response.candidates?.[0];
     if (!candidate?.content?.parts) {
       const reason = candidate?.finishReason ?? (response.response.candidates?.length === 0 ? "no_candidates" : "no_content");
-      console.error(`[GATIOD] No content in response: finishReason=${reason}, iteration=${10 - maxIterations}, tools=${toolCallLog.map((t) => t.name).join(",") || "none"}`);
+      console.error(`[GATIOD] No content in response: finishReason=${reason}, iteration=${MAX_ITERATIONS - maxIterations}, tools=${toolCallLog.map((t) => t.name).join(",") || "none"}`);
       if (reason === "SAFETY") {
         return { message: "The assessment content was flagged for review. Please try rephrasing the clinical findings.", sessionId };
       }
+      // Gemini 2.5 Flash thinking model occasionally returns STOP with null content
+      // when it wants to make a function call but produces no visible output.
+      // Inject a nudge and retry up to 3 times before giving up.
+      if (reason === "STOP" && emptyStopRetries < 3) {
+        emptyStopRetries++;
+        console.warn(`[GATIOD] Empty STOP response, injecting nudge (retry ${emptyStopRetries}/3)`);
+        history.push({ role: "user", parts: [{ text: "Please proceed with the assessment calculation now." }] });
+        continue;
+      }
       break;
     }
+    emptyStopRetries = 0;
 
     const parts = candidate.content.parts;
     const functionCalls = parts.filter(
