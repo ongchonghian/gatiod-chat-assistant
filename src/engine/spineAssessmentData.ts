@@ -358,6 +358,35 @@ export const SpineAssessmentResultSchema = z.object({
 
 export type SpineAssessmentResult = z.infer<typeof SpineAssessmentResultSchema>;
 
+// ─── Tool-input schema (LLM-supplied shape, before field mapping) ────────────
+//
+// The chat handler accepts either severity/severityKey and either
+// isMonoparesis/monoparesisHalving for backward compatibility. This schema
+// validates the raw shape before that mapping runs.
+const SpineCategoryInputEntrySchema = z.object({
+  diagnosisCategory: z.enum([
+    "fractures_dislocations",
+    "spinal_cord_injury",
+    "intervertebral_disc",
+    "spondylolysis_spondylolisthesis",
+    "chronic_pain_normal_mri",
+  ]),
+  severity: z.string().optional(),
+  severityKey: z.string().optional(),
+  isMonoparesis: z.boolean().optional(),
+  monoparesisHalving: z.boolean().optional(),
+  bladderBowelSeverity: z
+    .enum(["none", "incomplete_single", "incomplete_both", "complete_single", "complete_both"])
+    .optional(),
+  discCordInvolvement: z.boolean().optional(),
+  spondylolysisPathway: z.enum(["acute_traumatic", "pre_existing_superimposed"]).optional(),
+});
+
+export const SpineToolInputSchema = z.object({
+  region: z.enum(["cervical", "thoraco_lumbar", "lumbo_sacral"]),
+  categoryEntries: z.array(SpineCategoryInputEntrySchema).min(1),
+});
+
 // ─── Rule Helpers ────────────────────────────────────────────────────────────
 
 export function isSeverityAvailableForRegion(severity: SeverityKey, region: SpinalRegion): boolean {

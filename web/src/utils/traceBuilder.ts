@@ -22,6 +22,7 @@ interface CategoryData {
   label: string;
   rawPercent: number;
   notes: string[];
+  gatiodReference?: { chapter: string; section?: string; table?: string };
 }
 
 interface Conflict {
@@ -37,6 +38,7 @@ export interface AssessmentResult {
   rom: CategoryData;
   neurological: CategoryData;
   dbe: CategoryData;
+  shortening?: CategoryData;
   dbeRomConflicts: Conflict[];
   cvcInputs: number[];
 }

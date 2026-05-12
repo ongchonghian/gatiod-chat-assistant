@@ -3,39 +3,45 @@
  * Supports all 9 GATIOD systems + global CVC + lookup tools.
  */
 
+import { z } from "zod";
 import {
   // Upper Limb
   calculateUpperLimb, lookupRom, getRomLookupTable,
   ROM_JOINTS, ARM_AMPUTATION_LEVELS, FINGER_AMPUTATION_LEVELS,
   UPPER_LIMB_NERVES, DBE_CONDITIONS, UPPER_ANATOMICAL_LABELS,
   getAmputationSuppressedJoints,
-  type UpperLimbValue, type FingerKey,
+  UpperLimbValueSchema,
+  type FingerKey,
   // Lower Limb
-  calculateLowerLimb, type LowerLimbValue,
+  calculateLowerLimb,
   LEG_AMPUTATION_LEVELS, TOE_AMPUTATION_LEVELS,
   LOWER_LIMB_NERVES, lookupShortening,
   LOWER_DBE_CONDITIONS, LOWER_ANATOMICAL_LABELS,
   TOE_LABELS,
+  LowerLimbValueSchema,
   type ToeKey,
   // Spine
   calculateSpineAssessment, type SpinalRegion, type SpineCategoryEntry,
-  type SpineAssessmentResult,
+  SpineToolInputSchema,
   // Respiratory
-  calculateRespiratoryAssessment, type RespiratoryValue,
+  calculateRespiratoryAssessment,
+  RespiratoryValueSchema,
   // Renal
-  calculateRenalAssessment, type RenalValue,
+  calculateRenalAssessment,
+  RenalValueSchema,
   // Gastro
-  calculateGastroDigestiveAssessment, type GastroDigestiveValue,
+  calculateGastroDigestiveAssessment,
+  GastroDigestiveValueSchema,
   // Hearing
-  calculateHearing, type HearingValue,
+  calculateHearing,
+  hearingValueSchema,
   // CNS
-  calculateCns, defaultCnsValue, type CnsValue,
+  calculateCns, defaultCnsValue, cnsValueSchema, type CnsValue,
   // Visual
-  calculateVisual, type VisualValue,
+  calculateVisual, visualValueSchema,
   // CVC
   combineMultipleValuesChart,
 } from "../engine/index.js";
-import { diagnosisCategories, getSeveritiesForCategory } from "../engine/spineAssessmentData.js";
 import { searchDictionary } from "../rag/dictionaryIndex.js";
 import { saveInvestigation, type InvestigationType } from "../db/investigationLog.js";
 
@@ -50,19 +56,19 @@ export function handleToolCall(name: string, args: Record<string, unknown>, sess
     switch (name) {
       // ─── Assessment tools (one per system) ─────────────────────────
       case "assess_upper_limb":
-        return wrapCalc(() => calculateUpperLimb(args as unknown as UpperLimbValue), "upper_limb");
+        return validateAndCalc(UpperLimbValueSchema, args, calculateUpperLimb, "upper_limb");
       case "assess_lower_limb":
-        return wrapCalc(() => calculateLowerLimb(args as unknown as LowerLimbValue), "lower_limb");
+        return validateAndCalc(LowerLimbValueSchema, args, calculateLowerLimb, "lower_limb");
       case "assess_spine":
         return handleAssessSpine(args);
       case "assess_respiratory":
-        return wrapCalc(() => calculateRespiratoryAssessment(args as unknown as RespiratoryValue), "respiratory");
+        return validateAndCalc(RespiratoryValueSchema, args, calculateRespiratoryAssessment, "respiratory");
       case "assess_renal":
-        return wrapCalc(() => calculateRenalAssessment(args as unknown as RenalValue), "renal");
+        return validateAndCalc(RenalValueSchema, args, calculateRenalAssessment, "renal");
       case "assess_gastro":
-        return wrapCalc(() => calculateGastroDigestiveAssessment(args as unknown as GastroDigestiveValue), "gastro_digestive");
+        return validateAndCalc(GastroDigestiveValueSchema, args, calculateGastroDigestiveAssessment, "gastro_digestive");
       case "assess_hearing":
-        return wrapCalc(() => calculateHearing(args as unknown as HearingValue), "hearing");
+        return validateAndCalc(hearingValueSchema, args, calculateHearing, "hearing");
       case "assess_cns":
         return handleAssessCns(args);
       case "assess_visual":
@@ -116,6 +122,34 @@ function wrapCalc(fn: () => unknown, systemKey: string): ToolResult {
   };
 }
 
+/**
+ * Validate the LLM-supplied args against the engine's Zod schema before
+ * calling the deterministic calculator. This is the function-call boundary
+ * guard: if the LLM hallucinates a field shape the engine will refuse the
+ * call with a structured error rather than computing on garbage.
+ */
+function validateAndCalc<T>(
+  schema: z.ZodTypeAny,
+  args: Record<string, unknown>,
+  calc: (value: T) => unknown,
+  systemKey: string,
+): ToolResult {
+  const parsed = schema.safeParse(args);
+  if (!parsed.success) {
+    return { success: false, error: formatValidationError(systemKey, parsed.error) };
+  }
+  return wrapCalc(() => calc(parsed.data as T), systemKey);
+}
+
+function formatValidationError(systemKey: string, error: z.ZodError): string {
+  const issues = error.errors.slice(0, 8).map((e) => {
+    const path = e.path.length === 0 ? "(root)" : e.path.join(".");
+    return `${path}: ${e.message}`;
+  });
+  const more = error.errors.length > issues.length ? ` (+${error.errors.length - issues.length} more)` : "";
+  return `Invalid input for ${systemKey}: ${issues.join("; ")}${more}`;
+}
+
 function extractFinalPercent(result: Record<string, unknown>): number {
   if ("finalPercent" in result) return result.finalPercent as number;
   if ("finalPi" in result) return result.finalPi as number;
@@ -127,41 +161,25 @@ function extractFinalPercent(result: Record<string, unknown>): number {
 // ─── Spine (needs region + entries) ──────────────────────────────────────────
 
 function handleAssessSpine(args: Record<string, unknown>): ToolResult {
-  const region = args.region as SpinalRegion;
-  const rawEntries = (args.categoryEntries ?? []) as Record<string, unknown>[];
+  const parsed = SpineToolInputSchema.safeParse(args);
+  if (!parsed.success) {
+    return { success: false, error: formatValidationError("spine", parsed.error) };
+  }
+  const { region, categoryEntries: rawEntries } = parsed.data;
 
-  // The tool schema uses severityKey/monoparesisHalving/bladderBowelAddOn (boolean);
-  // the engine uses severity/isMonoparesis/bladderBowelSeverity (enum). Map here.
+  // The tool schema uses severityKey/monoparesisHalving (LLM-facing); the
+  // engine uses severity/isMonoparesis. Map here, after validation.
   const entries = rawEntries.map((e) => ({
     diagnosisCategory: e.diagnosisCategory,
-    severity: ((e.severityKey ?? e.severity) as string) ?? "",
+    severity: e.severityKey ?? e.severity ?? "",
     isMonoparesis: Boolean(e.monoparesisHalving ?? e.isMonoparesis ?? false),
-    bladderBowelSeverity: ((e.bladderBowelSeverity as string) ?? "none"),
+    bladderBowelSeverity: e.bladderBowelSeverity ?? "none",
     discCordInvolvement: Boolean(e.discCordInvolvement ?? false),
-    spondylolysisPathway: ((e.spondylolysisPathway as string) ?? "acute_traumatic"),
+    spondylolysisPathway: e.spondylolysisPathway ?? "acute_traumatic",
   })) as SpineCategoryEntry[];
 
-  const result = calculateSpineAssessment(region, entries);
-  return { success: true, data: { ...sanitizeSpineResult(result), systemKey: "spine" } };
-}
-
-/** Replace raw enum keys in spine results with human-readable labels so the LLM never echoes internal identifiers. */
-function sanitizeSpineResult(result: SpineAssessmentResult): Omit<SpineAssessmentResult, "evaluatedEntries"> & { evaluatedEntries: unknown[] } {
-  const sanitizedEntries = result.evaluatedEntries.map((entry) => {
-    const catLabel = diagnosisCategories.find((c) => c.key === entry.diagnosisCategory)?.label ?? entry.diagnosisCategory;
-    const severityLabel = getSeveritiesForCategory(entry.diagnosisCategory, {
-      spondylolysisPathway: entry.spondylolysisPathway,
-    }).find((s) => s.key === entry.severity)?.label ?? entry.severity;
-
-    const { diagnosisCategory: _cat, severity: _sev, ...rest } = entry;
-    return {
-      ...rest,
-      diagnosisCategory: catLabel,
-      severity: severityLabel,
-    };
-  });
-
-  return { ...result, evaluatedEntries: sanitizedEntries };
+  const result = calculateSpineAssessment(region as SpinalRegion, entries);
+  return { success: true, data: { ...result, systemKey: "spine" } };
 }
 
 // ─── CNS (merge with defaults to guard against missing optional fields) ───────
@@ -184,7 +202,11 @@ function handleAssessCns(args: Record<string, unknown>): ToolResult {
   if (sel("group2") > 0 && !merged.group2NeuropsychologistConfirmed) merged.group2NeuropsychologistConfirmed = true;
   if (sel("group4") > 0 && !merged.group4PsychiatristConfirmed) merged.group4PsychiatristConfirmed = true;
 
-  return wrapCalc(() => calculateCns(merged), "cns");
+  const parsed = cnsValueSchema.safeParse(merged);
+  if (!parsed.success) {
+    return { success: false, error: formatValidationError("cns", parsed.error) };
+  }
+  return wrapCalc(() => calculateCns(parsed.data as CnsValue), "cns");
 }
 
 // ─── Visual (guard functionalModifiers/specificConditions against null) ───────
@@ -203,7 +225,7 @@ function handleAssessVisual(args: Record<string, unknown>): ToolResult {
     leftEye: normaliseEye((args.leftEye ?? {}) as Record<string, unknown>),
     rightEye: normaliseEye((args.rightEye ?? {}) as Record<string, unknown>),
   };
-  return wrapCalc(() => calculateVisual(safe as unknown as VisualValue), "visual");
+  return validateAndCalc(visualValueSchema, safe as Record<string, unknown>, calculateVisual, "visual");
 }
 
 // ─── Global CVC ──────────────────────────────────────────────────────────────

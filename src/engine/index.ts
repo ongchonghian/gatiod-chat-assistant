@@ -45,7 +45,10 @@ export {
   type LowerLimbValue,
   type LowerLimbResult,
   type ToeKey,
+  type GatiodReference,
   calculateLowerLimb,
+  defaultLowerLimbValue,
+  LowerLimbValueSchema,
   LEG_AMPUTATION_LEVELS,
   TOE_AMPUTATION_LEVELS,
   LOWER_LIMB_NERVES,
@@ -62,27 +65,29 @@ export {
   type CategoryEntry as SpineCategoryEntry,
   type SpineAssessmentResult,
   calculateSpineAssessment,
+  SpineToolInputSchema,
 } from "./spineAssessmentData.js";
 
 // ─── Respiratory (Chapter 6) ────────────────────────────────────────────────
-export { type RespiratoryValue, type RespiratoryResult, calculateRespiratoryAssessment } from "./respiratoryData.js";
+export { type RespiratoryValue, type RespiratoryResult, calculateRespiratoryAssessment, RespiratoryValueSchema } from "./respiratoryData.js";
 
 // ─── Renal (Chapter 7) ──────────────────────────────────────────────────────
-export { type RenalValue, type RenalResult, calculateRenalAssessment } from "./renalData.js";
+export { type RenalValue, type RenalResult, calculateRenalAssessment, RenalValueSchema } from "./renalData.js";
 
 // ─── Gastro/Digestive (Chapter 8) ───────────────────────────────────────────
 export {
   type GastroDigestiveValue,
   type GastroDigestiveResult,
   calculateGastroDigestiveAssessment,
+  GastroDigestiveValueSchema,
   GASTRO_SUB_SYSTEMS,
 } from "./gastroDigestiveData.js";
 
 // ─── Hearing (Chapter 9) ────────────────────────────────────────────────────
-export { type HearingValue, type HearingResult, calculateHearing } from "./hearingData.js";
+export { type HearingValue, type HearingResult, calculateHearing, hearingValueSchema } from "./hearingData.js";
 
 // ─── CNS (Chapter 10) ──────────────────────────────────────────────────────
-export { type CnsValue, type CnsResult, calculateCns, defaultCnsValue } from "./cnsAssessmentData.js";
+export { type CnsValue, type CnsResult, calculateCns, defaultCnsValue, cnsValueSchema } from "./cnsAssessmentData.js";
 
 // ─── Visual (Chapter 11) ────────────────────────────────────────────────────
-export { type VisualValue, type VisualResult, calculateVisual, defaultVisualValue } from "./visualAssessmentData.js";
+export { type VisualValue, type VisualResult, calculateVisual, defaultVisualValue, visualValueSchema } from "./visualAssessmentData.js";

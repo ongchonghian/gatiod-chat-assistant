@@ -36,16 +36,16 @@ interface InvestigationRegistered {
   id: string;
 }
 
-const CONFIRMATION_PATTERN = /\*\*Confirmation\s*[—–-]/i;
-const RESULT_PATTERN = /Assessment Result.*?(\d+)%\s*PI/i;
+const CONFIRMATION_PATTERN = /\*\*Confirmation\s*[—–-]\s*(?:Upper|Lower) Limb Assessment/i;
 const API_MODE_STORAGE_KEY = "gatiod_chat_api_mode";
+const ASSESSMENT_TOOLS = new Set(["assess_upper_limb", "assess_lower_limb"]);
 
 type ApiMode = "legacy" | "v2";
 
 function detectMessageType(content: string, toolCalls?: ToolCall[]): "confirmation" | "breakdown" | "text" {
   if (CONFIRMATION_PATTERN.test(content)) return "confirmation";
   const hasAssessResult = toolCalls?.some(
-    (tc) => tc.name.startsWith("assess_") && tc.name !== "assess_global_cvc" && tc.result?.success
+    (tc) => ASSESSMENT_TOOLS.has(tc.name) && tc.result?.success
   );
   if (hasAssessResult) return "breakdown";
   return "text";
@@ -128,7 +128,7 @@ export default function ChatPanel() {
       if (data.sessionId && !sessionId) setSessionId(data.sessionId);
 
       const assessCall = data.toolCalls?.find(
-        (tc) => tc.name.startsWith("assess_") && tc.name !== "assess_global_cvc" && tc.result?.success
+        (tc) => ASSESSMENT_TOOLS.has(tc.name) && tc.result?.success
       );
       if (assessCall?.result?.data) {
         setLastResult(assessCall.result.data as Record<string, unknown>);

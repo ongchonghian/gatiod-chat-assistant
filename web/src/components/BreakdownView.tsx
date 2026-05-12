@@ -4,6 +4,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import DecisionReplay from "./DecisionReplay";
 import { buildUpperLimbTrace, type AssessmentResult } from "../utils/traceBuilder";
 
@@ -12,10 +13,17 @@ interface ToolCall {
   result: { success: boolean; data?: Record<string, unknown> };
 }
 
+interface GatiodReference {
+  chapter: string;
+  section?: string;
+  table?: string;
+}
+
 interface CategoryData {
   label: string;
   rawPercent: number;
   notes: string[];
+  gatiodReference?: GatiodReference;
 }
 
 interface BreakdownViewProps {
@@ -23,6 +31,8 @@ interface BreakdownViewProps {
   toolCalls?: ToolCall[];
   onChallenge: (stepId: string, stepTitle: string, concern: string) => void;
 }
+
+type SystemKey = "upper_limb" | "lower_limb";
 
 const SYSTEM_LABELS: Record<string, string> = {
   assess_upper_limb: "Upper Limb",
@@ -36,7 +46,12 @@ const SYSTEM_LABELS: Record<string, string> = {
   assess_visual: "Visual",
 };
 
-function extractResult(toolCalls?: ToolCall[]): { result: AssessmentResult; systemLabel: string } | null {
+const TOOL_TO_SYSTEM: Partial<Record<string, SystemKey>> = {
+  assess_upper_limb: "upper_limb",
+  assess_lower_limb: "lower_limb",
+};
+
+function extractResult(toolCalls?: ToolCall[]): { result: AssessmentResult; systemLabel: string; systemKey?: SystemKey } | null {
   const call = toolCalls?.find(
     (tc) => tc.name.startsWith("assess_") && tc.name !== "assess_global_cvc" && tc.result?.success
   );
@@ -44,11 +59,17 @@ function extractResult(toolCalls?: ToolCall[]): { result: AssessmentResult; syst
   return {
     result: call.result.data as unknown as AssessmentResult,
     systemLabel: SYSTEM_LABELS[call.name] ?? "System",
+    systemKey: TOOL_TO_SYSTEM[call.name],
   };
 }
 
+function isCrossStreamWarning(note: string): boolean {
+  return note.includes("Cross-stream");
+}
+
 function CategorySection({ data, color }: { data: CategoryData; color: string }) {
-  const [open, setOpen] = useState(data.rawPercent > 0);
+  const hasWarning = data.notes.some(isCrossStreamWarning);
+  const [open, setOpen] = useState(data.rawPercent > 0 || hasWarning);
 
   if (data.rawPercent === 0 && data.notes.length === 0) return null;
 
@@ -60,6 +81,9 @@ function CategorySection({ data, color }: { data: CategoryData; color: string })
       >
         <Box sx={{ width: 4, height: 28, borderRadius: 2, bgcolor: color, flexShrink: 0 }} />
         <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 600 }}>{data.label}</Typography>
+        {hasWarning && (
+          <WarningAmberIcon sx={{ fontSize: 18, color: "warning.main" }} titleAccess="Cross-stream warning" />
+        )}
         <Chip label={`${data.rawPercent}%`} size="small" sx={{ fontWeight: 700, bgcolor: data.rawPercent > 0 ? color : "action.disabledBackground", color: data.rawPercent > 0 ? "#fff" : "text.disabled", fontSize: "0.8rem", height: 24, minWidth: 48 }} />
         <IconButton size="small" sx={{ ml: -0.5 }}>
           {open ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
@@ -67,11 +91,41 @@ function CategorySection({ data, color }: { data: CategoryData; color: string })
       </Box>
       <Collapse in={open}>
         <Box sx={{ pl: 2.5, pb: 1 }}>
-          {data.notes.map((note, i) => (
-            <Typography key={i} variant="body2" color="text.secondary" sx={{ fontSize: "0.82rem", lineHeight: 1.6, "&::before": { content: '"•"', mr: 1, color: "text.disabled" } }}>
-              {note}
+          {data.notes.map((note, i) => {
+            const warn = isCrossStreamWarning(note);
+            return (
+              <Typography
+                key={i}
+                variant="body2"
+                sx={{
+                  fontSize: "0.82rem",
+                  lineHeight: 1.6,
+                  color: warn ? "warning.dark" : "text.secondary",
+                  fontWeight: warn ? 600 : 400,
+                  "&::before": { content: warn ? '"⚠"' : '"•"', mr: 1, color: warn ? "warning.main" : "text.disabled" },
+                }}
+              >
+                {note}
+              </Typography>
+            );
+          })}
+          {data.gatiodReference && (
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                mt: 0.5,
+                fontSize: "0.72rem",
+                color: "text.disabled",
+                fontStyle: "italic",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {[data.gatiodReference.chapter, data.gatiodReference.section, data.gatiodReference.table]
+                .filter(Boolean)
+                .join(" · ")}
             </Typography>
-          ))}
+          )}
         </Box>
       </Collapse>
     </Box>
@@ -90,7 +144,7 @@ export default function BreakdownView({ content, toolCalls, onChallenge }: Break
     );
   }
 
-  const { result, systemLabel } = extracted;
+  const { result, systemLabel, systemKey } = extracted;
 
   const traceSteps = buildUpperLimbTrace(result);
 
@@ -101,10 +155,19 @@ export default function BreakdownView({ content, toolCalls, onChallenge }: Break
     { data: result.dbe, color: "#d4880f" },
   ].filter((cat) => cat.data != null);
 
+  if (systemKey === "lower_limb" && result.shortening) {
+    // Insert Shortening between Neurological and DBE to match GATIOD Chapter 4 stream ordering.
+    categories.splice(3, 0, { data: result.shortening, color: "#0f7b5c" });
+  }
+
   function handleChallenge(stepId: string, stepTitle: string, concern: string) {
     setReplayOpen(false);
     onChallenge(stepId, stepTitle, concern);
   }
+
+  const headerTitle = systemKey
+    ? systemKey === "upper_limb" ? "Upper Limb Permanent Incapacity" : "Lower Limb Permanent Incapacity"
+    : `${systemLabel} Permanent Incapacity`;
 
   return (
     <>
@@ -114,7 +177,7 @@ export default function BreakdownView({ content, toolCalls, onChallenge }: Break
         <AssessmentIcon sx={{ fontSize: 24, color: "#fff" }} />
         <Box sx={{ flex: 1 }}>
           <Typography variant="subtitle2" sx={{ color: "rgba(255,255,255,0.7)", fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            {systemLabel} Permanent Incapacity
+            {headerTitle}
           </Typography>
           <Typography variant="h5" sx={{ color: "#fff", fontWeight: 700, letterSpacing: "-0.02em" }}>
             {result.finalPercent}% PI
