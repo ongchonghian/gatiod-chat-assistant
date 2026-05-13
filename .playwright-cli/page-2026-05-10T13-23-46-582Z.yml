@@ -1,0 +1,92 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e6]
+      - heading "GATIOD Assessment Assistant" [level=6] [ref=e8]
+      - generic [ref=e10]: Multi-System
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]: Chat API Mode
+      - group [ref=e15]:
+        - button "Legacy" [ref=e16] [cursor=pointer]
+        - button "V2" [pressed] [ref=e17] [cursor=pointer]: V2
+    - generic [ref=e18]:
+      - paragraph [ref=e415]: "Fall from height: Thoraco-lumbar compression/burst fracture <25% height loss with residual pain; Right sciatic nerve lesion with combined sensory and motor deficit."
+      - paragraph [ref=e420]:
+        - text: I think this input contains findings across
+        - strong [ref=e421]: 2 GATIOD assessment areas
+        - text: ":"
+        - text: "1."
+        - strong [ref=e422]: Spine
+        - text: — ready for interpretation confirmation
+        - text: The text explicitly mentions a 'Thoraco-lumbar compression/burst fracture', which directly maps to the spine system.
+        - text: "- Source: \"Thoraco-lumbar compression/burst fracture <25% height loss with residual pain\""
+        - text: "Likely interpretation: Spinal fracture with height loss and pain"
+        - text: "Missing: ASIA grade, presence of motor or sensory deficit"
+        - text: "2."
+        - strong [ref=e423]: Lower Limb
+        - text: — ready for interpretation confirmation
+        - text: The 'sciatic nerve' is a major nerve of the lower limb, and a 'lesion' with 'sensory and motor deficit' indicates a neurological finding affecting the lower limb.
+        - text: "- Source: \"Right sciatic nerve lesion with combined sensory and motor deficit\""
+        - text: "Likely interpretation: Sciatic nerve lesion with combined sensory and motor deficit"
+        - text: "Missing: nerve loss type"
+        - text: How would you like to proceed?
+      - paragraph [ref=e432]: Proceed
+      - generic [ref=e435]:
+        - generic [ref=e436]:
+          - img [ref=e437]
+          - heading "Confirmation — Spine" [level=6] [ref=e439]
+          - generic [ref=e441]: Review required
+        - generic [ref=e442]:
+          - generic [ref=e443]:
+            - text: Region
+            - paragraph [ref=e444]: Thoraco-Lumbar
+          - generic [ref=e445]:
+            - text: Entry
+            - paragraph [ref=e446]: "Fractures and Dislocations: Compression or burst fractures of <25% with residual pain"
+        - separator [ref=e447]
+        - generic [ref=e449]:
+          - button "Confirm & Calculate" [ref=e450] [cursor=pointer]:
+            - img [ref=e452]
+            - text: Confirm & Calculate
+          - button "Edit values" [ref=e454] [cursor=pointer]:
+            - img [ref=e456]
+            - text: Edit values
+      - paragraph [ref=e464]: Confirmed.
+      - paragraph [ref=e469]:
+        - text: "System-generated GATIOD PI%: 5%"
+        - text: "Spine — Thoraco-Lumbar:"
+        - text: "- Fractures and Dislocations: Compression or burst fractures of <25% with residual pain → 5% ← winner"
+        - text: "Final PI%: 5%"
+      - paragraph [ref=e473]: Right sciatic nerve lesion with combined sensory and motor deficit
+      - generic [ref=e475]:
+        - generic [ref=e476]:
+          - generic [ref=e477]:
+            - img [ref=e478]
+            - heading "Confirmation — Spine" [level=6] [ref=e480]
+            - generic [ref=e482]: Review required
+          - generic [ref=e483]:
+            - generic [ref=e484]:
+              - text: Region
+              - paragraph [ref=e485]: Thoraco-Lumbar
+            - generic [ref=e486]:
+              - text: Entry
+              - paragraph [ref=e487]: "Fractures and Dislocations: Compression or burst fractures of <25% with residual pain"
+          - separator [ref=e488]
+          - generic [ref=e490]:
+            - button "Confirm & Calculate" [ref=e491] [cursor=pointer]:
+              - img [ref=e493]
+              - text: Confirm & Calculate
+            - button "Edit values" [ref=e495] [cursor=pointer]:
+              - img [ref=e497]
+              - text: Edit values
+        - generic [ref=e499]:
+          - button "Confirm and calculate" [ref=e500] [cursor=pointer]
+          - button "Edit findings" [ref=e501] [cursor=pointer]
+    - generic [ref=e28]:
+      - textbox "Describe clinical findings…" [ref=e31]
+      - generic "Send" [ref=e32]:
+        - button [disabled]:
+          - img
+      - button "New assessment" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]

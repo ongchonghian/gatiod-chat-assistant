@@ -1,0 +1,37 @@
+{
+  "version": "0.1.0",
+  "chip_generation_policy": {
+    "source": "state_machine_and_missing_slots",
+    "do_not_generate_in_llm_prompt": true,
+    "max_chips": 5,
+    "rules": [
+      "Chips must be derived from missing slot values or next allowed actions.",
+      "Do not include final PI% chips.",
+      "For binary gates, present both options.",
+      "After result, present actions: Adjust findings, Add another system, Record doctor PI%, Export report."
+    ]
+  },
+  "global_chips": {
+    "system_selection": [
+      "Upper limb",
+      "Lower limb",
+      "Spine",
+      "Hearing",
+      "Visual"
+    ],
+    "confirmation": [
+      "Confirm and calculate",
+      "Edit findings"
+    ],
+    "post_result": [
+      "Adjust findings",
+      "Add another system",
+      "Record doctor PI%",
+      "Export report"
+    ],
+    "yes_no": [
+      "Yes",
+      "No"
+    ]
+  }
+}

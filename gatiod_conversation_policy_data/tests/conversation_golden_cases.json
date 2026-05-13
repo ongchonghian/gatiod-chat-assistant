@@ -1,0 +1,121 @@
+{
+  "version": "0.1.0",
+  "purpose": "Initial conversation tests for state, next question, and no-premature-PI behaviour.",
+  "cases": [
+    {
+      "id": "CONV-UL-001",
+      "input": "Left shoulder flexion 90 and abduction 90.",
+      "expected_system": "upper_limb",
+      "expected_state": "COLLECTING_FACTS",
+      "expected_next_slot": "finding_type_or_other_findings_check",
+      "must_not": [
+        "render_final_pi",
+        "call_assess_tool_without_confirmation"
+      ]
+    },
+    {
+      "id": "CONV-UL-002",
+      "input": "Left shoulder flexion 90, abduction 90, suprascapular nerve combined partial.",
+      "expected_system": "upper_limb",
+      "expected_state": "COLLECTING_FACTS",
+      "expected_next_slot": "rom_from_nerve",
+      "must_not": [
+        "calculate_before_rom_from_nerve_answer"
+      ]
+    },
+    {
+      "id": "CONV-UL-003",
+      "input": "Actually it is the right shoulder, not left.",
+      "starting_state": "AWAITING_CONFIRMATION",
+      "expected_patch": {
+        "path": "/side",
+        "value": "right"
+      },
+      "expected_state": "READY_TO_CONFIRM"
+    },
+    {
+      "id": "CONV-LL-001",
+      "input": "Loss of second toe, two phalanges.",
+      "expected_system": "lower_limb",
+      "expected_next_slot": "side",
+      "must_not": [
+        "treat_toe_amputation_as_shortening"
+      ]
+    },
+    {
+      "id": "CONV-LL-002",
+      "input": "Left leg is 2 cm shorter.",
+      "expected_system": "lower_limb",
+      "expected_next_slot": "finding_type_or_other_findings_check",
+      "expected_fact": {
+        "shortening.discrepancyCm": 2
+      }
+    },
+    {
+      "id": "CONV-SP-001",
+      "input": "Lumbar disc injury with persistent pain and sensory deficit.",
+      "expected_system": "spine",
+      "expected_next_slot": "region_or_mri_status",
+      "must_not": [
+        "invent_ASIA_grade"
+      ]
+    },
+    {
+      "id": "CONV-SP-002",
+      "input": "Cervical cord injury ASIA C with bladder incontinence.",
+      "expected_system": "spine",
+      "expected_next_slot": "bladder_bowel_completeness",
+      "must_not": [
+        "assume_complete_incontinence"
+      ]
+    },
+    {
+      "id": "CONV-RESP-001",
+      "input": "FEV1 is 55 percent predicted.",
+      "expected_system": "respiratory",
+      "expected_next_slot": "diagnosis",
+      "must_not": [
+        "select_PI_within_range_without_user_selection_or_policy"
+      ]
+    },
+    {
+      "id": "CONV-RENAL-001",
+      "input": "Creatinine clearance 42 ml/min.",
+      "expected_system": "renal",
+      "expected_next_slot": "sex_or_other_renal_inputs",
+      "must_not": [
+        "ignore_higher_class_rule"
+      ]
+    },
+    {
+      "id": "CONV-HEAR-001",
+      "input": "Tinnitus after accident.",
+      "expected_system": "hearing",
+      "expected_next_slot": "tinnitus_gate",
+      "must_not": [
+        "invent_tinnitus_pi"
+      ]
+    },
+    {
+      "id": "CONV-VIS-001",
+      "input": "Left eye 6/60, right eye normal.",
+      "expected_system": "visual",
+      "expected_next_slot": "field_and_diplopia",
+      "must_not": [
+        "calculate_without_field_and_diplopia_status"
+      ]
+    },
+    {
+      "id": "CONV-MULTI-001",
+      "input": "Left shoulder flexion 90 and right knee flexion 100.",
+      "expected_state": "ADDING_SYSTEM",
+      "expected_systems": [
+        "upper_limb",
+        "lower_limb"
+      ],
+      "must_not": [
+        "combine_global_pi_before_each_system_confirmed_and_calculated"
+      ]
+    }
+  ]
+}

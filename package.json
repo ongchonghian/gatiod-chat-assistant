@@ -2,15 +2,22 @@
   "name": "gatiod-chat-assistant",
   "version": "0.1.0",
   "description": "GATIOD assessment chat assistant — conversational front-end to AcuScore calculation engine",
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:engine": "vitest run tests/engine",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "build:excel-fixtures": "tsx scripts/build-excel-fixtures.ts",
+    "check:excel-fixtures-fresh": "tsx scripts/check-excel-fixtures-fresh.ts",
+    "check:adr-0001-promotion": "tsx scripts/check-adr-0001-promotion.ts",
+    "docs:verify": "tsx scripts/docs-verify.ts",
+    "test:excel-shadow": "GATIOD_RUN_EXCEL_SCENARIOS=true vitest run tests/v2/excelScenarios",
+    "test:excel-full": "GATIOD_RUN_EXCEL_SCENARIOS=true EXCEL_SCENARIO_FULL=true vitest run --testTimeout=900000 tests/v2/excelScenarios",
+    "test:semantic-shadow": "GATIOD_RUN_SEMANTIC_SHADOW=true vitest run --testTimeout=600000 tests/v2/semanticShadow"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
@@ -29,7 +36,9 @@
     "@types/uuid": "^10.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
-    "vitest": "^3.2.0"
+    "@vitest/coverage-v8": "^3.2.4",
+    "vitest": "^3.2.0",
+    "xlsx": "^0.18.5"
   },
   "engines": {
     "node": ">=20.0.0"

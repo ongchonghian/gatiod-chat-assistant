@@ -1,0 +1,25 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e6]
+      - heading "GATIOD Assessment Assistant" [level=6] [ref=e8]
+      - generic [ref=e10]: Multi-System
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]: Chat API Mode
+      - group [ref=e15]:
+        - button "Legacy" [disabled]
+        - button "V2" [disabled] [pressed]
+    - generic [ref=e18]:
+      - paragraph [ref=e39]: "Fall from height: Thoraco-lumbar compression/burst fracture <25% height loss with residual pain; Loss of left leg below knee."
+      - generic [ref=e40]:
+        - progressbar [ref=e41]:
+          - img [ref=e42]
+        - paragraph [ref=e44]: Analysing findings (V2)…
+    - generic [ref=e28]:
+      - textbox "Describe clinical findings…" [disabled] [ref=e31]
+      - generic "Send" [ref=e32]:
+        - button [disabled]:
+          - img
+      - button "New assessment" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]

@@ -11,6 +11,8 @@ import {
   UPPER_LIMB_NERVES, DBE_CONDITIONS, UPPER_ANATOMICAL_LABELS,
   getAmputationSuppressedJoints,
   UpperLimbValueSchema,
+  JOINT_INSTABILITY_TABLE,
+  type InstabilityType,
   type FingerKey,
   // Lower Limb
   calculateLowerLimb,
@@ -43,6 +45,7 @@ import {
   combineMultipleValuesChart,
 } from "../engine/index.js";
 import { searchDictionary } from "../rag/dictionaryIndex.js";
+import { saveInvestigation, type InvestigationType } from "../db/investigationLog.js";
 
 export interface ToolResult {
   success: boolean;
@@ -50,13 +53,19 @@ export interface ToolResult {
   error?: string;
 }
 
-export function handleToolCall(name: string, args: Record<string, unknown>): ToolResult {
+export function handleToolCall(name: string, args: Record<string, unknown>, sessionId?: string): ToolResult {
   try {
     switch (name) {
       // ─── Assessment tools (one per system) ─────────────────────────
       case "assess_upper_limb":
+        if (args.bilateral === true) {
+          return { success: true, data: { finalPercent: 100, systemKey: "upper_limb", bilateralCap: true } };
+        }
         return validateAndCalc(UpperLimbValueSchema, args, calculateUpperLimb, "upper_limb");
       case "assess_lower_limb":
+        if (args.bilateral === true) {
+          return { success: true, data: { finalPercent: 100, systemKey: "lower_limb", bilateralCap: true } };
+        }
         return validateAndCalc(LowerLimbValueSchema, args, calculateLowerLimb, "lower_limb");
       case "assess_spine":
         return handleAssessSpine(args);
@@ -99,6 +108,12 @@ export function handleToolCall(name: string, args: Record<string, unknown>): Too
       case "lookup_lower_dbe_condition":
         return handleLookupLowerDbe(args);
 
+      case "lookup_joint_instability":
+        return handleLookupJointInstability(args);
+
+      case "register_investigation":
+        return handleRegisterInvestigation(args, sessionId);
+
       default:
         return { success: false, error: `Unknown tool: ${name}` };
     }
@@ -132,13 +147,8 @@ function validateAndCalc<T>(
 ): ToolResult {
   const parsed = schema.safeParse(args);
   if (!parsed.success) {
-    return {
-      success: false,
-      error: formatValidationError(systemKey, parsed.error),
-    };
+    return { success: false, error: formatValidationError(systemKey, parsed.error) };
   }
-  // Runtime validation has succeeded; the schema's inferred type is sometimes
-  // wider than the engine's narrowed string-literal unions, so cast here.
   return wrapCalc(() => calc(parsed.data as T), systemKey);
 }
 
@@ -456,6 +466,48 @@ function handleLookupLowerDbe(args: Record<string, unknown>): ToolResult {
       maxPercent: cond.maxPercent,
       description: cond.description,
       applicableJoints: cond.anatomicalKeys.map((k) => LOWER_ANATOMICAL_LABELS[k] ?? k),
+    },
+  };
+}
+
+function handleLookupJointInstability(args: Record<string, unknown>): ToolResult {
+  const joint = args.joint as string;
+  const instabilityType = args.instabilityType as InstabilityType;
+
+  const entry = JOINT_INSTABILITY_TABLE.find((e) => e.joint === joint);
+  if (!entry) {
+    const validJoints = JOINT_INSTABILITY_TABLE.map((e) => e.joint).join(", ");
+    return { success: false, error: `Unknown joint: '${joint}'. Valid joints: ${validJoints}` };
+  }
+
+  const piPercent = entry[instabilityType];
+  if (piPercent === null) {
+    return {
+      success: true,
+      data: { joint: entry.label, instabilityType, piPercent: 0, applicable: false, note: "This instability type does not apply to this joint per GATIOD Ch3 Section B." },
+    };
+  }
+
+  return { success: true, data: { joint: entry.label, instabilityType, piPercent, applicable: true } };
+}
+
+function handleRegisterInvestigation(args: Record<string, unknown>, sessionId?: string): ToolResult {
+  if (!sessionId) return { success: false, error: "Session ID unavailable — cannot register investigation." };
+
+  const investigation = saveInvestigation({
+    sessionId,
+    stepId: args.stepId as string,
+    stepTitle: args.stepTitle as string,
+    doctorConcern: args.doctorConcern as string,
+    clinicalContext: args.clinicalContext as string,
+    investigationType: args.investigationType as InvestigationType,
+  });
+
+  return {
+    success: true,
+    data: {
+      investigationId: investigation.id,
+      message: `Investigation registered with reference ${investigation.id}. A clinical expert will review this case.`,
     },
   };
 }

@@ -1,0 +1,24 @@
+{
+  "sourceSha256": "0da2ebb54ea4a28939692e08a3ed12667f575e80635fff11c7120b5c91be3b21",
+  "generatedAt": "inputs-a26f7a4923521ccc",
+  "overrideEventCount": 0,
+  "componentSystemCounts": {
+    "upper_limb": 2096,
+    "lower_limb": 1286,
+    "spine": 239,
+    "respiratory": 62,
+    "renal": 45,
+    "gastro_digestive": 71,
+    "hearing": 89,
+    "cns": 197,
+    "visual": 202
+  },
+  "outcomeClassCounts": {
+    "exact_calculation": 2532,
+    "clarification_required": 1356,
+    "unsupported_safe_fail": 0,
+    "routing_only": 0,
+    "legacy_deferred": 399
+  },
+  "overrideEvents": []
+}

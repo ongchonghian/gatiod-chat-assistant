@@ -734,6 +734,10 @@ const LEGACY_UPPER_DBE_CONDITIONS: LegacyUpperDbeCondition[] = [
   { id: "tenosynovitis_constrictive_mild", label: "Constrictive Tenosynovitis — Mild", joint: "finger", minPercent: 1, maxPercent: 1, description: "Residual mild incapacity after treatment (e.g. trigger finger / De Quervain's)." },
   { id: "tenosynovitis_constrictive_moderate", label: "Constrictive Tenosynovitis — Moderate", joint: "finger", minPercent: 2, maxPercent: 2, description: "Residual moderate incapacity after treatment (e.g. trigger finger / De Quervain's)." },
   { id: "tenosynovitis_constrictive_severe", label: "Constrictive Tenosynovitis — Severe", joint: "finger", minPercent: 5, maxPercent: 5, description: "Residual severe incapacity after treatment (e.g. trigger finger / De Quervain's)." },
+  // Canonical short-form aliases (preferred IDs per acceptance criteria)
+  { id: "tenosynovitis_mild", label: "Constrictive Tenosynovitis — Mild", joint: "finger", minPercent: 1, maxPercent: 1, description: "Residual mild incapacity after treatment (e.g. trigger finger / De Quervain's)." },
+  { id: "tenosynovitis_moderate", label: "Constrictive Tenosynovitis — Moderate", joint: "finger", minPercent: 2, maxPercent: 2, description: "Residual moderate incapacity after treatment (e.g. trigger finger / De Quervain's)." },
+  { id: "tenosynovitis_severe", label: "Constrictive Tenosynovitis — Severe", joint: "finger", minPercent: 5, maxPercent: 5, description: "Residual severe incapacity after treatment (e.g. trigger finger / De Quervain's)." },
 ];
 
 export const UPPER_ANATOMICAL_LABELS: Record<UpperAnatomicalKey, string> = {
@@ -842,6 +846,33 @@ const UPPER_DBE_ANATOMICAL_OVERRIDES: Record<
     "little_mcp",
   ],
   tenosynovitis_constrictive_severe: [
+    "thumb_cmc",
+    "thumb_mp",
+    "thumb_ip",
+    "index_mcp",
+    "middle_mcp",
+    "ring_mcp",
+    "little_mcp",
+  ],
+  tenosynovitis_mild: [
+    "thumb_cmc",
+    "thumb_mp",
+    "thumb_ip",
+    "index_mcp",
+    "middle_mcp",
+    "ring_mcp",
+    "little_mcp",
+  ],
+  tenosynovitis_moderate: [
+    "thumb_cmc",
+    "thumb_mp",
+    "thumb_ip",
+    "index_mcp",
+    "middle_mcp",
+    "ring_mcp",
+    "little_mcp",
+  ],
+  tenosynovitis_severe: [
     "thumb_cmc",
     "thumb_mp",
     "thumb_ip",
@@ -1590,3 +1621,38 @@ export function defaultUpperLimbValue(): UpperLimbValue {
     },
   };
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Joint Instability Lookup Table (GATIOD Ch3 Section B)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export type InstabilityType =
+  | "subluxation_persistent"
+  | "dislocation_recurrent"
+  | "dislocation_persistent_untreated";
+
+export interface JointInstabilityEntry {
+  joint: string;
+  label: string;
+  subluxation_persistent: number | null;
+  dislocation_recurrent: number | null;
+  dislocation_persistent_untreated: number | null;
+}
+
+export const JOINT_INSTABILITY_TABLE: JointInstabilityEntry[] = [
+  { joint: "shoulder_glenohumeral",      label: "Shoulder Gleno-humeral",          subluxation_persistent: 4,  dislocation_recurrent: 10,   dislocation_persistent_untreated: 16 },
+  { joint: "shoulder_acromioclavicular", label: "Shoulder Acromio-clavicular",     subluxation_persistent: 2,  dislocation_recurrent: null, dislocation_persistent_untreated: 6  },
+  { joint: "shoulder_sternoclavicular",  label: "Shoulder Sterno-clavicular",      subluxation_persistent: 2,  dislocation_recurrent: null, dislocation_persistent_untreated: 6  },
+  { joint: "elbow",                      label: "Elbow (ulnohumeral)",             subluxation_persistent: 4,  dislocation_recurrent: 10,   dislocation_persistent_untreated: 16 },
+  { joint: "wrist_radiocarpal",          label: "Wrist Radiocarpal",               subluxation_persistent: 4,  dislocation_recurrent: null, dislocation_persistent_untreated: 12 },
+  { joint: "wrist_distal_carpal_row",    label: "Wrist Distal Carpal Row",         subluxation_persistent: 2,  dislocation_recurrent: null, dislocation_persistent_untreated: 6  },
+  { joint: "thumb_cmc",                  label: "Thumb Carpometacarpal",           subluxation_persistent: 4,  dislocation_recurrent: null, dislocation_persistent_untreated: 8  },
+  { joint: "thumb_mcp",                  label: "Thumb Metacarpophalangeal",       subluxation_persistent: 1,  dislocation_recurrent: null, dislocation_persistent_untreated: 6  },
+  { joint: "thumb_ip",                   label: "Thumb Interphalangeal",           subluxation_persistent: 1,  dislocation_recurrent: null, dislocation_persistent_untreated: 4  },
+  { joint: "index_middle_mcp",           label: "Index/Middle Finger MCP",         subluxation_persistent: 2,  dislocation_recurrent: null, dislocation_persistent_untreated: 6  },
+  { joint: "index_middle_pip",           label: "Index/Middle Finger PIP",         subluxation_persistent: 2,  dislocation_recurrent: null, dislocation_persistent_untreated: 4  },
+  { joint: "index_middle_dip",           label: "Index/Middle Finger DIP",         subluxation_persistent: 1,  dislocation_recurrent: null, dislocation_persistent_untreated: 2  },
+  { joint: "ring_little_mcp",            label: "Ring/Little Finger MCP",          subluxation_persistent: 1,  dislocation_recurrent: null, dislocation_persistent_untreated: 4  },
+  { joint: "ring_little_pip",            label: "Ring/Little Finger PIP",          subluxation_persistent: 1,  dislocation_recurrent: null, dislocation_persistent_untreated: 3  },
+  { joint: "ring_little_dip",            label: "Ring/Little Finger DIP",          subluxation_persistent: 0,  dislocation_recurrent: null, dislocation_persistent_untreated: 2  },
+];

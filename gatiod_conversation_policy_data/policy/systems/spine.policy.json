@@ -1,0 +1,180 @@
+{
+  "policy_version": "0.1.0",
+  "default_state": "COLLECTING_FACTS",
+  "global_rules": [
+    "Ask the smallest next necessary question.",
+    "Extract and confirm facts before calculation.",
+    "Never render final PI% unless the assess_* tool succeeds.",
+    "Keep internal IDs out of user-facing messages.",
+    "When user corrects facts, patch the structured state and reconfirm."
+  ],
+  "system_key": "spine",
+  "title": "Spine",
+  "chapter": 5,
+  "calculation_tool": "assess_spine",
+  "lookup_tools": [
+    "search_dictionary"
+  ],
+  "activation_terms": [
+    "spine",
+    "cervical",
+    "thoracic",
+    "lumbar",
+    "lumbo-sacral",
+    "disc",
+    "pivd",
+    "radicular",
+    "asia",
+    "cauda equina",
+    "neurogenic bladder",
+    "neurogenic bowel"
+  ],
+  "assessment_paths": [
+    {
+      "key": "fractures_dislocations",
+      "label": "Fractures and dislocations"
+    },
+    {
+      "key": "spinal_cord_injury",
+      "label": "Spinal cord / central cord / cauda equina injury"
+    },
+    {
+      "key": "intervertebral_disc",
+      "label": "Intervertebral disc"
+    },
+    {
+      "key": "spondylolysis_spondylolisthesis",
+      "label": "Lumbar spondylolysis / spondylolisthesis"
+    },
+    {
+      "key": "chronic_pain_normal_mri",
+      "label": "Chronic pain syndrome with normal MRI"
+    }
+  ],
+  "slots": [
+    {
+      "key": "region",
+      "required_when": "always",
+      "question": "Which spinal region is being assessed — cervical, thoraco-lumbar, or lumbo-sacral?",
+      "chips": [
+        "Cervical",
+        "Thoraco-lumbar",
+        "Lumbo-sacral"
+      ]
+    },
+    {
+      "key": "diagnosis_category",
+      "required_when": "always",
+      "question": "Which spine pathway applies: fracture/dislocation, cord/cauda equina injury, intervertebral disc, spondylolysis/spondylolisthesis, or chronic pain with normal MRI?",
+      "chips": [
+        "Fracture/dislocation",
+        "Cord/cauda injury",
+        "Disc injury",
+        "Normal MRI pain"
+      ]
+    },
+    {
+      "key": "severity_key",
+      "required_when": "diagnosis_category_present",
+      "question": "What is the applicable severity finding — residual pain, persistent radicular pain, sensory deficit, motor deficit, or ASIA grade?",
+      "chips": [
+        "Residual pain",
+        "Radicular pain",
+        "Sensory deficit",
+        "Motor deficit",
+        "ASIA grade"
+      ]
+    },
+    {
+      "key": "fracture_height_loss",
+      "required_when": "fracture_present AND height_loss_unclear",
+      "question": "For the compression or burst fracture, is height loss less than 25% or 25% or more?",
+      "chips": [
+        "<25%",
+        "≥25%"
+      ]
+    },
+    {
+      "key": "asia_grade",
+      "required_when": "asia_or_paresis_present AND grade_missing",
+      "question": "What is the ASIA grade — A/B, C, or D?",
+      "chips": [
+        "ASIA D",
+        "ASIA C",
+        "ASIA A/B"
+      ]
+    },
+    {
+      "key": "monoparesis_gate",
+      "required_when": "asia_c_or_d_present AND limb_distribution_unclear",
+      "question": "Is this monoparesis affecting one limb only?",
+      "chips": [
+        "Yes, monoparesis",
+        "No"
+      ]
+    },
+    {
+      "key": "bladder_bowel",
+      "required_when": "spine_neuro_present",
+      "question": "Is there neurogenic bladder or bowel incontinence? If yes, is it incomplete or complete, and bladder only, bowel only, or both?",
+      "chips": [
+        "No bladder/bowel",
+        "Incomplete bladder",
+        "Complete bladder",
+        "Bladder and bowel"
+      ]
+    },
+    {
+      "key": "mri_status",
+      "required_when": "disc_or_chronic_pain_pathway",
+      "question": "What does the MRI show — prolapsed disc, degenerated disc with superimposed injury, or normal MRI?",
+      "chips": [
+        "Prolapsed disc",
+        "Degenerated + injury",
+        "Normal MRI"
+      ]
+    },
+    {
+      "key": "confirmation",
+      "required_when": "ready_to_calculate",
+      "question": "Please confirm the extracted spine findings before I calculate the system-generated PI%.",
+      "chips": [
+        "Confirm and calculate",
+        "Edit findings"
+      ]
+    }
+  ],
+  "conversation_rules": [
+    {
+      "id": "SPINE_HIGHER_CATEGORY",
+      "rule": "If the spine injury falls in more than one category, use the category giving the higher award unless non-contiguous injuries require CVC."
+    },
+    {
+      "id": "SPINE_BLADDER_BOWEL_ADDON",
+      "rule": "Bladder/bowel award may be added for applicable spine neurological categories."
+    },
+    {
+      "id": "SPINE_MONOPARESIS_HALVING",
+      "rule": "For applicable ASIA C/D monoparesis, halve the disability award."
+    },
+    {
+      "id": "SPINE_MRI_GATE",
+      "rule": "Back/disc/chronic pain pathways require MRI-backed details where relevant."
+    }
+  ],
+  "confirmation_sections": [
+    "region",
+    "diagnosis_category",
+    "severity",
+    "ASIA_or_neurology",
+    "monoparesis",
+    "bladder_bowel",
+    "MRI"
+  ],
+  "post_result_actions": [
+    "Adjust findings",
+    "Add another system",
+    "Record doctor PI%",
+    "Export report"
+  ]
+}

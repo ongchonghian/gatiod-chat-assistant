@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Box, Paper, TextField, IconButton, Typography, CircularProgress, Button, Tooltip,
+  Box, Paper, TextField, IconButton, Typography, CircularProgress, Button, Tooltip, ToggleButtonGroup, ToggleButton, Alert,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import GavelIcon from "@mui/icons-material/Gavel";
 import ConfirmationCard from "./ConfirmationCard";
 import BreakdownView from "./BreakdownView";
 import ToolCallIndicator from "./ToolCallIndicator";
@@ -31,8 +32,15 @@ interface ApiResponse {
   error?: string;
 }
 
+interface InvestigationRegistered {
+  id: string;
+}
+
 const CONFIRMATION_PATTERN = /\*\*Confirmation\s*[—–-]\s*(?:Upper|Lower) Limb Assessment/i;
+const API_MODE_STORAGE_KEY = "gatiod_chat_api_mode";
 const ASSESSMENT_TOOLS = new Set(["assess_upper_limb", "assess_lower_limb"]);
+
+type ApiMode = "legacy" | "v2";
 
 function detectMessageType(content: string, toolCalls?: ToolCall[]): "confirmation" | "breakdown" | "text" {
   if (CONFIRMATION_PATTERN.test(content)) return "confirmation";
@@ -43,10 +51,24 @@ function detectMessageType(content: string, toolCalls?: ToolCall[]): "confirmati
   return "text";
 }
 
+function extractInvestigation(toolCalls?: ToolCall[]): InvestigationRegistered | null {
+  const call = toolCalls?.find(
+    (tc) => tc.name === "register_investigation" && tc.result?.success
+  );
+  if (!call) return null;
+  const data = call.result.data as { investigationId?: string } | undefined;
+  return data?.investigationId ? { id: data.investigationId } : null;
+}
+
 export default function ChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [lastInvestigation, setLastInvestigation] = useState<InvestigationRegistered | null>(null);
+  const [apiMode, setApiMode] = useState<ApiMode>(() => {
+    const fromStorage = localStorage.getItem(API_MODE_STORAGE_KEY);
+    return fromStorage === "v2" ? "v2" : "legacy";
+  });
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<Record<string, unknown> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -57,6 +79,7 @@ export default function ChatPanel() {
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
+  useEffect(() => { localStorage.setItem(API_MODE_STORAGE_KEY, apiMode); }, [apiMode]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loading) return;
@@ -70,16 +93,37 @@ export default function ChatPanel() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
+    setLastInvestigation(null);
 
     try {
-      const res = await fetch("/api/chat", {
+      const endpoint = apiMode === "v2" ? "/api/chat/v2" : "/api/chat";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text.trim(), sessionId }),
       });
-      const data: ApiResponse = await res.json();
+      const contentType = res.headers.get("content-type") ?? "";
+      let data: ApiResponse | null = null;
 
+      if (contentType.includes("application/json")) {
+        data = (await res.json()) as ApiResponse;
+      } else {
+        const rawText = await res.text();
+        const short = rawText.slice(0, 120).replace(/\s+/g, " ").trim();
+        throw new Error(
+          `Unexpected non-JSON response from ${endpoint}. ` +
+          `This usually means the API route is unavailable on the backend. ` +
+          `Status ${res.status}. Body starts with: ${short}`
+        );
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? `Request failed with status ${res.status}`);
+      }
       if (data.error) throw new Error(data.error);
+      if (!data.sessionId || typeof data.message !== "string") {
+        throw new Error(`Invalid response payload from ${endpoint}.`);
+      }
 
       if (data.sessionId && !sessionId) setSessionId(data.sessionId);
 
@@ -89,6 +133,9 @@ export default function ChatPanel() {
       if (assessCall?.result?.data) {
         setLastResult(assessCall.result.data as Record<string, unknown>);
       }
+
+      const investigation = extractInvestigation(data.toolCalls);
+      if (investigation) setLastInvestigation(investigation);
 
       const assistantMsg: Message = {
         id: crypto.randomUUID(),
@@ -111,7 +158,7 @@ export default function ChatPanel() {
       setLoading(false);
       inputRef.current?.focus();
     }
-  }, [loading, sessionId]);
+  }, [apiMode, loading, sessionId]);
 
   const handleReset = useCallback(async () => {
     if (sessionId) {
@@ -124,8 +171,14 @@ export default function ChatPanel() {
     setMessages([]);
     setSessionId(null);
     setLastResult(null);
+    setLastInvestigation(null);
     setInput("");
   }, [sessionId]);
+
+  const handleChallenge = useCallback((stepId: string, stepTitle: string, concern: string) => {
+    void stepId;
+    sendMessage(`[STEP_CHALLENGE: ${stepTitle}]\n${concern}\n[/STEP_CHALLENGE]`);
+  }, [sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -134,26 +187,61 @@ export default function ChatPanel() {
     }
   };
 
+  const handleApiModeChange = useCallback(async (_event: React.MouseEvent<HTMLElement>, nextMode: ApiMode | null) => {
+    if (!nextMode || nextMode === apiMode || loading) return;
+
+    if (sessionId) {
+      await fetch("/api/chat/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      }).catch(() => {});
+    }
+
+    setApiMode(nextMode);
+    setMessages([]);
+    setSessionId(null);
+    setLastResult(null);
+    setInput("");
+  }, [apiMode, loading, sessionId]);
+
   return (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column", maxWidth: 900, mx: "auto", px: 2, py: 2 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5, gap: 1 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: "0.02em" }}>
+          Chat API Mode
+        </Typography>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={apiMode}
+          onChange={handleApiModeChange}
+          color="primary"
+          disabled={loading}
+        >
+          <ToggleButton value="legacy">Legacy</ToggleButton>
+          <ToggleButton value="v2">V2</ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
+
       {/* Messages */}
       <Box sx={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 1.5, pb: 2 }}>
         {messages.length === 0 && (
           <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Box sx={{ textAlign: "center", maxWidth: 480 }}>
               <Typography variant="h5" sx={{ color: "primary.main", mb: 1 }}>
-                Upper Limb Assessment
+                GATIOD Assessment
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.7 }}>
-                Describe the clinical findings for your Upper Limb case. Include amputations, ROM measurements,
-                neurological findings, and diagnosis-based conditions in any order.
+                Describe the clinical findings for your case. Covers upper and lower limb, spine, respiratory,
+                renal, gastro, hearing, CNS, and visual systems — enter findings in any order.
               </Typography>
               <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, justifyContent: "center" }}>
                 {[
                   "Left shoulder, flexion 120°, abduction 90°",
-                  "Suprascapular nerve, combined, partial",
-                  "Above elbow amputation, right",
-                  "OA shoulder moderate",
+                  "L4/L5 disc herniation, moderate disability",
+                  "Below knee amputation, right",
+                  "Sensorineural hearing loss, both ears, 40dB",
                 ].map((hint) => (
                   <Button
                     key={hint}
@@ -191,7 +279,7 @@ export default function ChatPanel() {
                   <ConfirmationCard content={msg.content} onConfirm={() => sendMessage("Confirmed.")} onEdit={(text) => sendMessage(text)} />
                 ) : type === "breakdown" ? (
                   <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                    <BreakdownView content={msg.content} toolCalls={msg.toolCalls} />
+                    <BreakdownView content={msg.content} toolCalls={msg.toolCalls} onChallenge={handleChallenge} />
                     {msg.toolCalls && <ToolCallIndicator toolCalls={msg.toolCalls} />}
                   </Box>
                 ) : (
@@ -245,12 +333,28 @@ export default function ChatPanel() {
         {loading && (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, pl: 1 }}>
             <CircularProgress size={18} thickness={5} />
-            <Typography variant="body2" color="text.secondary">Analysing findings…</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Analysing findings ({apiMode.toUpperCase()})…
+            </Typography>
           </Box>
         )}
 
         <div ref={messagesEndRef} />
       </Box>
+
+      {/* Investigation registered banner */}
+      {lastInvestigation && (
+        <Alert
+          icon={<GavelIcon fontSize="small" />}
+          severity="info"
+          onClose={() => setLastInvestigation(null)}
+          sx={{ mb: 1, fontSize: "0.82rem", "& .MuiAlert-message": { lineHeight: 1.5 } }}
+        >
+          <strong>Investigation registered — {lastInvestigation.id}</strong>
+          <br />
+          A clinical expert will review this case. You can continue the assessment in the meantime.
+        </Alert>
+      )}
 
       {/* Report export */}
       {lastResult && <ReportExport result={lastResult} />}

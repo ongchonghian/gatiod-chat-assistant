@@ -43,6 +43,20 @@ export function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_audit_session ON gatiod_audit_log(session_id);
     CREATE INDEX IF NOT EXISTS idx_audit_type ON gatiod_audit_log(event_type);
     CREATE INDEX IF NOT EXISTS idx_audit_created ON gatiod_audit_log(created_at);
+
+    CREATE TABLE IF NOT EXISTS gatiod_investigations (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      step_id TEXT NOT NULL,
+      step_title TEXT NOT NULL,
+      doctor_concern TEXT NOT NULL,
+      clinical_context TEXT NOT NULL,
+      investigation_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_inv_session ON gatiod_investigations(session_id);
+    CREATE INDEX IF NOT EXISTS idx_inv_status ON gatiod_investigations(status);
   `);
 
   return db;

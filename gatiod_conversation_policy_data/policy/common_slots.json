@@ -1,0 +1,76 @@
+{
+  "version": "0.1.0",
+  "slot_types": {
+    "assessment_type": {
+      "values": [
+        "permanent_incapacity",
+        "current_incapacity",
+        "temporary_only",
+        "unknown"
+      ],
+      "question": "Is this assessment for permanent incapacity, current incapacity, or temporary incapacity only?",
+      "chips": [
+        "Permanent incapacity",
+        "Current incapacity",
+        "Temporary only"
+      ],
+      "notes": [
+        "Do not block calculation solely because assessment_type is unknown if the clinician is asking only for GATIOD table scoring.",
+        "If user asks about compensation readiness or final award, assessment_type becomes required."
+      ]
+    },
+    "side": {
+      "values": [
+        "left",
+        "right",
+        "bilateral",
+        "not_applicable",
+        "unknown"
+      ],
+      "question": "Which side is affected — left or right?",
+      "chips": [
+        "Left",
+        "Right",
+        "Both sides"
+      ]
+    },
+    "confirmation": {
+      "values": [
+        "confirmed",
+        "needs_correction",
+        "not_answered"
+      ],
+      "question": "Please confirm the extracted findings before I calculate the system-generated PI%.",
+      "chips": [
+        "Confirm and calculate",
+        "Edit findings"
+      ]
+    },
+    "doctor_recommended_pi": {
+      "values": "number_or_null",
+      "question": "Did the doctor recommend a PI% that differs from the system-generated GATIOD value?",
+      "chips": [
+        "No doctor deviation",
+        "Add doctor PI%"
+      ],
+      "notes": [
+        "Store separately from systemGeneratedPi.",
+        "If different, request justification and mark clarification status."
+      ]
+    }
+  },
+  "global_missing_slot_priority": [
+    "active_system",
+    "side_if_limb_or_eye_or_ear_specific",
+    "assessment_path",
+    "pathway_specific_required_measurements",
+    "duplication_or_conflict_gate",
+    "confirmation"
+  ],
+  "global_safety_phrases": {
+    "insufficient_facts": "I cannot calculate a system-generated PI% yet. I need one more required fact: {missing_slot_question}",
+    "cannot_map": "I cannot safely map this to a GATIOD calculation row yet. Please clarify: {clarification_question}",
+    "out_of_scope": "This appears outside the covered GATIOD assessment paths I can calculate. I can still help with covered systems such as upper limb, lower limb, spine, respiratory, renal, gastro-digestive, hearing, CNS, and visual assessment.",
+    "no_tool_no_pi": "I cannot provide a PI% yet because the calculation tool has not been run. Please confirm the extracted findings or provide the missing details."
+  }
+}

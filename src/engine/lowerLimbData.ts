@@ -165,8 +165,7 @@ export interface LowerLimbValue {
 
 /**
  * Reference back to the authoritative GATIOD source so audit output can cite
- * the table the percent was derived from. This is the structured equivalent
- * of "see GATIOD Chapter 4 Section IV" in a hand-written report.
+ * the table the percent was derived from.
  */
 export interface GatiodReference {
   chapter: string;
@@ -954,12 +953,7 @@ export function calculateAmputation(amp: LowerLimbAmputationValue): CategoryResu
     const level = LEG_AMPUTATION_LEVELS.find((l) => l.id === amp.legLevel);
     if (level) {
       notes.push(`${level.label}: ${level.percent}%`);
-      return {
-        label: "Amputations",
-        rawPercent: level.percent,
-        notes,
-        gatiodReference: LOWER_LIMB_REFS.amputation,
-      };
+      return { label: "Amputations", rawPercent: level.percent, notes, gatiodReference: LOWER_LIMB_REFS.amputation };
     }
   }
 
@@ -981,12 +975,7 @@ export function calculateAmputation(amp: LowerLimbAmputationValue): CategoryResu
     toeTotal = FOOT_AMPUTATION_CAP;
   }
 
-  return {
-    label: "Amputations",
-    rawPercent: toeTotal,
-    notes,
-    gatiodReference: LOWER_LIMB_REFS.amputation,
-  };
+  return { label: "Amputations", rawPercent: toeTotal, notes, gatiodReference: LOWER_LIMB_REFS.amputation };
 }
 
 function getRomLookupTable(direction: RomDirection, isAnkylosed: boolean): RomLookup[] {
@@ -1083,12 +1072,7 @@ export function calculateNeurological(neuro: LowerLimbNeurologicalValue): Catego
   }
 
   const total = combinedValuesChart(values);
-  return {
-    label: "Neurological",
-    rawPercent: total,
-    notes,
-    gatiodReference: LOWER_LIMB_REFS.neurological,
-  };
+  return { label: "Neurological", rawPercent: total, notes, gatiodReference: LOWER_LIMB_REFS.neurological };
 }
 
 export function calculateShortening(shortening: ShorteningValue): CategoryResult {
@@ -1097,12 +1081,7 @@ export function calculateShortening(shortening: ShorteningValue): CategoryResult
   if (pct > 0) {
     notes.push(`${shortening.discrepancyCm} cm discrepancy: ${pct}%`);
   }
-  return {
-    label: "Shortening",
-    rawPercent: pct,
-    notes,
-    gatiodReference: LOWER_LIMB_REFS.shortening,
-  };
+  return { label: "Shortening", rawPercent: pct, notes, gatiodReference: LOWER_LIMB_REFS.shortening };
 }
 
 export function calculateDbe(dbe: LowerLimbDbeValue, amp?: LowerLimbAmputationValue): CategoryResult {
@@ -1254,11 +1233,8 @@ export function calculateLowerLimb(value: LowerLimbValue): LowerLimbResult {
   // Per GATIOD Chapter 4, a toe amputation is assessed under amputations and a
   // shortening percent is only ever derived from a measured limb-length
   // discrepancy in cm. If both streams are non-zero on the same submission, it
-  // is almost always a classification error — the LLM has routed an amputation
-  // into the shortening field. Warn loudly on both streams so it surfaces in
-  // the audit trail; don't auto-zero either, since a clinician may have a
-  // legitimate combined finding (e.g. a real measured discrepancy alongside a
-  // separate toe loss).
+  // is almost always a classification error. Warn loudly on both streams so it
+  // surfaces in the audit trail.
   const hasToeAmp = Object.values(value.amputations.toes).some((t) => t !== "none");
   if (hasToeAmp && value.shortening.discrepancyCm > 0) {
     const warning =

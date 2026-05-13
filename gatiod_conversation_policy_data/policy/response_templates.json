@@ -1,0 +1,47 @@
+{
+  "version": "0.1.0",
+  "templates": {
+    "ask_missing_slot": {
+      "format": "I can assess this as {system_title}.\n\nI have:\n{known_facts_bullets}\n\nNext required check:\n{question}",
+      "rules": [
+        "No PI% in this template.",
+        "Use one next required question only."
+      ]
+    },
+    "clarification_required": {
+      "format": "I cannot safely map this to a GATIOD calculation row yet.\n\nIssue:\n{ambiguity_or_conflict}\n\nPlease clarify:\n{question}",
+      "rules": [
+        "No PI% in this template.",
+        "Explain why clarification matters only if it helps the user answer."
+      ]
+    },
+    "confirmation": {
+      "format": "Please confirm the extracted findings before I calculate the system-generated PI%:\n\n{confirmation_bullets}\n\nConfirm and calculate?",
+      "rules": [
+        "No calculation before confirmation.",
+        "Use human-readable terms only; no internal IDs."
+      ]
+    },
+    "calculation_result": {
+      "format": "System-generated GATIOD PI%: {finalPercent}%\n\nBreakdown:\n{component_bullets}\n\nRules applied:\n{rules_bullets}\n\nCalculation:\n{calculation_trace}\n\nFinal PI%: {finalPercent}%",
+      "rules": [
+        "Only use this template after successful assess_* tool call.",
+        "Do not alter finalPercent in prose.",
+        "If doctorRecommendedPi differs, show it separately."
+      ]
+    },
+    "doctor_deviation": {
+      "format": "Doctor-recommended PI%: {doctorRecommendedPi}%\nSystem-generated GATIOD PI%: {systemGeneratedPi}%\nDeviation: {delta}%\n\nClarification status: {clarificationStatus}\nJustification: {justification}",
+      "rules": [
+        "Do not override systemGeneratedPi.",
+        "If justification missing, ask for it."
+      ]
+    },
+    "out_of_scope": {
+      "format": "I can help with GATIOD injury-assessment questions for upper limb, lower limb, spine, respiratory, renal, gastro-digestive, hearing, CNS, and visual systems.\n\nThis query appears outside those calculation paths. You can ask me to assess a covered injury or combine known PI% values.",
+      "rules": [
+        "No PI% in this template."
+      ]
+    }
+  }
+}

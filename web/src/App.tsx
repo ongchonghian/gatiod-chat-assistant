@@ -11,7 +11,7 @@ export default function App() {
           <Typography variant="h6" sx={{ flexGrow: 1, letterSpacing: "-0.02em" }}>
             GATIOD Assessment Assistant
           </Typography>
-          <Chip label="Upper Limb MVP" size="small" sx={{ bgcolor: "rgba(255,255,255,0.15)", color: "#fff", fontWeight: 500, fontSize: "0.75rem" }} />
+          <Chip label="Multi-System" size="small" sx={{ bgcolor: "rgba(255,255,255,0.15)", color: "#fff", fontWeight: 500, fontSize: "0.75rem" }} />
         </Toolbar>
       </AppBar>
       <Box sx={{ flex: 1, overflow: "hidden" }}>

@@ -43,6 +43,29 @@ export function saveSession(
   );
 }
 
+export function saveSessionSystemStates(
+  sessionId: string,
+  systemStates: Record<string, unknown>,
+  opts?: { userId?: string; claimId?: string }
+): void {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT INTO gatiod_sessions (id, user_id, claim_id, system_states, updated_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(id) DO UPDATE SET
+      system_states = excluded.system_states,
+      user_id = COALESCE(excluded.user_id, gatiod_sessions.user_id),
+      claim_id = COALESCE(excluded.claim_id, gatiod_sessions.claim_id),
+      updated_at = CURRENT_TIMESTAMP
+  `);
+  stmt.run(
+    sessionId,
+    opts?.userId ?? null,
+    opts?.claimId ?? null,
+    JSON.stringify(systemStates)
+  );
+}
+
 export function loadSession(sessionId: string): PersistedSession | null {
   const db = getDb();
   const row = db.prepare("SELECT * FROM gatiod_sessions WHERE id = ?").get(sessionId) as Record<string, unknown> | undefined;

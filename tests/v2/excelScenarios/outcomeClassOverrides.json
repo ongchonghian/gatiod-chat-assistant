@@ -1,0 +1,10 @@
+{
+  "_comment": "Per-row outcome class overrides for the Excel shadow runner. Keyed by '<sheetName>:<rowId>'. Each entry is { componentIndex, outcomeClass, reason }. Overrides take precedence over the heuristic classifier in classifyScenario.ts. Add an entry only when the heuristic gets a row wrong; the build-time report tracks how many overrides exist as a signal of heuristic accuracy.",
+  "_format": {
+    "Specific Scenarios:SPC-99999": {
+      "componentIndex": 0,
+      "outcomeClass": "clarification_required",
+      "reason": "Row has a PI% but the description is ambiguous between two clinical interpretations; the assistant should ask before calculating."
+    }
+  }
+}

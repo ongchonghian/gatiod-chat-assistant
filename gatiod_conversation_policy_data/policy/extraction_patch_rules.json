@@ -1,0 +1,79 @@
+{
+  "version": "0.1.0",
+  "purpose": "Validate and apply user corrections to structured facts before reconfirming.",
+  "patch_schema": {
+    "op": [
+      "add",
+      "replace",
+      "remove"
+    ],
+    "path": "JSON pointer path into active assessment facts",
+    "value": "new value for add/replace",
+    "confidence": "0.0 to 1.0",
+    "requiresConfirmation": true
+  },
+  "rules": [
+    {
+      "id": "SIDE_CORRECTION",
+      "examples": [
+        "actually right side",
+        "sorry left not right"
+      ],
+      "allowed_paths": [
+        "/side"
+      ],
+      "requires_reconfirmation": true
+    },
+    {
+      "id": "ROM_VALUE_CORRECTION",
+      "examples": [
+        "abduction was 80 not 90",
+        "flexion should be 120"
+      ],
+      "allowed_paths": [
+        "/rom/joints/*/measurements/*"
+      ],
+      "requires_reconfirmation": true
+    },
+    {
+      "id": "ADD_FINDING",
+      "examples": [
+        "also suprascapular nerve injury",
+        "there is also OA"
+      ],
+      "allowed_paths": [
+        "/neurological/selectedNerves/-",
+        "/dbe/selectedConditions/-"
+      ],
+      "requires_reconfirmation": true
+    },
+    {
+      "id": "REMOVE_FINDING",
+      "examples": [
+        "no nerve injury",
+        "remove the DBE finding"
+      ],
+      "allowed_paths": [
+        "/neurological/selectedNerves",
+        "/dbe/selectedConditions"
+      ],
+      "requires_reconfirmation": true
+    },
+    {
+      "id": "CONFIRMATION_RESPONSE",
+      "examples": [
+        "confirm",
+        "yes calculate",
+        "go ahead"
+      ],
+      "allowed_when_state": "AWAITING_CONFIRMATION",
+      "action": "run_readiness_validator_then_calculate"
+    }
+  ],
+  "reject_patch_when": [
+    "patch path is not valid for active system",
+    "value does not pass system schema validation",
+    "confidence below 0.75 and the change affects PI%",
+    "patch introduces internal IDs not supported by the active tool schema"
+  ]
+}

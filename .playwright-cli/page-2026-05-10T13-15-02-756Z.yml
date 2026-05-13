@@ -1,0 +1,46 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e6]
+      - heading "GATIOD Assessment Assistant" [level=6] [ref=e8]
+      - generic [ref=e10]: Multi-System
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]: Chat API Mode
+      - group [ref=e15]:
+        - button "Legacy" [ref=e16] [cursor=pointer]
+        - button "V2" [pressed] [ref=e17] [cursor=pointer]: V2
+    - generic [ref=e18]:
+      - paragraph [ref=e212]: "Fall from height: Lumbo-sacral prolapsed intervertebral disc with persistent pain, restricted motion and motor deficit; Right femoral neck/head fracture with avascular necrosis."
+      - generic [ref=e214]:
+        - paragraph [ref=e217]:
+          - text: I think this input contains findings across
+          - strong [ref=e218]: 2 GATIOD assessment areas
+          - text: ":"
+          - text: "1."
+          - strong [ref=e219]: Spine
+          - text: — ready for interpretation confirmation
+          - text: Explicit mention of a spinal region (Lumbo-sacral) and a specific diagnosis (prolapsed intervertebral disc) with associated symptoms.
+          - text: "- Source: \"Lumbo-sacral prolapsed intervertebral disc with persistent pain, restricted motion and motor deficit\""
+          - text: "Likely interpretation: Lumbo-sacral prolapsed intervertebral disc with persistent pain, restricted motion and motor deficit"
+          - text: "Missing: fracture height loss percentage, ASIA grade, specific motor or sensory deficit details"
+          - text: "2."
+          - strong [ref=e220]: Lower Limb
+          - text: — ready for interpretation confirmation
+          - text: Clear identification of a lower limb side (Right), bone (femoral neck/head), injury (fracture), and a related condition (avascular necrosis).
+          - text: "- Source: \"Right femoral neck/head fracture with avascular necrosis\""
+          - text: "Likely interpretation: Right femoral neck/head fracture with avascular necrosis"
+          - text: "Missing: ROM direction, shortening cm, DBE condition severity bracket"
+          - text: How would you like to proceed?
+        - generic [ref=e221]:
+          - button "Proceed" [ref=e222] [cursor=pointer]
+          - button "Edit interpretation" [ref=e223] [cursor=pointer]
+          - button "Choose system first" [ref=e224] [cursor=pointer]
+          - button "Reject" [ref=e225] [cursor=pointer]
+    - generic [ref=e28]:
+      - textbox "Describe clinical findings…" [ref=e31]
+      - generic "Send" [ref=e32]:
+        - button [disabled]:
+          - img
+      - button "New assessment" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]
