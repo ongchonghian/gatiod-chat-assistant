@@ -55,6 +55,10 @@ export interface ConsensusOrchestratorRespondSignal {
   needsClarification: boolean;
   policyReason: string;
   auditEvents: ConsensusOrchestratorAuditEvent[];
+  /** Set when this respond signal was produced from a freshly-created
+   *  semantic interpretation (not a re-render or resolution). Used by
+   *  the shadow grader hook in chatServiceV2 (V2-805). */
+  freshInterpreterResult?: SemanticInterpreterResult;
 }
 
 export interface ConsensusOrchestratorSubstituteSignal {
@@ -67,6 +71,10 @@ export interface ConsensusOrchestratorSubstituteSignal {
   /** Read-only context to thread into structured extractors via the 4th
    *  StructuredExtractor parameter (REQ-MS-EXTRACT-001). */
   extractionContext: ExtractionContext;
+  /** Single extraction target for this turn (accepted_system_first only).
+   *  chatServiceV2 uses this instead of the router's output to pick the
+   *  primary system for deterministic extraction. */
+  targetSystem?: GatiodSystemKey;
   auditEvents: ConsensusOrchestratorAuditEvent[];
 }
 
@@ -96,10 +104,13 @@ export interface ConsensusOrchestratorInput {
   forceInterpreterEnabled?: boolean;
 }
 
+export const MAX_SEMANTIC_EDIT_ATTEMPTS = 2;
+
 function isConsensusFlagOn(force?: boolean): boolean {
   if (typeof force === "boolean") return force;
   const flag = process.env.SEMANTIC_CONSENSUS_ENABLED;
-  return flag === "true" || flag === "1";
+  // Default ON — opt out by setting SEMANTIC_CONSENSUS_ENABLED=false (ADR-0003 §4).
+  return flag !== "false" && flag !== "0";
 }
 
 function isInterpreterFlagOn(force?: boolean): boolean {
@@ -116,6 +127,7 @@ function buildExtractionContext(
   pending: PendingConsensus,
   acceptedFindings: SemanticInterpretation["candidateFindings"] = [],
   focusSystem?: GatiodSystemKey,
+  selectedScope?: ExtractionContext["selectedScope"],
 ): ExtractionContext {
   return {
     consensusId: pending.interpretationId,
@@ -124,7 +136,9 @@ function buildExtractionContext(
     acceptedSystems: [...pending.candidateSystems],
     acceptedFindings:
       acceptedFindings.length > 0 ? acceptedFindings : pending.candidateFindings ?? [],
+    targetSystem: focusSystem,
     focusSystem,
+    selectedScope,
   };
 }
 
@@ -137,6 +151,12 @@ function passthrough(
 function buildPendingConsensusFromInterpretation(
   interpretation: SemanticInterpretation,
   rendered: { message: string },
+  editCycle?: {
+    revision: number;
+    editAttemptCount: number;
+    parentInterpretationId: string;
+    lastEditInstruction: string;
+  },
 ): PendingConsensus {
   // interpretationHash is over the interpretation's content (excluding the
   // server-controlled fields the orchestrator may overwrite later).
@@ -156,6 +176,10 @@ function buildPendingConsensusFromInterpretation(
     candidateFindings: interpretation.candidateFindings,
     createdAt: interpretation.createdAt,
     awaiting: "decision",
+    revision: editCycle?.revision ?? 0,
+    editAttemptCount: editCycle?.editAttemptCount ?? 0,
+    parentInterpretationId: editCycle?.parentInterpretationId,
+    lastEditInstruction: editCycle?.lastEditInstruction,
   };
 }
 
@@ -193,9 +217,28 @@ export async function runConsensusOrchestrator(
   if (pending) {
     // (2a) Edit-instruction mode: re-run interpreter with edit context.
     if (pending.awaiting === "edit_instruction") {
+      const editAttemptCount = pending.editAttemptCount ?? 0;
+
+      // Hard cap: if we have already hit MAX_SEMANTIC_EDIT_ATTEMPTS the
+      // doctor must choose an action from what they have, not request another
+      // re-interpretation (ADR-0003 §4 edit-cycle cap).
+      if (editAttemptCount >= MAX_SEMANTIC_EDIT_ATTEMPTS) {
+        return {
+          kind: "respond",
+          state: input.state,
+          message:
+            "I've revised the interpretation the maximum number of times. Please proceed with the current proposal, or reject it to start over.",
+          chips: ["Proceed", "Reject"],
+          needsClarification: true,
+          policyReason: "consensus_edit_cap_reached",
+          auditEvents: audits,
+        };
+      }
+
       if (!input.modelClient || !isInterpreterFlagOn(input.forceInterpreterEnabled)) {
         // Cannot re-run interpreter without the model. Fail-closed: keep
         // pendingConsensus and ask the doctor to choose another action.
+        // Infrastructure failure — does NOT count against editAttemptCount.
         return {
           kind: "respond",
           state: input.state,
@@ -207,6 +250,11 @@ export async function runConsensusOrchestrator(
           auditEvents: audits,
         };
       }
+
+      // Count this invocation attempt. Full-reset (Option C) on success;
+      // count still increments on LLM validation failure.
+      const nextEditCount = editAttemptCount + 1;
+
       const reInterp = await runSemanticInterpreter({
         client: input.modelClient,
         sourceText: pending.sourceText,
@@ -219,9 +267,15 @@ export async function runConsensusOrchestrator(
       });
       audits.push(buildInterpreterAuditEvent(reInterp, pending.sourceText));
       if (!reInterp.ok) {
+        // LLM was invoked but returned invalid output — count it.
+        const stalePending: PendingConsensus = {
+          ...pending,
+          editAttemptCount: nextEditCount,
+        };
+        const failState = setPendingConsensus(input.state, stalePending);
         return {
           kind: "respond",
-          state: input.state,
+          state: failState,
           message:
             "I could not produce a revised interpretation. Please choose an action.",
           chips: ["Proceed", "Reject"],
@@ -231,9 +285,16 @@ export async function runConsensusOrchestrator(
         };
       }
       const rendered = renderSemanticConsensus(reInterp.interpretation);
+      // Full reset (Option C): new PendingConsensus replaces old wholesale.
       const newPending = buildPendingConsensusFromInterpretation(
         reInterp.interpretation,
         rendered,
+        {
+          revision: (pending.revision ?? 0) + 1,
+          editAttemptCount: nextEditCount,
+          parentInterpretationId: pending.interpretationId,
+          lastEditInstruction: input.replyText,
+        },
       );
       const nextState = setPendingConsensus(input.state, newPending);
       return {
@@ -257,13 +318,21 @@ export async function runConsensusOrchestrator(
     }
 
     if (resolution.action === "accepted_all" || resolution.action === "accepted_system_first") {
-      const focusSystem = pickFocusSystem(resolution.action, input.replyText, pending.candidateSystems);
-      const extractionContext = buildExtractionContext(pending, [], focusSystem);
+      const focusSystem =
+        resolution.targetSystem ??
+        pickFocusSystem(resolution.action, input.replyText, pending.candidateSystems);
+      const extractionContext = buildExtractionContext(
+        pending,
+        [],
+        focusSystem,
+        resolution.selectedScope,
+      );
       return {
         kind: "substitute",
         state: resolution.state,
         sourceText: pending.sourceText,
         extractionContext,
+        targetSystem: resolution.targetSystem,
         auditEvents: audits,
       };
     }
@@ -330,6 +399,7 @@ export async function runConsensusOrchestrator(
     needsClarification: true,
     policyReason: "semantic_consensus_proposal",
     auditEvents: audits,
+    freshInterpreterResult: interp,
   };
 }
 

@@ -20,6 +20,7 @@ import type { SlotDefinition } from "./types.js";
 
 export type LowerLimbFactKey =
   | "side"
+  | "bilateral_mode"
   | "rom_joints"
   | "rom_from_nerve"
   | "nerve_selections"
@@ -37,8 +38,9 @@ export const lowerLimbSlotSchema: SlotDefinition<LowerLimbFactKey>[] = [
     label: "Affected side",
     description:
       'Which lower limb is affected. Extract "left" or "right" when explicitly stated.\n' +
-      'Bilateral mentions ("both legs", "bilateral") are not extractable as a single side — ' +
-      "emit a clarification PendingObservation; do not guess.",
+      'IMPORTANT: when both sides are mentioned ("both legs", "both lower limbs", "bilateral", ' +
+      '"loss of both lower limbs") do NOT emit this clarification — the bilateral_mode slot ' +
+      "handles it. Only emit this clarification when a single unspecified side is involved.",
     valueType: "enum",
     allowedValues: ["left", "right"],
     clinicalInferenceAllowed: true,
@@ -48,6 +50,30 @@ export const lowerLimbSlotSchema: SlotDefinition<LowerLimbFactKey>[] = [
       candidateAnswers: ["Left", "Right"],
       expectedAnswer: { kind: "enum", factKey: "side", choices: ["left", "right"] },
     },
+  },
+
+  // ── bilateral_mode ───────────────────────────────────────────────────────────
+  {
+    factKey: "bilateral_mode",
+    label: "Bilateral assessment mode",
+    description:
+      "Whether both lower limbs are affected and, if so, whether the findings are the same or need separate assessment.\n" +
+      '\n' +
+      'Emit this slot\'s clarification whenever the doctor mentions both sides: "both legs", ' +
+      '"bilateral lower limb", "bilateral", "loss of both lower limbs", "both lower limbs affected", ' +
+      '"both limbs".\n' +
+      '\n' +
+      "clinicalInferenceAllowed: false — the doctor must choose. Do not assume same or separate.",
+    valueType: "enum",
+    allowedValues: ["same", "separate"],
+    clinicalInferenceAllowed: false,
+    clarification: {
+      question:
+        "Both lower limbs are affected. Do both legs have the same findings, or would you like to assess each leg separately?",
+      candidateAnswers: ["Same findings for both", "Assess each leg separately"],
+      expectedAnswer: { kind: "enum", factKey: "bilateral_mode", choices: ["same", "separate"] },
+    },
+    required_when: "never",
   },
 
   // ── rom_joints ──────────────────────────────────────────────────────────────
@@ -150,22 +176,37 @@ Extraction rules:
     label: "Leg amputation level",
     description: `Level of lower leg amputation.
 
-Valid values: "none" | "above_knee" | "below_knee" | "syme" | "midtarsal" | "transmetatarsal"
+Valid values: "none" | "above_knee" | "below_knee" | "syme" | "midtarsal" | "transmetatarsal" | "hindquarter"
 
 Synonyms:
-  "trans-femoral" / "transhumeral"             → above_knee
-  "AK amputation" / "above the knee"           → above_knee
-  "trans-tibial" / "BK amputation"             → below_knee
-  "below the knee"                             → below_knee
-  "Syme's amputation"                          → syme
-  "Chopart" / "midtarsal"                      → midtarsal
-  "transmetatarsal" / "trans-metatarsal"       → transmetatarsal
+  "trans-femoral" / "AK amputation" / "above the knee"       → above_knee
+  "trans-tibial" / "BK amputation" / "below the knee"        → below_knee
+  "Syme's amputation" / "ankle disarticulation"              → syme
+  "Chopart" / "midtarsal"                                    → midtarsal
+  "transmetatarsal" / "trans-metatarsal"                     → transmetatarsal
+  "hindquarter" / "hip disarticulation" / "forequarter"      → hindquarter
+
+Amputation signal words — "loss of leg", "loss of lower limb", "loss of limb",
+"loss of foot", "leg amputated", "lower limb amputated", "amputation" (bare word):
+  These confirm an amputation is present but do NOT specify a level.
+  When you detect amputation signal words WITHOUT a level term, emit a
+  PendingObservation using the clarification spec below to ask for the level.
+  Do NOT omit this field and do NOT guess the level.
 
 Set "none" only when the doctor explicitly negates amputation ("no amputation", "without amputation").
-Omit this fact entirely when amputation is not mentioned.`,
+Omit this fact entirely when amputation is not mentioned at all.`,
     valueType: "enum",
-    allowedValues: ["none", "above_knee", "below_knee", "syme", "midtarsal", "transmetatarsal"],
+    allowedValues: ["none", "above_knee", "below_knee", "syme", "midtarsal", "transmetatarsal", "hindquarter"],
     clinicalInferenceAllowed: true,
+    clarification: {
+      question: "At what level was the amputation?",
+      candidateAnswers: ["Above knee", "Below knee", "Syme (ankle disarticulation)", "Hindquarter / hip disarticulation"],
+      expectedAnswer: {
+        kind: "enum",
+        factKey: "leg_amputation",
+        choices: ["above knee", "below knee", "syme", "hindquarter"],
+      },
+    },
     required_when: "never",
   },
 

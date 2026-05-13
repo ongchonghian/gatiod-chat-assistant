@@ -1,6 +1,7 @@
 import type { AssessmentRenderResult, V2SystemState } from "../contracts.js";
 import type { RenalResult } from "../../engine/renalData.js";
 import { CLINICAL_SEVERITY_LABELS, CKD_STAGE_LABELS } from "../../engine/renalData.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 import {
   RENAL_FK_SEX,
   RENAL_FK_SERUM_CREATININE,
@@ -79,7 +80,7 @@ export function renderRenalResult(
   // ── Full breakdown ─────────────────────────────────────────────────────────
   const inputFacts: string[] = [];
   for (const [k, fact] of Object.entries(ef)) {
-    if (fact) inputFacts.push(`${k}: ${JSON.stringify(fact.value)}`);
+    if (fact) inputFacts.push(`${factKeyLabel("renal", k)}: ${factValueDisplay("renal", k, fact.value)}`);
   }
 
   return {

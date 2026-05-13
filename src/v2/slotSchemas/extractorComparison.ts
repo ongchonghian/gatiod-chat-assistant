@@ -27,6 +27,7 @@ import type {
   StructuredExtractionResult,
   V2SystemFacts,
 } from "../contracts.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 
 // ── Feature flag ──────────────────────────────────────────────────────────────
 
@@ -133,102 +134,35 @@ const SYSTEM_LABELS: Record<GatiodSystemKey, string> = {
 };
 
 /**
- * Human-readable representation of a slot value for the comparison message.
- *
- * Handles the most common upper-limb shapes specifically:
- *   rom_joints  → "shoulder: flexion 90°, extension 30°; elbow: flexion 120°"
- *   nerve_selections / dbe_selections (arrays) → compact inline summary
- *   finger_amputations / other flat objects → "key: value, …"
- *
- * Falls back to compact JSON for unknown shapes so nothing ever renders as
- * "[object Object]".
- */
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) return "(none)";
-  if (typeof value === "string") return value.length > 0 ? value : "(none)";
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "(none)";
-    // Compact inline rendering for short arrays; just the count for longer ones.
-    if (value.length === 1) return formatValue(value[0]);
-    if (value.length <= 3) {
-      return value.map(formatValue).join("; ");
-    }
-    return `[${value.length} items]`;
-  }
-
-  const obj = value as Record<string, unknown>;
-  const entries = Object.entries(obj);
-  if (entries.length === 0) return "(none)";
-
-  // rom_joints shape detection:
-  // { jointName: { isAnkylosed: boolean; measurements: { dirKey: number } } }
-  const isRomJoints = entries.every(
-    ([, v]) =>
-      typeof v === "object" &&
-      v !== null &&
-      ("measurements" in v || "isAnkylosed" in v),
-  );
-  if (isRomJoints) {
-    return entries
-      .map(([joint, jv]) => {
-        const jobj = jv as Record<string, unknown>;
-        const ankylosed = jobj.isAnkylosed === true;
-        const measurements = jobj.measurements as Record<string, number> | undefined;
-        if (ankylosed) return `${joint}: ankylosed`;
-        if (!measurements || Object.keys(measurements).length === 0) return joint;
-        const dirs = Object.entries(measurements)
-          .map(([dir, angle]) => `${dir} ${angle}°`)
-          .join(", ");
-        return `${joint}: ${dirs}`;
-      })
-      .join("; ");
-  }
-
-  // Flat object with ≤4 entries (e.g. finger_amputations, single nerve object).
-  if (entries.length <= 4) {
-    return entries
-      .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
-      .join(", ");
-  }
-
-  return JSON.stringify(value);
-}
-
-/**
  * Renders a map of fact keys → human-readable values as a bulleted markdown
  * list for the comparison message.
- *
- * Uses `displayValues[k]` only for scalar types (where it is always a clean
- * string). For object/array-typed facts the typed value is formatted directly
- * via `formatValue` — this prevents `"[object Object]"` from leaking through
- * even if an extractor populated `displayValues` incorrectly.
  */
 function formatExtractionSummary(
+  system: GatiodSystemKey,
   facts: V2SystemFacts,
   displayValues: Record<string, string>,
   pendingObs?: PendingObservation[],
 ): string {
   const keys = Object.keys(facts);
   const hasPending = pendingObs && pendingObs.length > 0;
-  if (keys.length === 0 && !hasPending) return "_Nothing extracted_";
+  if (keys.length === 0 && !hasPending) return "_No findings captured._";
 
   const lines = keys.map((k) => {
     const raw = facts[k]?.value;
+    const label = factKeyLabel(system, k);
     const isScalar =
       raw === null ||
       raw === undefined ||
       typeof raw === "string" ||
       typeof raw === "number" ||
       typeof raw === "boolean";
-    // Prefer the extractor's display string for scalars (already formatted).
-    // For objects / arrays always use formatValue so we never show "[object Object]".
+    // For scalars prefer the extractor's display string when present; otherwise
+    // use the registry. For objects/arrays always use the registry to avoid JSON.
     const display =
       isScalar && displayValues[k] !== undefined
         ? displayValues[k]
-        : formatValue(raw);
-    return `• **${k}**: ${display}`;
+        : factValueDisplay(system, k, raw);
+    return `• **${label}**: ${display}`;
   });
 
   if (hasPending) {
@@ -258,36 +192,39 @@ export function buildComparisonOffer(
   const systemLabel = SYSTEM_LABELS[system] ?? system;
 
   const primarySummary = formatExtractionSummary(
+    system,
     primary.extractedFactsPatch,
     primary.displayValuesPatch,
     primary.pendingObservationsToAdd,
   );
   const shadowSummary = formatExtractionSummary(
+    system,
     shadow.extractedFactsPatch,
     shadow.displayValuesPatch,
     shadow.pendingObservationsToAdd,
   );
 
+  const conflictLabels = conflictKeys.map((k) => factKeyLabel(system, k));
   const conflictLine = hasConflicts
-    ? `\n⚠️ **Conflicts on:** ${conflictKeys.join(", ")}`
-    : "\n✅ No conflicts between extractors";
+    ? `\n⚠️ **These fields differ:** ${conflictLabels.join(", ")}`
+    : "\n✅ Both interpretations agree on all fields";
 
   const message = [
-    `I ran two extractors on your **${systemLabel}** input and got the following results. Which is more accurate?`,
+    `I found two possible interpretations of your **${systemLabel}** input. Please confirm which is more accurate.`,
     "",
-    "**A — Live extraction (current system):**",
+    "**Interpretation A:**",
     primarySummary,
     "",
-    "**B — LLM extraction:**",
+    "**Interpretation B:**",
     shadowSummary,
     conflictLine,
   ].join("\n");
 
-  // "Both correct" is only valid when there are no conflicts (otherwise the
+  // "Both are correct" is only valid when there are no conflicts (otherwise the
   // two results disagree on at least one fact value, making "both correct"
   // logically inconsistent).
-  const chips: string[] = ["Use A (live)", "Use B (LLM)", "Both wrong"];
-  if (!hasConflicts) chips.push("Both correct");
+  const chips: string[] = ["Use interpretation A", "Use interpretation B", "Neither is correct"];
+  if (!hasConflicts) chips.push("Both are correct");
 
   return {
     id: randomUUID(),
@@ -328,7 +265,8 @@ export function resolveComparisonChoice(
     msg === "a" ||
     msg.includes("live") ||
     msg.includes("option a") ||
-    msg.includes("first one")
+    msg.includes("first one") ||
+    msg.includes("interpretation a")
   ) {
     return "use_primary";
   }
@@ -337,7 +275,8 @@ export function resolveComparisonChoice(
     msg === "b" ||
     msg.includes("llm") ||
     msg.includes("option b") ||
-    msg.includes("second one")
+    msg.includes("second one") ||
+    msg.includes("interpretation b")
   ) {
     return "use_shadow";
   }
@@ -366,10 +305,10 @@ function chipToChoice(
   chip: string,
 ): "use_primary" | "use_shadow" | "both_correct" | "both_wrong" | null {
   const c = chip.toLowerCase();
-  if (c.includes("use a") || c.includes("live")) return "use_primary";
-  if (c.includes("use b") || c.includes("llm")) return "use_shadow";
-  if (c.includes("both correct")) return "both_correct";
-  if (c.includes("both wrong")) return "both_wrong";
+  if (c.includes("use a") || c.includes("live") || c.includes("interpretation a")) return "use_primary";
+  if (c.includes("use b") || c.includes("llm") || c.includes("interpretation b")) return "use_shadow";
+  if (c.includes("both correct") || c.includes("both are correct")) return "both_correct";
+  if (c.includes("both wrong") || c.includes("neither")) return "both_wrong";
   return null;
 }
 
@@ -401,15 +340,15 @@ export function buildSlotCorrectionOffer(
   );
 
   const message = [
-    `Understood — both extractions were inaccurate for **${systemLabel}**. Here is what each captured:`,
+    `Understood — neither interpretation was accurate for **${systemLabel}**. Here is what was captured:`,
     "",
-    "**Live (A):**",
+    "**Interpretation A:**",
     primarySummary,
     "",
-    "**LLM (B):**",
+    "**Interpretation B:**",
     shadowSummary,
     "",
-    "Please re-state the correct findings and I will extract them again.",
+    "Please re-state the correct findings and I will record them.",
   ].join("\n");
 
   return {

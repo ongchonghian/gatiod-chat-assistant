@@ -14,6 +14,7 @@ import type {
   SemanticInterpretation,
 } from "./contracts.js";
 import { SEMANTIC_SYSTEM_TAXONOMY } from "./semanticSystemTaxonomy.js";
+import { buildSpineScopeChips, detectSpineScopesFromText } from "./spineScope.js";
 
 const SYSTEM_DISPLAY_NAMES: Record<GatiodSystemKey, string> = {
   upper_limb: "Upper Limb",
@@ -34,11 +35,59 @@ export interface RenderedSemanticConsensus {
 }
 
 /**
+ * Classification of a semantic proposal, used to select message template and
+ * chip set. Priority order (ADR-0003 §6):
+ *   empty → single_legacy → single_system → multi_scope_spine
+ *   → mixed_structured_legacy → multi_system
+ *
+ * `multi_scope_spine` applies ONLY when ALL non-legacy systems are spine.
+ */
+export type SemanticProposalKind =
+  | "empty"
+  | "single_system"
+  | "single_legacy"
+  | "multi_scope_spine"
+  | "mixed_structured_legacy"
+  | "multi_system";
+
+/**
+ * Classify the interpretation into a proposal kind.
+ * Priority is fixed per ADR-0003 §6 to avoid the multi_scope_spine-before-
+ * multi_system bug described in §Consequences.
+ */
+export function classifySemanticProposal(
+  interpretation: SemanticInterpretation,
+): SemanticProposalKind {
+  const systems = interpretation.candidateSystems;
+  if (systems.length === 0) return "empty";
+
+  const legacySystems = systems.filter((s) => s.status === "legacy_deferred");
+  const structuredSystems = systems.filter((s) => s.status !== "legacy_deferred");
+
+  if (systems.length === 1) {
+    return legacySystems.length === 1 ? "single_legacy" : "single_system";
+  }
+
+  // multi_scope_spine: ALL non-legacy systems are spine AND ≥2 spine regions detected
+  if (structuredSystems.length > 0 && structuredSystems.every((s) => s.system === "spine")) {
+    const allText = interpretation.candidateFindings.map((f) => f.sourceSpan).join(" ");
+    const scopeKeys = detectSpineScopesFromText(allText);
+    if (scopeKeys.length >= 2) {
+      return "multi_scope_spine";
+    }
+  }
+
+  // mixed_structured_legacy
+  if (legacySystems.length > 0 && structuredSystems.length > 0) {
+    return "mixed_structured_legacy";
+  }
+
+  return "multi_system";
+}
+
+/**
  * Render a doctor-facing proposal card from a validated semantic
- * interpretation. The card lists each candidate system, its source spans,
- * missing fields, and legacy/deferred labels. It ends with the four
- * standard action chips: Proceed, Edit interpretation, Choose system first,
- * Reject.
+ * interpretation. Uses proposal-kind-specific chip sets per ADR-0003 §6.
  */
 export function renderSemanticConsensus(
   interpretation: SemanticInterpretation,
@@ -46,14 +95,16 @@ export function renderSemanticConsensus(
   const lines: string[] = [];
   const candidateSystems: GatiodSystemKey[] = [];
 
-  const systemCount = interpretation.candidateSystems.length;
-  if (systemCount === 0) {
+  const kind = classifySemanticProposal(interpretation);
+
+  if (kind === "empty") {
     lines.push(
       "I could not identify any GATIOD assessment areas from the input. Please rephrase or specify a system.",
     );
     return { message: lines.join("\n"), chips: [], candidateSystems: [] };
   }
 
+  const systemCount = interpretation.candidateSystems.length;
   lines.push(
     `I think this input contains findings across **${systemCount} GATIOD assessment area${
       systemCount === 1 ? "" : "s"
@@ -112,15 +163,68 @@ export function renderSemanticConsensus(
 
   lines.push("How would you like to proceed?");
 
-  // Standard action chips. The wider claim plan may swap these for the
-  // structured plan when 3+ systems are involved (Slice F).
-  const chips = ["Proceed", "Edit interpretation", "Choose system first", "Reject"];
+  const chips = buildChipsForKind(kind, interpretation);
 
   return {
     message: lines.join("\n").trimEnd(),
     chips,
     candidateSystems,
   };
+}
+
+function buildChipsForKind(
+  kind: SemanticProposalKind,
+  interpretation: SemanticInterpretation,
+): string[] {
+  const legacySystems = interpretation.candidateSystems
+    .filter((s) => s.status === "legacy_deferred")
+    .map((s) => s.system);
+  const structuredSystems = interpretation.candidateSystems
+    .filter((s) => s.status !== "legacy_deferred")
+    .map((s) => s.system);
+
+  switch (kind) {
+    case "single_system":
+      return ["Proceed", "Edit interpretation", "Reject"];
+
+    case "single_legacy":
+      return ["Proceed with legacy mode", "Edit interpretation", "Reject"];
+
+    case "multi_scope_spine": {
+      // Detect scope regions from all source spans — never include a generic "Proceed".
+      const allText = interpretation.candidateFindings.map((f) => f.sourceSpan).join(" ");
+      const scopeKeys = detectSpineScopesFromText(allText);
+      const scopeChips = buildSpineScopeChips(scopeKeys);
+      return [...scopeChips, "Edit interpretation", "Reject"];
+    }
+
+    case "mixed_structured_legacy": {
+      const chips: string[] = ["Proceed"];
+      for (const sys of structuredSystems) {
+        chips.push(`Assess ${SYSTEM_DISPLAY_NAMES[sys]} first`);
+      }
+      for (const sys of legacySystems) {
+        chips.push(`Use legacy for ${SYSTEM_DISPLAY_NAMES[sys]}`);
+      }
+      chips.push("Edit interpretation", "Reject");
+      return chips;
+    }
+
+    case "multi_system": {
+      if (structuredSystems.length <= 3) {
+        const chips: string[] = [];
+        for (const sys of structuredSystems) {
+          chips.push(`Assess ${SYSTEM_DISPLAY_NAMES[sys]} first`);
+        }
+        chips.push("Proceed", "Edit interpretation", "Reject");
+        return chips;
+      }
+      return ["Proceed", "Choose system first", "Edit interpretation", "Reject"];
+    }
+
+    default:
+      return ["Proceed", "Edit interpretation", "Reject"];
+  }
 }
 
 /** Helper: list per-system "Assess X first" chips for a structured plan. */

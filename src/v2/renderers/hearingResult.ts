@@ -7,6 +7,7 @@ import {
   HEARING_FK_AGE,
   HEARING_FK_TINNITUS,
 } from "../extractors/hearing.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 
 function pct(n: number): string { return `${n}%`; }
 function isNidResult(r: HearingResult): r is NidResult {
@@ -74,7 +75,7 @@ export function renderHearingResult(
 
   const inputFacts: string[] = [];
   for (const [k, fact] of Object.entries(ef)) {
-    if (fact) inputFacts.push(`${k}: ${JSON.stringify(fact.value)}`);
+    if (fact) inputFacts.push(`${factKeyLabel("hearing", k)}: ${factValueDisplay("hearing", k, fact.value)}`);
   }
 
   return {

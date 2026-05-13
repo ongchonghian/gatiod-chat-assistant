@@ -39,7 +39,9 @@ export function buildLowerLimbArgs(facts: V2SystemFacts): BuildResult<LowerLimbV
   // ── Leg amputation ────────────────────────────────────────────────────────
   let legLevel = "none";
   if (facts[LL_FK_LEG_AMPUTATION]) {
-    legLevel = facts[LL_FK_LEG_AMPUTATION].value as string;
+    // Normalise human-readable chip answers ("above knee") to the canonical
+    // underscore format the engine schema expects ("above_knee").
+    legLevel = (facts[LL_FK_LEG_AMPUTATION].value as string).replace(/\s+/g, "_");
     userSupplied.push("leg_amputation");
   } else {
     builderZeroFilled.push("leg_amputation");

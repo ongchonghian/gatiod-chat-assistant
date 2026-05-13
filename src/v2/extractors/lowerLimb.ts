@@ -135,7 +135,7 @@ const NERVE_RE = /\b(lumbosacral(?:\s+plexus)?|femoral(?!\s+(?:neck|head|condyle
 const DEFICIT_RE = /\b(sensory|motor|combined)\b/i;
 const LOSS_RE = /\b(total|partial)\b/i;
 const SIDE_RE = /\b(left|right)\b/i;
-const SIDE_BILATERAL_RE = /\b(bilateral|both\s+(?:sides?|legs?)|left\s+and\s+right|right\s+and\s+left)\b/i;
+const SIDE_BILATERAL_RE = /\b(bilateral|both\s+(?:sides?|legs?|limbs?|lower\s+limbs?)|left\s+and\s+right|right\s+and\s+left)\b/i;
 const ROM_FROM_NERVE_YES = /\b(due\s+to\s+nerve|from\s+nerve|because\s+of\s+nerve|rom\s+from\s+nerve)\b/i;
 const ROM_FROM_NERVE_NO = /\b(independent|not\s+(?:from|related\s+to)\s+nerve|separate\s+rom)\b/i;
 const NO_OTHER_FINDINGS_RE = /\bno\s+other\s+findings?\b/i;
@@ -149,6 +149,10 @@ const SHORTENING_CM_RE = /\b(\d+(?:\.\d+)?)\s*cm\b/i;
 const SHORTENING_BARE_NUMBER_RE = /\b(?:length\s+)?discrepancy[^:]*:\s*(\d+(?:\.\d+)?)\b/i;
 
 const LEG_AMP_RE = /\b(above[\s-](?:the\s+)?knee|ak\s+amp(?:utation)?|trans[\s-]?femoral|through\s+(?:the\s+)?femur|below[\s-](?:the\s+)?knee|bk\s+amp(?:utation)?|trans[\s-]?tibial|syme['s]*(?:\s+amp(?:utation)?)?|midtarsal|chopart(?:'s)?|transmetatarsal|trans[\s-]?metatarsal)\b/i;
+// Generic amputation signal — "loss of leg/limb" or bare "amputated/amputation" without
+// a level term. Sets slotSignalsPatch.amputation_present so readiness can ask for the level
+// rather than asking "what type of finding?" (which "loss of" already answers).
+const GENERIC_AMP_RE = /\b(?:loss\s+of\s+(?:(?:both|the|a)\s+)?(?:legs?|lower\s+limbs?|limbs?|feet|foot)|(?:legs?|lower\s+limbs?)\s+(?:was\s+|were\s+)?amputated|amputat(?:ion|ed))\b/i;
 
 const LEG_AMP_MAP: Record<string, string> = {
   "above knee": "above_knee",
@@ -298,20 +302,20 @@ export function extractLowerLimb(
   // (catches "left lower limb and right lower limb" which isn't adjacent).
   const hasBothSides = /\bleft\b/i.test(text) && /\bright\b/i.test(text);
   if (SIDE_BILATERAL_RE.test(text) || hasBothSides) {
-    warnings.push("Bilateral lower limb: side must be specified per case; asking.");
-    // Bilateral detected — add a pending observation so the doctor picks a side
-    // and the comparison dialog has something to show (rather than both-empty).
+    warnings.push("Bilateral lower limb detected.");
+    // Ask whether the same findings apply to both legs or each needs separate assessment.
+    // Do NOT ask "which side?" — the doctor already told us both are affected.
     pendingToAdd.push({
       ...makeObservation(
         "lower_limb",
-        "other",
+        "bilateral_mode_choice",
         raw,
-        { bilateral: true },
-        [LL_FK_SIDE],
-        "Bilateral leg involvement detected. Which lower limb are we assessing — left or right?",
-        ["Left", "Right"],
+        { bilateral: true, system: "lower_limb" },
+        ["bilateral_mode"],
+        "Both lower limbs are affected. Do both legs have the same findings, or would you like to assess each leg separately?",
+        ["Same findings for both", "Assess each leg separately"],
       ),
-      expectedAnswer: { kind: "enum", factKey: LL_FK_SIDE, choices: ["left", "right"] },
+      expectedAnswer: { kind: "enum", factKey: "bilateral_mode", choices: ["same", "separate"] },
     });
   } else {
     const sideMatch = SIDE_RE.exec(text);
@@ -597,6 +601,11 @@ export function extractLowerLimb(
       factsPatch[LL_FK_LEG_AMPUTATION] = makeFact(legLevel, raw);
       slotSignalsPatch.amputation_present = true;
       displayValuesPatch.amputation_level = legLevel;
+    } else if (GENERIC_AMP_RE.test(text)) {
+      // "loss of leg/limb" or bare "amputated/amputation" — level not yet stated.
+      // Signal the finding type so readiness asks for the level specifically rather
+      // than the generic "what type of finding?" question.
+      slotSignalsPatch.amputation_present = true;
     }
   }
 

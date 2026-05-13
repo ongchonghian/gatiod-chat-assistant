@@ -1,6 +1,6 @@
 ---
 id: ADR-0004
-status: Proposed
+status: Accepted
 sprint_sections:
   - "../v2/sprints.md#sprint-9--slot-schema--llm-slot-extractor-adr-0004--%E2%97%94-partial"
 ---
@@ -9,7 +9,7 @@ sprint_sections:
 
 ## Status
 
-Proposed (2026-05-11).
+Accepted (2026-05-13). All 9 slot schemas drafted; `deriveReadinessValidator` implemented; LLM extractor wired as `shadowExtractor` for all systems; readiness shadow comparison live behind `GATIOD_READINESS_SHADOW`. Remaining work (V2-904 calibration, V2-905 rollout, V2-906 regex deletion) is execution — no further architectural decisions required.
 
 ## Context
 

@@ -32,6 +32,7 @@ import type {
   ConsensusResolutionResult,
   GatiodSystemKey,
   PendingConsensus,
+  SemanticCandidateFinding,
   V2SessionState,
 } from "./contracts.js";
 import {
@@ -40,6 +41,10 @@ import {
 } from "./stateMachine.js";
 import { detectExplicitSystemSelection } from "./systemSelection.js";
 import { V2_SYSTEM_REGISTRY } from "./systemRegistry.js";
+import {
+  buildSelectedSpineScopeFromPendingConsensus,
+  detectSpineScopesFromText,
+} from "./spineScope.js";
 
 export interface ConsensusResolverInput {
   state: V2SessionState;
@@ -162,12 +167,16 @@ function makeResult(args: {
   message?: string;
   chips?: string[];
   stopPipeline?: boolean;
+  targetSystem?: GatiodSystemKey;
+  selectedScope?: ConsensusResolutionResult["selectedScope"];
   auditEvent?: ConsensusResolutionResult["auditEvent"];
 }): ConsensusResolutionResult {
   return {
     resolved: args.resolved,
     action: args.action,
     state: args.state,
+    targetSystem: args.targetSystem,
+    selectedScope: args.selectedScope,
     response:
       args.message !== undefined
         ? {
@@ -351,7 +360,17 @@ export function tryResolvePendingConsensus(
   // ── Priority 4 — accepted_system_first ────────────────────────────────────
   if (anyMatch(lower, SYSTEM_FIRST_PATTERNS)) {
     const detected = detectExplicitSystemSelection(replyText);
-    const targets = constrainToCandidates(detected, pending.candidateSystems);
+    // For spine multi-scope proposals, try resolving from spine-scope chip labels
+    // (e.g. "Assess Cervical spine first") even if detectExplicitSystemSelection
+    // returns an empty list.
+    let targets = constrainToCandidates(detected, pending.candidateSystems);
+    if (
+      targets.length === 0 &&
+      pending.candidateSystems.includes("spine") &&
+      detectSpineScopesFromText(replyText).length > 0
+    ) {
+      targets = ["spine"];
+    }
     if (targets.length === 0) {
       return makeResult({
         resolved: false,
@@ -367,15 +386,44 @@ export function tryResolvePendingConsensus(
     }
     const focusSystem = targets[0];
     let next = setPendingConsensus(state, null);
-    // Apply legacy overrides for any candidate that is currently `legacy`.
+    // Apply legacy_deferred overrides for legacy candidates.
     next = applyOverrideMap(
       next,
       buildLegacyOverridesForCandidates(pending.candidateSystems, "semantic_consensus", now),
     );
-    return makeResult({
+    // Apply detected overrides for non-target structured candidates (ADR-0003 §4).
+    // "detected" means "accepted but not extracted this turn" — buildNextClaimStep
+    // routes the doctor to them on subsequent turns.
+    for (const sys of pending.candidateSystems) {
+      if (sys === focusSystem) continue;
+      const cap = V2_SYSTEM_REGISTRY[sys];
+      if (!cap || cap.mode === "legacy") continue; // already handled as legacy_deferred above
+      const systemFindings = (pending.candidateFindings ?? []).filter(
+        (f: SemanticCandidateFinding) => f.system === sys,
+      );
+      next = setClaimComponentOverride(next, sys, {
+        status: "detected",
+        reason: `Accepted via semantic consensus; extraction deferred until the doctor's turn for ${sys}.`,
+        source: "semantic_consensus",
+        sourceText: pending.sourceText,
+        interpretationId: pending.interpretationId,
+        sourceHash: pending.sourceHash,
+        acceptedFindings: systemFindings.length > 0 ? systemFindings : undefined,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    // Resolve selectedScope for spine proposals (used by spine extractor for scoped extraction).
+    const selectedScope =
+      focusSystem === "spine"
+        ? buildSelectedSpineScopeFromPendingConsensus(pending, replyText)
+        : undefined;
+    return {
       resolved: true,
       action: "accepted_system_first",
       state: next,
+      targetSystem: focusSystem,
+      selectedScope,
       auditEvent: {
         eventType: "semantic_interpretation_accepted",
         payload: {
@@ -384,7 +432,7 @@ export function tryResolvePendingConsensus(
           candidateSystems: pending.candidateSystems,
         },
       },
-    });
+    };
   }
 
   // ── Priority 5 — edit_requested ───────────────────────────────────────────
@@ -417,6 +465,26 @@ export function tryResolvePendingConsensus(
       next,
       buildLegacyOverridesForCandidates(pending.candidateSystems, "semantic_consensus", now),
     );
+    // Write detected overrides for every structured candidate — fan-out model
+    // (ADR-0003 §4). buildNextClaimStep extracts one system per turn.
+    for (const sys of pending.candidateSystems) {
+      const cap = V2_SYSTEM_REGISTRY[sys];
+      if (!cap || cap.mode === "legacy") continue;
+      const systemFindings = (pending.candidateFindings ?? []).filter(
+        (f: SemanticCandidateFinding) => f.system === sys,
+      );
+      next = setClaimComponentOverride(next, sys, {
+        status: "detected",
+        reason: "Accepted via semantic consensus.",
+        source: "semantic_consensus",
+        sourceText: pending.sourceText,
+        interpretationId: pending.interpretationId,
+        sourceHash: pending.sourceHash,
+        acceptedFindings: systemFindings.length > 0 ? systemFindings : undefined,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
     return makeResult({
       resolved: true,
       action: "accepted_all",

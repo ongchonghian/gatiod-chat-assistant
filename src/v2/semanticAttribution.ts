@@ -140,12 +140,17 @@ export function buildSemanticGapObservation(
     failureKind,
   };
 
+  // Dedup key: consensusId:system:sourceSpan:proposedMapping (ADR-0003 §7).
+  // Stored in parsed.semanticGapKey so callers can skip re-emitting a gap
+  // observation that already exists in pendingObservations.
+  const semanticGapKey = `${consensusId}:${finding.system}:${finding.sourceSpan}:${finding.proposedMapping}`;
+
   return {
     id: randomUUID(),
     system: finding.system,
     type: "semantic_mapping_gap",
     sourceText: finding.sourceSpan,
-    parsed: {},
+    parsed: { semanticGapKey },
     missingFields: finding.missingFields,
     clarificationQuestion: `${lead} ${ask}`,
     candidateAnswers: undefined,

@@ -130,7 +130,7 @@ const NERVE_RE = /\b(median(?:\s+(?:above|below))?|anterior\s+interosseous|ulnar
 const DEFICIT_RE = /\b(sensory|motor|combined)\b/i;
 const LOSS_RE = /\b(total|partial)\b/i;
 const SIDE_RE = /\b(left|right)\b/i;
-const SIDE_BILATERAL_RE = /\b(bilateral|both\s+sides?)\b/i;
+const SIDE_BILATERAL_RE = /\b(bilateral|both\s+(?:sides?|arms?|hands?|limbs?|upper\s+limbs?))\b/i;
 const ROM_FROM_NERVE_YES = /\b(due\s+to\s+nerve|from\s+nerve|because\s+of\s+nerve|rom\s+from\s+nerve)\b/i;
 const ROM_FROM_NERVE_NO = /\b(independent|not\s+(?:from|related\s+to)\s+nerve|separate\s+rom)\b/i;
 const NO_OTHER_FINDINGS_RE = /\bno\s+other\s+findings?\b/i;
@@ -205,8 +205,23 @@ export function extractUpperLimb(
   const warnings: string[] = [];
 
   // ── Side ───────────────────────────────────────────────────────────────────
-  if (SIDE_BILATERAL_RE.test(text)) {
-    warnings.push("Bilateral upper limb: side must be specified per case; asking.");
+  // Also treat as bilateral when both "left" and "right" appear in the text.
+  const hasBothSides = /\bleft\b/i.test(text) && /\bright\b/i.test(text);
+  if (SIDE_BILATERAL_RE.test(text) || hasBothSides) {
+    warnings.push("Bilateral upper limb detected.");
+    // Ask whether the same findings apply to both arms or each needs separate assessment.
+    pendingToAdd.push({
+      ...makeObservation(
+        "upper_limb",
+        "bilateral_mode_choice",
+        raw,
+        { bilateral: true, system: "upper_limb" },
+        ["bilateral_mode"],
+        "Both upper limbs are affected. Do both arms have the same findings, or would you like to assess each arm separately?",
+        ["Same findings for both", "Assess each arm separately"],
+      ),
+      expectedAnswer: { kind: "enum", factKey: "bilateral_mode", choices: ["same", "separate"] },
+    });
   } else {
     const sideMatch = SIDE_RE.exec(text);
     if (sideMatch) {

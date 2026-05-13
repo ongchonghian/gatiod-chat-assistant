@@ -44,6 +44,7 @@ export type AuditEventType =
   | "semantic_legacy_fallback_requested"
   | "semantic_to_structured_extraction_started"
   | "semantic_to_structured_extraction_failed"
+  | "semantic_gap_abandoned_by_user"
   | "semantic_multi_region_spine_detected"
   | "v2_component_skipped_by_user"
   | "spine_multi_region_unsupported"
@@ -52,7 +53,14 @@ export type AuditEventType =
   | "v2_shadow_extraction_failed"
   // ADR-0004 — Extractor comparison UI events
   | "v2_extractor_comparison_shown"
-  | "v2_extractor_comparison_resolved";
+  | "v2_extractor_comparison_resolved"
+  // V2-805 — Semantic shadow grader calibration events
+  | "semantic_shadow_grade"
+  | "semantic_shadow_grade_failed"
+  // V2-902 — upper_limb readiness shadow comparison
+  | "readiness_shadow_agreement"
+  | "readiness_shadow_disagreement"
+  | "readiness_shadow_failed";
 
 export interface AuditEntry {
   sessionId: string;

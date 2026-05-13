@@ -18,8 +18,8 @@ V2 replaces the legacy Gemini-driven flow with a deterministic, structured-fact-
 |---|---|---|---|---|
 | **1 — Per-system migration** | Move all 9 GATIOD systems from `legacy` to `structured_live` via the four-component pipeline (extractor, readiness, argBuilder, renderer) | Sprints 1–6 | ADR-0001, ADR-0002 | Sprints 1–5 ✓ COMPLETE; Sprint 6 ⬤ FINAL STEP |
 | **2 — Evidence & verification backfill** | Stand up the calibration runner, write the missing conversation-level goldens, and remove every system from `PROVISIONAL_STRUCTURED_LIVE` | Sprint 7 | REQ-B1–B4, REQ-C1–C3, REQ-E2 | ◔ PARTIAL (runner missing) |
-| **3 — Semantic consensus** | LLM proposal-only front door for dense multi-system narratives (ADR-0003 slices A–H) | Sprint 8 | ADR-0003, D13, D15, D16 | ◔ PARTIAL (A–D landed in code, F–H open) |
-| **4 — Slot schema + LLM extractor** | Replace per-system regex extraction with a schema-validated LLM extractor; centralise `required_when` logic | Sprint 9 | ADR-0004 | ◔ PARTIAL (schemas drafted, pilot pending) |
+| **3 — Semantic consensus** | LLM proposal-only front door for dense multi-system narratives (ADR-0003 slices A–H) | Sprint 8 | ADR-0003, D13, D15, D16 | ✓ COMPLETE (all slices shipped; shadow grader wired; V2-809 post-rollout) |
+| **4 — Slot schema + LLM extractor** | Replace per-system regex extraction with a schema-validated LLM extractor; centralise `required_when` logic | Sprint 9 | ADR-0004 | ◔ PARTIAL (schema + shadow wired; calibration + rollout pending V2-701) |
 | **5 — Legacy disable + operational hardening** | Disconnect `slotEvaluator` from `structured_live` paths, ship the loop guard, dashboard, admin route | Sprint 10 | REQ-D1–D3, REQ-E1, REQ-F1–F2 | NOT STARTED |
 
 ```mermaid
@@ -53,14 +53,15 @@ Phases 2, 3, 4 are independent and can run in parallel once Phase 1 closes. Phas
 | Sprint | Title | Status | Gate / blocker |
 |---|---|---|---|
 | Sprint 1 | Upper Limb (+ V2 framework) | ✓ COMPLETE | ADR-0001 cleared (93.6% safe / 80.2% exact, n=1991) |
+| Sprint 1–2 backfill | Bilateral limb assessment (REQ-BIL-001) | ✓ COMPLETE | bilateral_mode_choice obs, bilateralQueue, same/separate orchestration |
 | Sprint 2 | Lower Limb | ✓ COMPLETE | ADR-0001 cleared (85.7% / 72.4%, n=1164 — borderline) |
 | Sprint 3 | Spine | ✓ COMPLETE | ADR-0001 cleared (100% / 96.8%, n=132) |
 | Sprint 4 | Respiratory + Renal | ✓ COMPLETE | ADR-0001 cleared (both 100%) |
 | Sprint 5 | Gastro + Hearing | ✓ COMPLETE | ADR-0001 cleared (both 100%) |
 | Sprint 6 | CNS + Visual | ⬤ FINAL STEP | All components wired and golden-tested; awaits V2-508 (ADR-0002 close) and V2-507 (mode flip + Excel shadow run) |
 | Sprint 7 | Evidence & Verification Backfill | NOT STARTED | Independent of Sprint 6; can start now |
-| Sprint 8 | Semantic Consensus | ◔ PARTIAL | Slices A–E coded; F–H, audit events, shadow grader open |
-| Sprint 9 | Slot Schema + LLM Extractor | ◔ PARTIAL | 9 slot schemas drafted; LLM extractor pilot + calibration open |
+| Sprint 8 | Semantic Consensus | ✓ COMPLETE | All slices A–H shipped; shadow grader wired (V2-805 ✓); V2-809 post-rollout follow-up |
+| Sprint 9 | Slot Schema + LLM Extractor | ◔ PARTIAL | V2-901/902/903 ✓; V2-904 calibration blocked on V2-701 (Sprint 7) |
 | Sprint 10 | Legacy Disable + Ops | NOT STARTED | Blocked on Sprints 6, 7 (and Sprint 8 if rollout overlaps) |
 
 All 4 [policy-fixes.md](policy-fixes.md) entries are applied in the extractors. All 7 live systems have calibration reports in `tests/v2/excelScenarios/`. The runtime `structured_shadow` phase was skipped for all 7 live systems — promotion was evidenced via Excel calibration only.
@@ -207,7 +208,7 @@ The pattern is the same per system: build the four capability components (extrac
 
 # Phase 3 — Semantic Consensus
 
-## Sprint 8 — Semantic Consensus (ADR-0003) — ◔ PARTIAL
+## Sprint 8 — Semantic Consensus (ADR-0003) — ✓ COMPLETE
 
 **Goal:** Ship the LLM proposal-only front door for dense multi-system narratives. Sits before the deterministic V2 pipeline; runs only when `shouldRunSemanticConsensus()` (deterministic preflight) returns true; never executes tools.
 
@@ -223,10 +224,10 @@ The pattern is the same per system: build the four capability components (extrac
 | **V2-802** | B — Unified claim plan | `deriveClaimAssessmentComponents()`, `buildNextClaimStep()` returning typed `ClaimStep`. Wrap `buildNextSystemHandoff()` first; replace once tests pass. (D13) | ✓ DONE |
 | **V2-803** | C — Semantic gate | `shouldRunSemanticConsensus()` deterministic preflight (no LLM). Wired into `chatServiceV2.ts` after pending-observation gate, before grounding/routing. Feature-flagged off initially. | ✓ DONE (file `semanticConsensusGate.ts` exists) |
 | **V2-804** | D — Deterministic consensus resolver | `tryResolvePendingConsensus()` covering all six branches (`accepted_all`, `accepted_system_first`, `edit_requested`, `rejected`, `legacy_requested`, `skipped_system`). Reuses `detectExplicitSystemSelection` constrained to `pendingConsensus.candidateSystems`. Mocked `pendingConsensus` fixtures in tests; no real LLM. | ✓ DONE (file `consensusResolver.ts` exists) |
-| **V2-805** | E — Semantic interpreter in shadow | `semanticSystemTaxonomy.ts` (registry-backed clinical signal taxonomy), `semanticInterpreterPrompt.ts`, `SemanticInterpretationSchema` (Zod), `validateSemanticInterpretation` (safety + source-span verification), `renderSemanticConsensus`. Schema-constrained structured output; fallback to instructed JSON only if model provider doesn't support it. Opt-in flag; audit-only vs router. | ◔ PARTIAL (files exist, shadow grading wiring open) |
-| **V2-806** | F — User-visible semantic consensus | Enable `shouldRunSemanticConsensus()` for qualifying triggers (multi-system narratives, legacy/deferred systems, multi-region spine, ambiguous routing, dense semicolon-separated findings). On trigger: validate, persist `pendingConsensus`, render proposal, stop pipeline. Extraction runs against `pendingConsensus.sourceText`, never against the acceptance reply. (D15: `SEMANTIC_CONSENSUS_ENABLED=true` becomes default-on at the chat layer.) | NOT STARTED |
-| **V2-807** | G — Extraction context and selected scope | Spine extractor honours `extractionContext.selectedScope.sourceSpans` for multi-region narrowing. Other extractors accept (but optionally ignore) `extractionContext`. Semantic findings never become `extractedFacts` directly. | NOT STARTED |
-| **V2-808** | H — Semantic-attributed pending observations | Extend `PendingObservation` with optional `semanticAttribution` (`interpretationId`, `sourceSpan`, `proposedMapping`, `findingType`, `confidence`, `failureKind`). New type `"semantic_mapping_gap"`. Emit `semantic_to_structured_extraction_failed` audit event when consensus accepted but extractor cannot produce calc-grade facts. | NOT STARTED |
+| **V2-805** | E — Semantic interpreter in shadow | `semanticSystemTaxonomy.ts` (registry-backed clinical signal taxonomy), `semanticInterpreterPrompt.ts`, `SemanticInterpretationSchema` (Zod), `validateSemanticInterpretation` (safety + source-span verification), `renderSemanticConsensus`. Schema-constrained structured output; fallback to instructed JSON only if model provider doesn't support it. Opt-in flag; audit-only vs router. | ✓ DONE (`gradeSemanticCase` wired in `chatServiceV2` behind `GATIOD_RUN_SEMANTIC_SHADOW`; `semanticShadowGoldens.ts` seeded from PRD GS-001/GS-002 scenarios; `freshInterpreterResult` on `ConsensusOrchestratorRespondSignal`) |
+| **V2-806** | F — User-visible semantic consensus | Fix the four code contradictions listed in ADR-0003 §Consequences before enabling the flag. Then: (1) Create `src/v2/spineScope.ts` with shared spine-scope utilities. (2) Update `renderSemanticConsensus()` to classify proposals via `SemanticProposalKind` and emit proposal-kind-specific messages and chips (single_system / single_legacy / multi_scope_spine / mixed_structured_legacy / multi_system). Multi-region spine proposals must never include a generic "Proceed" chip. (3) Update `consensusResolver.ts` `accepted_system_first` branch: apply `detected` overrides for non-target accepted structured systems and `legacy_deferred` for accepted legacy systems; return `targetSystem` and `selectedScope` in `ConsensusResolutionResult`. (4) Add `ConsensusOrchestratorSubstituteSignal.targetSystem`. (5) Update `chatServiceV2.ts` to use `forcedExtractionTarget` from substitute signal instead of router output for semantic turns. (6) Set `SEMANTIC_CONSENSUS_ENABLED=true` as default. (7) Edit-cycle cap: `MAX_SEMANTIC_EDIT_ATTEMPTS = 2`; full reset (Option C) on re-interpretation; `PendingConsensus` gains `revision`, `editAttemptCount`, `parentInterpretationId`, `lastEditInstruction`. (8) When writing `detected` overrides on acceptance, populate `sourceText`, `interpretationId`, `sourceHash`, `acceptedFindings` filtered to the system. (9) In `chatServiceV2`, when routing to a `detected` + `source:semantic_consensus` system, use `override.sourceText` as the effective extraction source only when `looksLikeWorkflowContinuation()` returns true; clinical content wins. | ✓ DONE |
+| **V2-807** | G — Extraction context and selected scope | Depends on V2-806 (spineScope.ts). (1) Upgrade `selectedScope.sourceSpans` from `string[]` to `Array<{text,startOffset,endOffset}>` with `coerceSourceSpan()` hydration helper. (2) Implement `buildScopedNormalizedUtterance(utterance, context, system)` in `spineScope.ts`. (3) Update `extractSpine()` to call `buildScopedNormalizedUtterance` when `extractionContext.selectedScope.system === "spine"`; multi-region hard guard still runs against the scoped text. (4) Other extractors accept (but ignore) the 4th `extractionContext` param. (5) Semantic findings (`acceptedFindings`) must not write `extractedFacts` directly in any extractor. (6) For deferred-extraction turns: `chatServiceV2` calls `buildExtractionContextFromSemanticOverride(override, system, state)` to reconstruct the context from `ClaimComponentOverride`; `buildNextClaimStep` is the routing mechanism. | ✓ DONE |
+| **V2-808** | H — Semantic-attributed pending observations | (1) Extend `PendingObservation` with `semanticAttribution?: PendingObservationSemanticAttribution`. (2) Add `PendingObservationSemanticAttribution` type: `{interpretationId, sourceSpan, proposedMapping, findingType, confidence, failureKind: SemanticMappingFailureKind}`. (3) Add `SemanticMappingFailureKind` enum: `missing_calculation_field | unmapped_canonical_term | ambiguous_mapping | unsupported_in_structured_v2 | extractor_no_match`. (4) Two-tier gap detection: extractors may explicitly emit `type:"semantic_mapping_gap"` obs; chatServiceV2 synthesizes one as fallback when `extractionContext` present and extraction produced neither facts nor useful obs. Normal missing-field observations must NOT carry `semanticAttribution`. (5) Emit `semantic_to_structured_extraction_failed` audit event immediately on gap creation (not at abandonment). Emit separate `semantic_gap_abandoned_by_user` event on later abandonment. (6) Dedup key: `consensusId:system:sourceSpan:proposedMapping`; store in `obs.parsed.semanticGapKey`. | ✓ DONE |
 | **V2-809** | Phase X — Excel semantic reporting | Add semantic outcome classes (`semantic_proposal_correct | partial | unsafe | failed`). Track recall, fallback, semantic correction rate against curated golden set and Excel-derived scenarios. `GATIOD_RUN_SEMANTIC_SHADOW=true`. | NOT STARTED (post-rollout) |
 
 **Exit criterion:** Slices A–H all in production. Default `SEMANTIC_CONSENSUS_ENABLED=true`. Semantic shadow grader running in CI with stable outcome-class rates.
@@ -235,7 +236,7 @@ The pattern is the same per system: build the four capability components (extrac
 
 # Phase 4 — Slot Schema + LLM Extractor
 
-## Sprint 9 — Slot Schema + LLM Slot Extractor (ADR-0004) — ◔ PARTIAL
+## Sprint 9 — Slot Schema + LLM Slot Extractor (ADR-0004) — ◔ PARTIAL (V2-901/902/903 ✓; V2-904–906 pending calibration)
 
 **Goal:** Replace per-system regex extractors with a schema-validated LLM extractor. Slot schema becomes a required `V2SystemCapability` component, validated at startup. `required_when` logic moves from imperative per-system code to declarative `SlotCondition<TKey>` typed by fact keys.
 
@@ -248,8 +249,8 @@ The pattern is the same per system: build the four capability components (extrac
 | Ticket | Output | Status |
 |---|---|---|
 | **V2-901** | `SlotDefinition` type + `SlotCondition<TKey>` (compile-time parameterised by fact keys, no OR/NOT in first pass). Pilot schema at `src/v2/slotSchemas/upperLimb.ts`. Add `slotSchema?` field to `V2SystemCapability`. `validateSystemRegistry()` enforces presence for `structured_live` systems. Rename `SlotSignals` → `PresenceSignals`. | ✓ DONE (all 9 schemas drafted; `types.ts`, `deriveReadinessValidator.ts` exist) |
-| **V2-902** | `deriveReadinessValidator<TKey>(defs, facts)` shared function. Pilot wire-up for upper_limb: replace imperative readiness with derived readiness; keep legacy validator behind a feature flag for shadow comparison. | ◔ PARTIAL (file exists; wire-up pending) |
-| **V2-903** | LLM slot extractor (Approach A — raw text → slots). Input: raw utterance + `SlotDefinition[]`. Output: same `StructuredExtractionResult` shape. No tool/function-calling access. Run in `structured_shadow` for upper_limb first, gated on `GATIOD_EXTRACTOR_SHADOW=true`. | ◔ PARTIAL (`llmSlotExtractor.ts`, `llmSlotExtractorPrompt.ts`, `llmSlotExtractorSchemas.ts`, `extractorComparison.ts` exist) |
+| **V2-902** | `deriveReadinessValidator<TKey>(defs, facts)` shared function. Pilot wire-up for upper_limb: replace imperative readiness with derived readiness; keep legacy validator behind a feature flag for shadow comparison. | ✓ DONE (shadow comparison wired in `policyEngine.ts` behind `GATIOD_READINESS_SHADOW`; `ShadowAuditEvent` exported; 6 new tests in `tests/v2/upperLimb/readinessShadow.test.ts`; promotion to primary gated on V2-904 calibration) |
+| **V2-903** | LLM slot extractor (Approach A — raw text → slots). Input: raw utterance + `SlotDefinition[]`. Output: same `StructuredExtractionResult` shape. No tool/function-calling access. Run in `structured_shadow` for upper_limb first, gated on `GATIOD_EXTRACTOR_SHADOW=true`. | ✓ DONE (all 9 system `shadowExtractor` entries wired in registry; `chatServiceV2` runs shadow concurrently and feeds `extractorComparison.ts`; comparison UI gated on `LLM_EXTRACTOR_COMPARISON_ENABLED`) |
 | **V2-904** | Calibration run for upper_limb LLM extractor vs regex baseline on the Excel workbook. Must match or exceed regex safe-outcome and exact-calc rates. Latency p95 captured and reported. | NOT STARTED |
 | **V2-905** | Roll out LLM extractor to remaining systems in order: respiratory, renal (simplest condition sets) → gastro, hearing → lower_limb, spine → cns, visual (most complex). Each system runs in shadow first, then promotes via calibration. | NOT STARTED |
 | **V2-906** | Delete regex extractors once LLM extractor is `structured_live` for all systems and one release cycle has passed without rollback. Keep slot schema as canonical. | NOT STARTED |
@@ -333,3 +334,4 @@ Under [ADR-0004](../adr/0004-llm-slot-extractor-and-slot-schema.md), once the LL
 | REQ-E2 — Failure audit events end-to-end | 7 | V2-711 |
 | REQ-F1 — Audit dashboard | 10 | V2-601 |
 | REQ-F2 — CI watchlist | 10 | V2-1002 |
+| REQ-BIL-001 — Bilateral limb assessment | 1–2 (backfill) | — |

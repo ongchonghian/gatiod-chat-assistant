@@ -1,5 +1,6 @@
 import type { AssessmentRenderResult, V2SystemState } from "../contracts.js";
 import type { UpperLimbResult } from "../../engine/upperLimbData.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ export function renderUpperLimbResult(
 
   const inputFacts: string[] = [];
   for (const [key, fact] of Object.entries(systemState.extractedFacts)) {
-    if (fact) inputFacts.push(`${key}: ${JSON.stringify(fact.value)}`);
+    if (fact) inputFacts.push(`${factKeyLabel("upper_limb", key)}: ${factValueDisplay("upper_limb", key, fact.value)}`);
   }
 
   return {

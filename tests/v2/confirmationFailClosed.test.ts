@@ -175,6 +175,101 @@ describe("buildStructuredConfirmation — default branch fail-closed", () => {
   });
 });
 
+// ── Issue 05: default branch uses clinical display registry ───────────────────
+
+describe("buildStructuredConfirmation — default branch clinical labels (Issue 05)", () => {
+  it("respiratory resp_diagnosis renders clinical label, not raw key", () => {
+    const facts: V2SystemFacts = {
+      resp_diagnosis: fact("occupational_asthma"),
+    };
+    const result = buildStructuredConfirmation("respiratory", facts);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.message).toContain("Diagnosis type");
+    expect(result.message).not.toContain("resp_diagnosis");
+  });
+
+  it("respiratory resp_diagnosis value is clinical label, not raw enum", () => {
+    const facts: V2SystemFacts = {
+      resp_diagnosis: fact("occupational_asthma"),
+    };
+    const result = buildStructuredConfirmation("respiratory", facts);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.message).toContain("Occupational Asthma");
+    expect(result.message).not.toContain("occupational_asthma");
+  });
+
+  it("renal renal_sex renders 'Patient sex', not raw key", () => {
+    const facts: V2SystemFacts = {
+      renal_sex: fact("female"),
+    };
+    const result = buildStructuredConfirmation("renal", facts);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.message).toContain("Patient sex");
+    expect(result.message).not.toContain("renal_sex");
+  });
+
+  it("renal renal_sex value is 'Female', not raw 'female'", () => {
+    const facts: V2SystemFacts = {
+      renal_sex: fact("female"),
+    };
+    const result = buildStructuredConfirmation("renal", facts);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.message).toContain("Female");
+    expect(result.message).not.toMatch(/:\s*female\b/);
+  });
+
+  it("gastro_digestive gastro_subsystem renders 'Subsystem', not raw key", () => {
+    const facts: V2SystemFacts = {
+      gastro_subsystem: fact("upperGI"),
+    };
+    const result = buildStructuredConfirmation("gastro_digestive", facts);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.message).toContain("Subsystem");
+    expect(result.message).not.toContain("gastro_subsystem");
+  });
+
+  it("gastro_digestive gastro_subsystem value is clinical label not raw enum", () => {
+    const facts: V2SystemFacts = {
+      gastro_subsystem: fact("upperGI"),
+    };
+    const result = buildStructuredConfirmation("gastro_digestive", facts);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.message).toContain("Upper GI");
+    expect(result.message).not.toContain("upperGI");
+  });
+
+  it("lower_limb rom_joints renders 'Range of motion' with clinical format, not JSON", () => {
+    const facts: V2SystemFacts = {
+      rom_joints: fact({ hip: { isAnkylosed: false, measurements: { flexion: 90 } } }),
+    };
+    const result = buildStructuredConfirmation("lower_limb", facts);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.message).toContain("Range of motion");
+    expect(result.message).toContain("flexion 90°");
+    expect(result.message).not.toContain("{");
+    expect(result.message).not.toContain("rom_joints");
+  });
+
+  it("upper_limb side bilateral_mode=same shows 'Both arms' context", () => {
+    const facts: V2SystemFacts = {
+      side: fact("left"),
+      bilateral_mode: fact("same"),
+    };
+    const result = buildStructuredConfirmation("upper_limb", facts);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // bilateral_mode "same" should show contextual message for side
+    expect(result.message).toMatch(/both/i);
+  });
+});
+
 describe("buildLegacyConfirmation — empty-state fail-closed", () => {
   it("ok: false when no values are present (no soft 'findings collected' card)", () => {
     const result = buildLegacyConfirmation("respiratory", {}, {});

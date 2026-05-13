@@ -47,6 +47,10 @@ export function deriveLowerLimbSignals(facts: V2SystemFacts): Partial<SlotSignal
     signals.side = true;
   }
 
+  // bilateral_mode is a flow-control fact — no SlotSignal equivalent, but its
+  // presence means amputation_present may be inferred from context once the mode
+  // is resolved. No signal mapping needed here; the bilateral queue handles it.
+
   const romValue = facts["rom_joints"]?.value;
   if (isNonEmpty(romValue)) {
     signals.rom_present = true;
@@ -162,6 +166,19 @@ export function validateLowerLimbReadinessFromSchema(
   })();
 
   if (!hasRom && !hasNerve && !hasLegAmputation && !hasToeAmputation && !hasShortening && !hasDbe) {
+    // Doctor mentioned amputation (e.g. "loss of leg") but no level fact was captured.
+    // Skip the generic "what type?" question and ask for the level specifically.
+    const hasAmpSignal = Boolean(systemState.slotSignals?.amputation_present);
+    if (hasAmpSignal) {
+      return {
+        ready: false,
+        reason: "missing_amp_level",
+        missingFields: ["leg_amputation"],
+        clarificationQuestion: "At what level was the amputation?",
+        candidateAnswers: ["Above knee", "Below knee", "Syme (ankle disarticulation)", "Hindquarter / hip disarticulation"],
+        expectedAnswer: { kind: "enum", factKey: "leg_amputation", choices: ["above knee", "below knee", "syme", "hindquarter"] },
+      };
+    }
     return {
       ready: false,
       reason: "no_assessable_finding",

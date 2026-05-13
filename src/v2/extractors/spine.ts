@@ -12,6 +12,7 @@ import type {
   V2SystemFacts,
   V2SystemState,
 } from "../contracts.js";
+import { buildScopedNormalizedUtterance } from "../spineScope.js";
 import {
   getSeveritiesForCategory,
   type DiagnosisCategory,
@@ -276,17 +277,17 @@ export function extractSpine(
   // input to those spans only — the hard multi-region guard still runs
   // (it can't know the doctor already picked a region), so the narrowed
   // text MUST contain only one region.
-  const useSelectedScope =
+  // `buildScopedNormalizedUtterance` handles both legacy `string[]` spans
+  // (via `coerceSourceSpan`) and the new `{text, startOffset, endOffset}[]` shape.
+  const scopedUtterance =
     extractionContext?.selectedScope?.system === "spine" &&
     Array.isArray(extractionContext.selectedScope.sourceSpans) &&
-    extractionContext.selectedScope.sourceSpans.length > 0;
+    extractionContext.selectedScope.sourceSpans.length > 0
+      ? buildScopedNormalizedUtterance(utterance, extractionContext)
+      : utterance;
 
-  const text = useSelectedScope
-    ? extractionContext!.selectedScope!.sourceSpans.join(" ; ")
-    : utterance.normalizedText;
-  const raw = useSelectedScope
-    ? extractionContext!.selectedScope!.sourceSpans.join(" ; ")
-    : utterance.raw;
+  const text = scopedUtterance.normalizedText || utterance.normalizedText;
+  const raw = scopedUtterance.raw || utterance.raw;
   const existingFacts = currentSystemState.extractedFacts;
 
   const factsPatch: V2SystemFacts = {};

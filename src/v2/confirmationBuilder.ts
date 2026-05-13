@@ -1,4 +1,5 @@
 import type { GatiodSystemKey, SlotSignals, V2SystemFacts } from "./contracts.js";
+import { SPINE_BLADDER_BOWEL_LABELS, formatSpineEntry, factKeyLabel, factValueDisplay } from "./clinicalLabels.js";
 import {
   HEARING_FK_PATH,
   HEARING_FK_LEFT_EAR_AHL,
@@ -11,12 +12,6 @@ import {
   SP_FK_ENTRIES,
   type SpineCategoryEntryFact,
 } from "./extractors/spine.js";
-import {
-  diagnosisCategories,
-  getSeveritiesForCategory,
-  type DiagnosisCategory,
-  type SpondylolysisPathway,
-} from "../engine/spineAssessmentData.js";
 
 /**
  * Typed confirmation-build outcome (slice 4 / delta-audit follow-up).
@@ -138,24 +133,17 @@ function buildStructuredBody(system: GatiodSystemKey, facts: V2SystemFacts): Con
           missingFields: ["any"],
         };
       }
+      const bilateralMode = facts["bilateral_mode"]?.value as string | undefined;
       return {
         ok: true,
         message: entries.map(([k, f]) => {
           const v = f!.value;
-          const display =
-            v === null || v === undefined
-              ? "(none)"
-              : typeof v === "object"
-                ? Object.entries(v as Record<string, unknown>)
-                    .filter(([, ev]) => ev != null && ev !== "none")
-                    .map(([ek, ev]) =>
-                      typeof ev === "object"
-                        ? `${ek}: ${JSON.stringify(ev)}`
-                        : `${ek}: ${ev}`
-                    )
-                    .join(", ") || JSON.stringify(v)
-                : titleCase(String(v));
-          return line(formatKey(k), display);
+          // When bilateral same-mode, "side" was injected as "left" for the first
+          // assessment pass. Show the bilateral context instead of the raw side value.
+          if (k === "side" && bilateralMode === "same") {
+            return line(factKeyLabel(system, k), "Both sides (same findings)");
+          }
+          return line(factKeyLabel(system, k), factValueDisplay(system, k, v));
         }).join("\n"),
       };
     }
@@ -167,48 +155,6 @@ const SPINE_REGION_LABELS: Record<string, string> = {
   thoraco_lumbar: "Thoraco-Lumbar",
   lumbo_sacral: "Lumbo-Sacral",
 };
-
-const SPINE_BLADDER_BOWEL_LABELS: Record<string, string> = {
-  none: "None",
-  incomplete_single: "Incomplete (bladder or bowel only)",
-  incomplete_both: "Incomplete (bladder and bowel)",
-  complete_single: "Complete (bladder or bowel only)",
-  complete_both: "Complete (bladder and bowel)",
-};
-
-function spineCategoryLabel(key: string): string {
-  return diagnosisCategories.find((c) => c.key === key)?.label ?? key;
-}
-
-function spineSeverityLabel(category: string, severityKey: string, pathway?: string): string {
-  if (!severityKey) return "(severity not yet selected)";
-  const validCategories = new Set([
-    "fractures_dislocations", "spinal_cord_injury", "intervertebral_disc",
-    "spondylolysis_spondylolisthesis", "chronic_pain_normal_mri",
-  ]);
-  if (!validCategories.has(category)) return severityKey;
-  const opts = getSeveritiesForCategory(
-    category as DiagnosisCategory,
-    { spondylolysisPathway: (pathway ?? "acute_traumatic") as SpondylolysisPathway }
-  );
-  return opts.find((o) => o.key === severityKey)?.label ?? severityKey;
-}
-
-function formatSpineEntry(entry: SpineCategoryEntryFact): string {
-  const cat = spineCategoryLabel(entry.diagnosisCategory);
-  const sev = spineSeverityLabel(entry.diagnosisCategory, entry.severityKey, entry.spondylolysisPathway);
-  const modifiers: string[] = [];
-  if (entry.monoparesisHalving) modifiers.push("monoparesis halving");
-  if (entry.bladderBowelSeverity && entry.bladderBowelSeverity !== "none") {
-    modifiers.push(`bladder/bowel: ${SPINE_BLADDER_BOWEL_LABELS[entry.bladderBowelSeverity] ?? entry.bladderBowelSeverity}`);
-  }
-  if (entry.discCordInvolvement) modifiers.push("disc cord involvement");
-  if (entry.spondylolysisPathway === "pre_existing_superimposed") {
-    modifiers.push("pre-existing/superimposed pathway");
-  }
-  const modifierStr = modifiers.length > 0 ? ` (${modifiers.join("; ")})` : "";
-  return `${cat}: ${sev}${modifierStr}`;
-}
 
 /**
  * Spine fail-closed: require region AND ≥1 entry with a non-empty severityKey.

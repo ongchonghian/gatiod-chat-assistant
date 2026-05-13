@@ -2,6 +2,7 @@ import type { AssessmentRenderResult, V2SystemState } from "../contracts.js";
 import type { RespiratoryResult, RespiratoryMetricKey } from "../../engine/respiratoryData.js";
 import { DIAGNOSIS_LABELS, DYSPNOEA_LABELS, ASTHMA_MEDICATION_LABELS } from "../../engine/respiratoryData.js";
 import { RESP_FK_DIAGNOSIS, RESP_FK_DYSPNOEA, RESP_FK_ASTHMA_MED } from "../extractors/respiratory.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 
 function pct(n: number): string { return `${n}%`; }
 
@@ -105,7 +106,7 @@ export function renderRespiratoryResult(
 
   const inputFacts: string[] = [];
   for (const [k, fact] of Object.entries(ef)) {
-    if (fact) inputFacts.push(`${k}: ${JSON.stringify(fact.value)}`);
+    if (fact) inputFacts.push(`${factKeyLabel("respiratory", k)}: ${factValueDisplay("respiratory", k, fact.value)}`);
   }
 
   return {

@@ -2,6 +2,7 @@ import type { AssessmentRenderResult, V2SystemState } from "../contracts.js";
 import type { SpineAssessmentResult, DiagnosisCategory, SpondylolysisPathway } from "../../engine/spineAssessmentData.js";
 import { diagnosisCategories, getSeveritiesForCategory } from "../../engine/spineAssessmentData.js";
 import { SP_FK_REGION, SP_FK_ENTRIES, type SpineCategoryEntryFact } from "../extractors/spine.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 
 function pct(n: number): string { return `${n}%`; }
 
@@ -114,7 +115,7 @@ export function renderSpineResult(
 
   const inputFacts: string[] = [];
   for (const [key, fact] of Object.entries(systemState.extractedFacts)) {
-    if (fact) inputFacts.push(`${key}: ${JSON.stringify(fact.value)}`);
+    if (fact) inputFacts.push(`${factKeyLabel("spine", key)}: ${factValueDisplay("spine", key, fact.value)}`);
   }
 
   return {

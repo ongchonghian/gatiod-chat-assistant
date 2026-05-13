@@ -176,10 +176,13 @@ describe("Slice F — initiate consensus (no pendingConsensus)", () => {
       expect(result.message).toContain("2 GATIOD assessment areas");
       expect(result.message).toContain("Lower Limb");
       expect(result.message).toContain("Central Nervous System");
+      // Fixture: lower_limb (structured) + cns (legacy_deferred)
+      // → mixed_structured_legacy chips per ADR-0003 §6.
       expect(result.chips).toEqual([
         "Proceed",
+        "Assess Lower Limb first",
+        "Use legacy for Central Nervous System",
         "Edit interpretation",
-        "Choose system first",
         "Reject",
       ]);
       expect(result.state.pendingConsensus).not.toBeNull();

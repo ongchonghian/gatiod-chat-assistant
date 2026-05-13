@@ -6,15 +6,20 @@ import type { ChatV2Response, GatiodSystemKey, ToolPlanCall, V2SessionState } fr
 import { normalizeClinicalUtterance } from "../v2/normalizer.js";
 import { retrieveGrounding } from "../v2/hybridRetriever.js";
 import { routeUtterance } from "../v2/router.js";
-import { makePolicyDecision } from "../v2/policyEngine.js";
+import { makePolicyDecision, type ShadowAuditEvent } from "../v2/policyEngine.js";
+import { gradeSemanticCase } from "../v2/semanticShadowGrader.js";
+import { findGoldenByInterpretationId, findGoldenBySourceHash } from "../v2/semanticShadowGoldens.js";
 import {
   applyInstanceFactsPatch,
   applyStructuredExtraction,
   applyToolResults,
+  clearBilateralQueue,
   coerceV2State,
   defaultV2SessionState,
   getInstanceById,
   getInstances,
+  pivotBilateralToNextSide,
+  setBilateralQueue,
   setPendingClarification,
   setPendingConfirmation,
   setPendingExtractorComparison,
@@ -117,6 +122,7 @@ import {
 import type { SemanticModelClient } from "../v2/semanticInterpreter.js";
 import { renderV2Failure } from "../v2/failureRenderer.js";
 import { applyInstanceToolResult, setConfirmationConfirmed, setConfirmationPending, setInstanceConfirmationPending } from "../v2/stateMachine.js";
+import { combineMultipleValuesChart } from "../engine/cvcCalculator.js";
 import { buildTraceForSystem } from "../v2/systemTraceAdapters.js";
 
 const SYSTEM_DISPLAY_NAMES: Record<GatiodSystemKey, string> = {
@@ -262,6 +268,10 @@ function isInterpreterKillSwitched(): boolean {
   const flag = process.env.SEMANTIC_INTERPRETER_ENABLED;
   return flag === "false" || flag === "0";
 }
+function isSemanticShadowEnabled(): boolean {
+  const flag = process.env.GATIOD_RUN_SEMANTIC_SHADOW;
+  return flag === "true" || flag === "1";
+}
 
 /** Lazily-constructed default model client. Built only when the consensus
  *  orchestrator is actually invoked AND the feature flag is on, so the
@@ -351,6 +361,36 @@ function formatLookupExecutionMessage(executed: ToolPlanCall[], fallback: string
   }
 
   return fallback;
+}
+
+/**
+ * Returns true when the utterance looks like a workflow navigation reply
+ * rather than new clinical content (ADR-0003 §5).
+ * Used to decide whether to re-extract a `detected` system against its
+ * accepted `ClaimComponentOverride.sourceText` (the original narrative)
+ * rather than the doctor's current message.
+ */
+export function looksLikeWorkflowContinuation(text: string): boolean {
+  const lower = text.trim().toLowerCase();
+  // Short affirmative / navigation replies that carry no clinical signal.
+  return (
+    /^(continue|next|proceed|yes|ok|okay|go\s+ahead|move\s+on|carry\s+on)(\s+with\b.*)?$/i.test(lower) ||
+    /^assess\s+\w[\w\s]*first$/i.test(lower)
+  );
+}
+
+/**
+ * Returns true when the utterance contains clinical signals that should be
+ * treated as new content (ADR-0003 §5). When true, deferred extraction
+ * should NOT fall back to `ClaimComponentOverride.sourceText`.
+ */
+export function looksLikeClinicalContent(text: string): boolean {
+  // Clinical terms, measurement patterns, or unresolved tokens suggest new input.
+  return (
+    /\b\d+(\.\d+)?\s*(degree|°|cm|mm|%|db|hz|khz|ml|bpm|mmhg)\b/i.test(text) ||
+    /\b(left|right|bilateral|cervical|lumbar|thoracic|sacral|nerve|lesion|fracture|ROM|MRI|CT)\b/i.test(text) ||
+    text.length > 120
+  );
 }
 
 function loadV2State(sessionId: string): { raw: Record<string, unknown>; state: V2SessionState } {
@@ -621,6 +661,106 @@ export async function processChatV2(
       const pendingCap = V2_SYSTEM_REGISTRY[pendingSystem];
       let resolvedState = resolution.state;
 
+      // ── Bilateral mode setup ───────────────────────────────────────────────
+      // When a bilateral_mode_choice observation was just resolved, initialise
+      // the bilateral queue and inject the active side into extractedFacts so
+      // the readiness validator can proceed without asking "which side?".
+      {
+        const resolvedObsType = loadedState.systems[pendingSystem]?.pendingObservations[0]?.type;
+        if (resolvedObsType === "bilateral_mode_choice" && !resolvedState.bilateralQueue) {
+          const bilateralModeValue = resolvedState.systems[pendingSystem]?.extractedFacts?.["bilateral_mode"]?.value as "same" | "separate" | undefined;
+          if (bilateralModeValue) {
+            const now = new Date().toISOString();
+            const firstSide = "left";
+            const secondSide = "right";
+
+            // Create left instance (always the first side).
+            const existingIds = getInstances(resolvedState, pendingSystem).map((i) => i.instanceId);
+            const leftInstanceId = `${pendingSystem}::${firstSide}`;
+            if (!existingIds.includes(leftInstanceId)) {
+              const validation = canCreateInstance(pendingSystem, [firstSide], existingIds);
+              if (validation.allowed) {
+                resolvedState = upsertInstance(resolvedState, {
+                  instanceId: leftInstanceId,
+                  system: pendingSystem,
+                  slotPath: [firstSide],
+                  facts: {},
+                  pendingObservations: [],
+                  confirmation: { status: "not_confirmed" },
+                  status: "collecting",
+                  piPercent: null,
+                  trace: null,
+                  updatedAt: now,
+                });
+              }
+            }
+
+            // For "same" mode also create the right instance upfront.
+            if (bilateralModeValue === "same") {
+              const updatedIds = getInstances(resolvedState, pendingSystem).map((i) => i.instanceId);
+              const rightInstanceId = `${pendingSystem}::${secondSide}`;
+              if (!updatedIds.includes(rightInstanceId)) {
+                const validation = canCreateInstance(pendingSystem, [secondSide], updatedIds);
+                if (validation.allowed) {
+                  resolvedState = upsertInstance(resolvedState, {
+                    instanceId: rightInstanceId,
+                    system: pendingSystem,
+                    slotPath: [secondSide],
+                    facts: {},
+                    pendingObservations: [],
+                    confirmation: { status: "not_confirmed" },
+                    status: "collecting",
+                    piPercent: null,
+                    trace: null,
+                    updatedAt: now,
+                  });
+                }
+              }
+            }
+
+            // Inject side = "left" so readiness checks don't re-ask "which side?".
+            resolvedState = {
+              ...resolvedState,
+              systems: {
+                ...resolvedState.systems,
+                [pendingSystem]: {
+                  ...resolvedState.systems[pendingSystem],
+                  extractedFacts: {
+                    ...resolvedState.systems[pendingSystem].extractedFacts,
+                    side: {
+                      value: firstSide,
+                      sourceText: "bilateral_mode:same",
+                      confidence: 1.0,
+                      extractionMethod: "user_selected" as const,
+                      createdAt: now,
+                      updatedAt: now,
+                    },
+                  },
+                },
+              },
+            };
+
+            resolvedState = setBilateralQueue(resolvedState, {
+              system: pendingSystem,
+              mode: bilateralModeValue,
+              pendingSide: firstSide,
+              completedSide: null,
+              completedPiPercent: null,
+            });
+
+            logAuditEvent({
+              sessionId,
+              userId: opts?.userId,
+              eventType: "v2_extraction_warning",
+              eventData: {
+                system: pendingSystem,
+                warnings: [`bilateral_mode_choice resolved: mode=${bilateralModeValue}`],
+              },
+            });
+          }
+        }
+      }
+
       // Compute active instance once; used for both readiness check and confirmation snapshot.
       const activeInstanceForObs = pendingCap.instanceReadinessValidator
         ? getInstances(resolvedState, pendingSystem)
@@ -718,6 +858,16 @@ export async function processChatV2(
         }
         confirmMsg = legacyResult.message;
       }
+      // Prepend bilateral context note so the doctor knows which side they're confirming.
+      if (resolvedState.bilateralQueue?.system === pendingSystem) {
+        const bq = resolvedState.bilateralQueue;
+        const sideNoun = pendingSystem === "lower_limb" ? "limb" : "arm";
+        const sideLabel = bq.pendingSide === "left" ? "left" : "right";
+        const bilateralNote = bq.mode === "same"
+          ? `**Bilateral ${sideNoun}s (same findings) — assessing ${sideLabel} side first:**`
+          : `**Bilateral ${sideNoun}s (separate findings) — ${sideLabel} side:**`;
+        confirmMsg = `${bilateralNote}\n\n${confirmMsg}`;
+      }
       resolvedState = setConfirmationPending(resolvedState, pendingSystem, confirmMsg);
       if (activeInstanceForObs) {
         resolvedState = setInstanceConfirmationPending(resolvedState, activeInstanceForObs.instanceId, confirmMsg);
@@ -776,6 +926,52 @@ export async function processChatV2(
     });
   }
 
+  // V2-805: semantic shadow grader — fires only when GATIOD_RUN_SEMANTIC_SHADOW
+  // is on and the orchestrator produced a fresh interpretation this turn.
+  // Shadow errors are swallowed and must never affect the user-visible response.
+  if (
+    isSemanticShadowEnabled() &&
+    orchestratorResult.kind === "respond" &&
+    orchestratorResult.freshInterpreterResult?.ok
+  ) {
+    const freshResult = orchestratorResult.freshInterpreterResult;
+    try {
+      const interp = freshResult.interpretation;
+      const golden =
+        findGoldenByInterpretationId(interp.id) ??
+        findGoldenBySourceHash(interp.sourceHash);
+      const effectiveGolden = golden ?? {
+        id: interp.id,
+        description: "",
+        input: interp.sourceText,
+        expected: { candidateSystems: [] as import("../v2/contracts.js").GatiodSystemKey[] },
+      };
+      const grade = gradeSemanticCase(effectiveGolden, freshResult);
+      logAuditEvent({
+        sessionId,
+        userId: opts?.userId,
+        eventType: "semantic_shadow_grade",
+        eventData: {
+          interpretationId: interp.id,
+          outcome: grade.outcomeClass,
+          score: grade.totalScore,
+          breakdown: grade.scoredDimensions,
+          hadGolden: Boolean(golden),
+        },
+      });
+    } catch (err) {
+      logAuditEvent({
+        sessionId,
+        userId: opts?.userId,
+        eventType: "semantic_shadow_grade_failed",
+        eventData: {
+          interpretationId: orchestratorResult.freshInterpreterResult.interpretation.id,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    }
+  }
+
   if (orchestratorResult.kind === "respond") {
     const enveloped = toSystemStateEnvelope(orchestratorResult.state, raw);
     saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
@@ -802,6 +998,11 @@ export async function processChatV2(
     };
   }
 
+  // forcedExtractionTarget: when the doctor accepts "Assess X first" the
+  // orchestrator tells us which system to extract this turn, bypassing the
+  // router's output for primary system selection (ADR-0003 §4).
+  let forcedExtractionTarget: GatiodSystemKey | undefined;
+
   if (orchestratorResult.kind === "substitute") {
     // Doctor accepted the interpretation. Continue extraction against the
     // original source text, not the "Proceed" reply.
@@ -813,6 +1014,7 @@ export async function processChatV2(
     // (REQ-MS-EXTRACT-001). Spine uses `selectedScope.sourceSpans` to narrow
     // multi-region input (REQ-SC-SPINE-001 / REQ-SC-SPINE-002).
     activeExtractionContext = orchestratorResult.extractionContext;
+    forcedExtractionTarget = orchestratorResult.targetSystem;
   }
   // "passthrough" → continue with existing normalized + state as today.
 
@@ -832,9 +1034,13 @@ export async function processChatV2(
 
   let nextState = withRoute(loadedState, route);
 
-  // Determine the primary system (prefer pending confirmation's system if active)
+  // Determine the primary system. Priority: forced extraction target from
+  // semantic consensus (accepted_system_first), then pending confirmation,
+  // then router output (ADR-0003 §4).
   const primarySystem: GatiodSystemKey | undefined =
-    loadedState.pendingConfirmation?.system ?? route.systems[0];
+    forcedExtractionTarget ??
+    loadedState.pendingConfirmation?.system ??
+    route.systems[0];
 
   // ── V2-007b: extraction-skip on confirmation reply ─────────────────────────
   const confirmationReply = Boolean(loadedState.pendingConfirmation) && isConfirmation(normalized);
@@ -868,6 +1074,34 @@ export async function processChatV2(
 
       const cap = V2_SYSTEM_REGISTRY[targetSystem];
       if ((cap.mode === "structured_live" || cap.mode === "structured_shadow") && cap.extractor) {
+        // Deferred extraction (ADR-0003 §5): when the doctor continues a workflow
+        // (e.g. "Continue with Spine") for a system accepted via semantic consensus
+        // but not yet extracted, re-run extraction against the original accepted
+        // narrative in the override — not the doctor's current workflow reply.
+        let extractionNormalized = normalized;
+        let extractionContext = activeExtractionContext;
+        if (!activeExtractionContext) {
+          const override = loadedState.claimComponentOverrides?.[targetSystem];
+          if (
+            override?.status === "detected" &&
+            override.source === "semantic_consensus" &&
+            override.sourceText &&
+            looksLikeWorkflowContinuation(effectiveUserMessage) &&
+            !looksLikeClinicalContent(effectiveUserMessage)
+          ) {
+            extractionNormalized = normalizeClinicalUtterance(override.sourceText);
+            extractionContext = {
+              consensusId: override.interpretationId ?? "deferred",
+              sourceText: override.sourceText,
+              sourceHash: override.sourceHash ?? "",
+              acceptedSystems: [targetSystem],
+              acceptedFindings: override.acceptedFindings ?? [],
+              targetSystem,
+              focusSystem: targetSystem,
+            };
+          }
+        }
+
         // Run primary extractor and (optionally) shadow extractor concurrently.
         // ADR-0004: shadow is suppressed when:
         //   - suppressShadowForSystems contains this system (post-"Both wrong" turn).
@@ -880,17 +1114,17 @@ export async function processChatV2(
 
         const [extractionResult, shadowResult] = await Promise.all([
           Promise.resolve(cap.extractor(
-            normalized,
+            extractionNormalized,
             nextState.systems[targetSystem],
             grounding.ontologyMatches,
-            activeExtractionContext,
+            extractionContext,
           )),
           runShadow
             ? Promise.resolve(cap.shadowExtractor!(
-                normalized,
+                extractionNormalized,
                 nextState.systems[targetSystem],
                 grounding.ontologyMatches,
-                activeExtractionContext,
+                extractionContext,
               )).catch((err: unknown) => {
                 logAuditEvent({
                   sessionId,
@@ -909,13 +1143,28 @@ export async function processChatV2(
         // primary result this turn — the doctor must choose first.
         // Skip the comparison when both extractors produced nothing — there is
         // nothing to compare and the dialog would just block the pipeline.
+        // Also skip when the primary result is purely a bilateral flow-control
+        // observation (bilateral_mode_choice) with no clinical facts: the LLM
+        // extractor never emits these, so the comparison would always show
+        // "LLM extracted nothing" and block the bilateral question unnecessarily.
         const bothEmpty =
           shadowResult != null &&
           Object.keys(extractionResult.extractedFactsPatch).length === 0 &&
           extractionResult.pendingObservationsToAdd.length === 0 &&
           Object.keys(shadowResult.extractedFactsPatch).length === 0 &&
           shadowResult.pendingObservationsToAdd.length === 0;
-        if (shadowResult && isComparisonEnabled() && !bothEmpty) {
+        // Shadow produced no output — nothing to compare. Apply the primary
+        // result and proceed normally so the doctor sees what was understood,
+        // not an empty-vs-something dialog.
+        const shadowEmpty =
+          shadowResult != null &&
+          Object.keys(shadowResult.extractedFactsPatch).length === 0 &&
+          shadowResult.pendingObservationsToAdd.length === 0;
+        const onlyBilateralFlowControl =
+          Object.keys(extractionResult.extractedFactsPatch).length === 0 &&
+          extractionResult.pendingObservationsToAdd.length > 0 &&
+          extractionResult.pendingObservationsToAdd.every((po) => po.type === "bilateral_mode_choice");
+        if (shadowResult && isComparisonEnabled() && !bothEmpty && !shadowEmpty && !onlyBilateralFlowControl) {
           const comparison = buildComparisonOffer(
             targetSystem,
             normalized.raw,
@@ -1084,6 +1333,10 @@ export async function processChatV2(
         disagreement,
         activeExtractionContext.consensusId,
       );
+      const gapKey = observation.parsed.semanticGapKey as string | undefined;
+      const sysObs = nextState.systems[disagreement.system].pendingObservations;
+      // Dedup: skip if the same gap key already exists in pending observations.
+      if (gapKey && sysObs.some((o) => o.parsed.semanticGapKey === gapKey)) continue;
       // Attach the observation to the relevant system without overwriting any
       // existing pending observations (defence: detector excludes systems
       // that already have pending observations, but the post-extraction loop
@@ -1116,7 +1369,9 @@ export async function processChatV2(
     }
   }
 
-  const policy = makePolicyDecision(route, normalized, grounding, nextState);
+  const policy = makePolicyDecision(route, normalized, grounding, nextState, (event: ShadowAuditEvent) => {
+    logAuditEvent({ sessionId, userId: opts?.userId, eventType: event.type, eventData: event as unknown as Record<string, unknown> });
+  });
   logAuditEvent({
     sessionId,
     userId: opts?.userId,
@@ -1330,12 +1585,105 @@ export async function processChatV2(
           const rendered = cap.resultRenderer(assessCall.result, nextState.systems[primarySystem]);
           message = rendered.message;
 
+          // ── Bilateral post-calculation handling ──────────────────────────
+          // Runs before the multi-system handoff so bilateral continuation
+          // takes priority over pivoting to a different system.
+          // "same" mode: auto-run right side with same args, then CVC both.
+          // "separate" mode first side: pivot state to second side.
+          // "separate" mode second side: CVC both and clear the queue.
+          let bilateralHandled = false;
+          {
+            const bq = nextState.bilateralQueue;
+            if (bq && bq.system === primarySystem) {
+              const resultObj = (assessCall.result ?? {}) as Record<string, unknown>;
+              const thisSidePi =
+                typeof resultObj.finalPercent === "number" ? resultObj.finalPercent
+                : typeof resultObj.finalPi === "number" ? resultObj.finalPi
+                : typeof resultObj.selectedPi === "number" ? resultObj.selectedPi
+                : null;
+
+              if (bq.mode === "same" && thisSidePi !== null) {
+                const rightArgs = { ...assessCall.args, side: "right" };
+                const rightExecResult = handleToolCall(assessCall.name, rightArgs);
+                if (Boolean(rightExecResult.success) && rightExecResult.data) {
+                  const rightObj = (rightExecResult.data ?? {}) as Record<string, unknown>;
+                  const rightPi =
+                    typeof rightObj.finalPercent === "number" ? rightObj.finalPercent
+                    : typeof rightObj.finalPi === "number" ? rightObj.finalPi
+                    : typeof rightObj.selectedPi === "number" ? rightObj.selectedPi
+                    : null;
+                  if (rightPi !== null) {
+                    const combined = combineMultipleValuesChart([thisSidePi, rightPi]);
+                    const rightInstanceId = `${primarySystem}::right`;
+                    if (getInstanceById(nextState, rightInstanceId)) {
+                      const rightTrace = buildTraceForSystem(primarySystem, rightArgs, rightExecResult.data, {
+                        instanceId: rightInstanceId,
+                        level: "spoke",
+                      });
+                      nextState = applyInstanceToolResult(nextState, rightInstanceId, rightPi, rightTrace);
+                    }
+                    nextState = {
+                      ...nextState,
+                      systems: {
+                        ...nextState.systems,
+                        [primarySystem]: { ...nextState.systems[primarySystem], piPercent: combined },
+                      },
+                    };
+                    nextState = clearBilateralQueue(nextState);
+                    const sideNoun = primarySystem === "lower_limb" ? "leg" : "arm";
+                    message = `${message}\n\nBoth ${sideNoun}s assessed with the same findings — Left: **${thisSidePi}%**, Right: **${rightPi}%**. Combined (CVC): **${combined}%**`;
+                    bilateralHandled = true;
+                    logAuditEvent({
+                      sessionId, userId: opts?.userId,
+                      eventType: "v2_extraction_warning",
+                      eventData: { system: primarySystem, warnings: [`Bilateral same-mode CVC: left=${thisSidePi}%, right=${rightPi}%, combined=${combined}%`] },
+                    });
+                  }
+                }
+              } else if (bq.mode === "separate" && thisSidePi !== null) {
+                if (bq.completedSide === null) {
+                  // First side done — pivot to second side and ask for its findings.
+                  const completedSide = bq.pendingSide;
+                  const nextSide: "left" | "right" = completedSide === "left" ? "right" : "left";
+                  nextState = pivotBilateralToNextSide(nextState, primarySystem, nextSide, thisSidePi);
+                  const sideNoun = primarySystem === "lower_limb" ? "leg" : "arm";
+                  const doneLabel = completedSide === "left" ? "Left" : "Right";
+                  message = `${message}\n\n${doneLabel} ${sideNoun}: **${thisSidePi}%**. Now please describe the findings for the **${nextSide} ${sideNoun}**.`;
+                  nextState = setPendingClarification(nextState, `Please provide findings for the ${nextSide} ${sideNoun}.`);
+                  bilateralHandled = true;
+                } else {
+                  // Second side done — CVC both and clear the queue.
+                  const firstPi = bq.completedPiPercent!;
+                  const combined = combineMultipleValuesChart([firstPi, thisSidePi]);
+                  nextState = {
+                    ...nextState,
+                    systems: {
+                      ...nextState.systems,
+                      [primarySystem]: { ...nextState.systems[primarySystem], piPercent: combined },
+                    },
+                  };
+                  nextState = clearBilateralQueue(nextState);
+                  const sideNoun = primarySystem === "lower_limb" ? "leg" : "arm";
+                  const firstLabel = bq.completedSide === "left" ? "Left" : "Right";
+                  const secondLabel = bq.pendingSide === "left" ? "Left" : "Right";
+                  message = `${message}\n\n${firstLabel} ${sideNoun}: **${firstPi}%**, ${secondLabel} ${sideNoun}: **${thisSidePi}%**. Combined (CVC): **${combined}%**`;
+                  bilateralHandled = true;
+                  logAuditEvent({
+                    sessionId, userId: opts?.userId,
+                    eventType: "v2_extraction_warning",
+                    eventData: { system: primarySystem, warnings: [`Bilateral separate-mode CVC: ${firstLabel.toLowerCase()}=${firstPi}%, ${secondLabel.toLowerCase()}=${thisSidePi}%, combined=${combined}%`] },
+                  });
+                }
+              }
+            }
+          }
+
           // ── Multi-system handoff ─────────────────────────────────────────
           // After this system completes, look for another system whose facts
           // were captured from the same utterance and pivot into it. Without
           // this the chat goes silent on multi-system inputs after the first
           // system finishes — the user's reported regression.
-          handoff = buildNextSystemHandoff(nextState, primarySystem);
+          if (!bilateralHandled) { handoff = buildNextSystemHandoff(nextState, primarySystem); }
           if (handoff) {
             message = `${message}\n\n---\n\n${handoff.appendMessage}`;
 

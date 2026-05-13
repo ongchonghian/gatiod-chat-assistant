@@ -1,5 +1,6 @@
 import type { AssessmentRenderResult, V2SystemState } from "../contracts.js";
 import type { CnsResult } from "../../engine/cnsAssessmentData.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 import {
   CNS_FK_G1A, CNS_FK_G1B, CNS_FK_G1C,
   CNS_FK_G2, CNS_FK_G3, CNS_FK_G4,
@@ -135,7 +136,7 @@ export function renderCnsResult(
   // ── Full breakdown ─────────────────────────────────────────────────────────
   const inputFacts: string[] = [];
   for (const [k, fact] of Object.entries(ef)) {
-    if (fact) inputFacts.push(`${k}: ${JSON.stringify(fact.value)}`);
+    if (fact) inputFacts.push(`${factKeyLabel("cns", k)}: ${factValueDisplay("cns", k, fact.value)}`);
   }
 
   const categoryResults = [

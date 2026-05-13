@@ -103,8 +103,9 @@ describe("Slice G — spine selectedScope narrowing (REQ-SC-SPINE-001/002)", () 
     const ctx = makeExtractionContext({
       selectedScope: {
         system: "spine",
+        scopeType: "spine_region",
         scope: "cervical",
-        sourceSpans: ["Cervical prolapsed disc with sensory deficit"],
+        sourceSpans: [{ text: "Cervical prolapsed disc with sensory deficit", startOffset: 0, endOffset: 43 }],
       },
     });
     const result = extractSpine(
@@ -128,10 +129,11 @@ describe("Slice G — spine selectedScope narrowing (REQ-SC-SPINE-001/002)", () 
     const ctx = makeExtractionContext({
       selectedScope: {
         system: "spine",
+        scopeType: "spine_region",
         scope: "cervical",
         sourceSpans: [
-          "Cervical prolapsed disc with sensory deficit",
-          "lumbo-sacral compression/burst fracture <25% residual pain",
+          { text: "Cervical prolapsed disc with sensory deficit", startOffset: 0, endOffset: 43 },
+          { text: "lumbo-sacral compression/burst fracture <25% residual pain", startOffset: 45, endOffset: 103 },
         ],
       },
     });
@@ -156,8 +158,9 @@ describe("Slice G — spine selectedScope narrowing (REQ-SC-SPINE-001/002)", () 
     const ctx = makeExtractionContext({
       selectedScope: {
         system: "lower_limb",
+        scopeType: "laterality",
         scope: "left",
-        sourceSpans: ["Left common peroneal nerve lesion"],
+        sourceSpans: [{ text: "Left common peroneal nerve lesion", startOffset: 0, endOffset: 32 }],
       },
     });
     // Spine extractor sees the full normalizedText and parses normally.
@@ -174,6 +177,7 @@ describe("Slice G — spine selectedScope narrowing (REQ-SC-SPINE-001/002)", () 
     const ctx = makeExtractionContext({
       selectedScope: {
         system: "spine",
+        scopeType: "spine_region",
         scope: "cervical",
         sourceSpans: [],
       },

@@ -1,5 +1,6 @@
 import type { AssessmentRenderResult, V2SystemState } from "../contracts.js";
 import type { EyeResult, VisualResult } from "../../engine/visualAssessmentData.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 import {
   SNELLEN_ACUITY, VISUAL_FIELD_LOSS,
   FUNCTIONAL_MODIFIERS, SPECIFIC_CONDITIONS, DIPLOPIA_OPTIONS,
@@ -118,7 +119,7 @@ export function renderVisualResult(
   // ── Full breakdown ─────────────────────────────────────────────────────────
   const inputFacts: string[] = [];
   for (const [k, fact] of Object.entries(ef)) {
-    if (fact) inputFacts.push(`${k}: ${JSON.stringify(fact.value)}`);
+    if (fact) inputFacts.push(`${factKeyLabel("visual", k)}: ${factValueDisplay("visual", k, fact.value)}`);
   }
 
   const eyeNotes = (eye: EyeResult): string[] => [

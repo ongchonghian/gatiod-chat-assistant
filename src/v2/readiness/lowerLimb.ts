@@ -62,6 +62,19 @@ export function validateLowerLimbReadiness(systemState: V2SystemState): Readines
   );
 
   if (!hasRom && !hasNerve && !hasLegAmputation && !hasToeAmputation && !hasShortening && !hasDbe) {
+    // Doctor mentioned amputation (e.g. "loss of leg") but no anatomical level was captured.
+    // Skip the generic "what type?" question — we already know the type — and ask for level.
+    const hasAmpSignal = Boolean(systemState.slotSignals?.amputation_present);
+    if (hasAmpSignal) {
+      return {
+        ready: false,
+        reason: "missing_amp_level",
+        missingFields: [LL_FK_LEG_AMPUTATION],
+        clarificationQuestion: "At what level was the amputation?",
+        candidateAnswers: ["Above knee", "Below knee", "Syme (ankle disarticulation)", "Hindquarter / hip disarticulation"],
+        expectedAnswer: { kind: "enum", factKey: LL_FK_LEG_AMPUTATION, choices: ["above knee", "below knee", "syme", "hindquarter"] },
+      };
+    }
     return {
       ready: false,
       reason: "no_assessable_finding",

@@ -348,12 +348,15 @@ describe("Slice E — proposal renderer", () => {
     expect(rendered.message).toContain("Missing: partial vs total loss");
   });
 
-  it("includes the four standard action chips", () => {
+  it("includes proposal-kind-specific action chips (mixed_structured_legacy)", () => {
+    // Fixture: lower_limb (structured_supported) + cns (legacy_deferred)
+    // → mixed_structured_legacy chips per ADR-0003 §6.
     const rendered = renderSemanticConsensus(validInterpretation());
     expect(rendered.chips).toEqual([
       "Proceed",
+      "Assess Lower Limb first",
+      "Use legacy for Central Nervous System",
       "Edit interpretation",
-      "Choose system first",
       "Reject",
     ]);
   });

@@ -1,6 +1,7 @@
 import type { AssessmentRenderResult, V2SystemState } from "../contracts.js";
 import type { GastroDigestiveResult } from "../../engine/gastroDigestiveData.js";
 import { GASTRO_FK_SUBSYSTEM, GASTRO_FK_BRACKET_INDEX, GASTRO_FK_PI_PERCENT } from "../extractors/gastro.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 
 function pct(n: number | null): string { return n !== null ? `${n}%` : "—"; }
 
@@ -33,7 +34,7 @@ export function renderGastroResult(
 
   const inputFacts: string[] = [];
   for (const [k, fact] of Object.entries(ef)) {
-    if (fact) inputFacts.push(`${k}: ${JSON.stringify(fact.value)}`);
+    if (fact) inputFacts.push(`${factKeyLabel("gastro_digestive", k)}: ${factValueDisplay("gastro_digestive", k, fact.value)}`);
   }
 
   const message = summaryLines.join("\n").replace(/\n{3,}/g, "\n\n");

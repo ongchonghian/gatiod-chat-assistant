@@ -14,6 +14,7 @@ This document records detailed requirements to close every known gap in the V2 s
 | D — Legacy pipeline coupling | 3 reqs | Medium |
 | E — Loop guard + failure path | 2 reqs | Medium |
 | F — Operational readiness | 2 reqs | Medium |
+| G — Bilateral limb assessment | 1 req | High |
 
 ---
 
@@ -427,6 +428,28 @@ Each golden test must assert: (a) the extracted facts produced, (b) the readines
 
 ---
 
+## G — Bilateral limb assessment
+
+### REQ-BIL-001 — Bilateral upper / lower limb full assessment support
+
+**Problem:** When a doctor reports bilateral limb involvement (e.g. "loss of both legs", "bilateral upper limb injury"), the V2 structured flow asked "which side — left or right?" instead of "same or separate findings?". For upper limb the bilateral signal was silently discarded with only a warning log and no pending observation at all.
+
+**Root cause:** The extractors for `lower_limb` and `upper_limb` lacked a dedicated `bilateral_mode_choice` pending observation. No `bilateralQueue` field existed on `V2SessionState`. The readiness validator and `chatServiceV2.ts` had no bilateral orchestration logic.
+
+**Acceptance criteria:**
+
+1. When a bilateral signal is detected for `lower_limb` or `upper_limb`, the extractor creates a `bilateral_mode_choice` pending observation with chips `["Same findings for both", "Assess each leg/arm separately"]`. No unilateral side is inferred.
+2. Doctor answers are resolved by the generic `pendingObservationResolver` → `bilateral_mode` fact graduates to `extractedFacts`.
+3. `bilateralQueue` is set on `V2SessionState` upon resolution, carrying `mode`, `pendingSide`, `completedSide`, and `completedPiPercent`.
+4. **Same-findings mode:** after the first side is confirmed and calculated, `chatServiceV2.ts` auto-runs the same `assess_*` call with `side="right"`, CVCs both results using `combineMultipleValuesChart`, and presents the combined PI% in the response. Both instances are marked `calculated`.
+5. **Separate-findings mode:** after the first side is confirmed and calculated, the system state is reset to collect the second side's findings (`pivotBilateralToNextSide`). After the second side is calculated, both results are CVC-combined and the bilateral queue is cleared.
+6. Confirmation messages are annotated with bilateral context (which side and whether same or separate).
+7. No unilateral "which side?" question is ever shown to the doctor when both sides are known to be affected.
+
+**Files modified:** `src/v2/contracts.ts`, `src/v2/extractors/lowerLimb.ts`, `src/v2/extractors/upperLimb.ts`, `src/v2/stateMachine.ts`, `src/chat/chatServiceV2.ts`.
+
+---
+
 ## Summary table
 
 | ID | Summary | Sprint | Blocking on |
@@ -451,3 +474,4 @@ Each golden test must assert: (a) the extracted facts produced, (b) the readines
 | REQ-E2 | V2 failure audit events wired end-to-end | 2–5 (backfill) | — |
 | REQ-F1 | V2 failure rate audit dashboard | 7 | REQ-E2 |
 | REQ-F2 | Structured_live watchlist in CI | 7 | REQ-B1 |
+| REQ-BIL-001 | Bilateral upper/lower limb full assessment | 1–2 (backfill) | — |

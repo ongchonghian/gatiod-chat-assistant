@@ -1,5 +1,6 @@
 import type { AssessmentRenderResult, V2SystemState } from "../contracts.js";
 import type { LowerLimbResult } from "../../engine/lowerLimbData.js";
+import { factKeyLabel, factValueDisplay } from "../clinicalLabels.js";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,11 @@ export function renderLowerLimbResult(
 ): AssessmentRenderResult {
   const result = toolResult as LowerLimbResult;
   const side = (systemState.extractedFacts["side"]?.value as "left" | "right" | undefined) ?? "unknown";
-  const sideLabel = side === "unknown" ? "" : ` — ${side}`;
+  const bilateralMode = systemState.extractedFacts["bilateral_mode"]?.value as string | undefined;
+  const sideLabel =
+    bilateralMode === "same" ? " — both legs, same findings" :
+    bilateralMode === "separate" && side !== "unknown" ? ` — ${side} leg (bilateral)` :
+    side === "unknown" ? "" : ` — ${side}`;
 
   const autoExpand = shouldAutoExpand(result);
 
@@ -88,7 +93,7 @@ export function renderLowerLimbResult(
 
   const inputFacts: string[] = [];
   for (const [key, fact] of Object.entries(systemState.extractedFacts)) {
-    if (fact) inputFacts.push(`${key}: ${JSON.stringify(fact.value)}`);
+    if (fact) inputFacts.push(`${factKeyLabel("lower_limb", key)}: ${factValueDisplay("lower_limb", key, fact.value)}`);
   }
 
   return {

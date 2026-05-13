@@ -74,6 +74,7 @@ export function defaultV2SessionState(): V2SessionState {
     globalCvcExclusions: {},
     pendingExtractorComparison: null,
     pendingSlotCorrection: null,
+    bilateralQueue: null,
   };
 }
 
@@ -244,6 +245,25 @@ export function coerceV2State(raw: unknown): V2SessionState {
     typeof (rawSlotCorrection as Record<string, unknown>).message === "string"
       ? (rawSlotCorrection as PendingSlotCorrection)
       : null;
+
+  // Coerce bilateralQueue
+  const rawBilateral = (candidate as unknown as Record<string, unknown>).bilateralQueue;
+  if (
+    rawBilateral &&
+    typeof rawBilateral === "object" &&
+    typeof (rawBilateral as Record<string, unknown>).system === "string" &&
+    typeof (rawBilateral as Record<string, unknown>).mode === "string" &&
+    typeof (rawBilateral as Record<string, unknown>).pendingSide === "string"
+  ) {
+    const bq = rawBilateral as Record<string, unknown>;
+    merged.bilateralQueue = {
+      system: bq.system as GatiodSystemKey,
+      mode: bq.mode as "same" | "separate",
+      pendingSide: bq.pendingSide as "left" | "right",
+      completedSide: (bq.completedSide as "left" | "right" | null) ?? null,
+      completedPiPercent: typeof bq.completedPiPercent === "number" ? bq.completedPiPercent : null,
+    };
+  }
 
   // Coerce instancesBySystem
   const rawInstances = candidate.instancesBySystem as Record<string, unknown[]> | undefined;
@@ -837,6 +857,72 @@ export function setPendingSlotCorrection(
 }
 
 // ── Legacy system-level helpers below (unchanged) ─────────────────────────────
+
+// ── Bilateral queue helpers ───────────────────────────────────────────────────
+
+/** Set or replace the active bilateral assessment queue. */
+export function setBilateralQueue(
+  state: V2SessionState,
+  queue: V2SessionState["bilateralQueue"],
+): V2SessionState {
+  return { ...state, bilateralQueue: queue };
+}
+
+/** Clear the bilateral queue (both sides done). */
+export function clearBilateralQueue(state: V2SessionState): V2SessionState {
+  return { ...state, bilateralQueue: null };
+}
+
+/**
+ * Pivot a bilateral "separate" assessment from the completed side to the next.
+ * Resets system extractedFacts to just {bilateral_mode, side: newSide} so the
+ * doctor can describe the second leg/arm without stale facts from the first.
+ */
+export function pivotBilateralToNextSide(
+  state: V2SessionState,
+  system: GatiodSystemKey,
+  newSide: "left" | "right",
+  completedPiPercent: number,
+): V2SessionState {
+  const now = nowIso();
+  const bq = state.bilateralQueue;
+  if (!bq || bq.system !== system) return state;
+
+  const currentFacts = state.systems[system].extractedFacts;
+  const resetFacts: V2SystemFacts = {
+    ...(currentFacts["bilateral_mode"] ? { bilateral_mode: currentFacts["bilateral_mode"] } : {}),
+    side: {
+      value: newSide,
+      sourceText: `bilateral_pivot:${newSide}`,
+      confidence: 1.0,
+      extractionMethod: "user_selected",
+      createdAt: now,
+      updatedAt: now,
+    },
+  };
+
+  return {
+    ...state,
+    bilateralQueue: {
+      ...bq,
+      pendingSide: newSide,
+      completedSide: newSide === "right" ? "left" : "right",
+      completedPiPercent,
+    },
+    systems: {
+      ...state.systems,
+      [system]: {
+        ...state.systems[system],
+        extractedFacts: resetFacts,
+        pendingObservations: [],
+        status: "collecting" as const,
+        piPercent: null,
+        confirmation: { status: "not_confirmed" },
+        updatedAt: now,
+      },
+    },
+  };
+}
 
 export function graduateObservation(
   state: V2SessionState,

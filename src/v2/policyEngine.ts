@@ -19,6 +19,46 @@ import {
   getCalculatedSystems,
   verifyGlobalCvcSnapshot,
 } from "./globalCvc.js";
+import { validateUpperLimbReadinessFromSchema } from "./slotSchemas/upperLimbExtractor.js";
+
+export type ShadowAuditEvent =
+  | { type: "readiness_shadow_agreement"; system: string; ready: boolean }
+  | { type: "readiness_shadow_disagreement"; system: string; primaryReady: boolean; schemaReady: boolean; primaryMissing: string[] | undefined; schemaMissing: string[] | undefined }
+  | { type: "readiness_shadow_failed"; system: string; error: string };
+
+const READINESS_SHADOW_ENABLED = process.env.GATIOD_READINESS_SHADOW === "true";
+
+function runUpperLimbReadinessShadow(
+  primaryResult: ReadinessResult,
+  systemState: V2SessionState["systems"][string],
+  onShadowAudit: (event: ShadowAuditEvent) => void,
+): void {
+  try {
+    const schemaResult = validateUpperLimbReadinessFromSchema(systemState);
+    const primaryMissing = primaryResult.missingFields;
+    const schemaMissing = schemaResult.missingFields;
+    const readyDiffers = primaryResult.ready !== schemaResult.ready;
+    const missingDiffers =
+      JSON.stringify((primaryMissing ?? []).slice().sort()) !==
+      JSON.stringify((schemaMissing ?? []).slice().sort());
+    if (readyDiffers || missingDiffers) {
+      onShadowAudit({
+        type: "readiness_shadow_disagreement",
+        system: "upper_limb",
+        primaryReady: primaryResult.ready,
+        schemaReady: schemaResult.ready,
+        primaryMissing,
+        schemaMissing,
+      });
+    } else {
+      onShadowAudit({ type: "readiness_shadow_agreement", system: "upper_limb", ready: primaryResult.ready });
+    }
+  } catch (err) {
+    onShadowAudit({ type: "readiness_shadow_failed", system: "upper_limb", error: String(err) });
+  }
+}
+
+export { runUpperLimbReadinessShadow as runUpperLimbReadinessShadowForTest };
 
 const GLOBAL_CVC_COMBINE_RE = /^(combine|confirm and combine|yes|y|ok|okay|proceed|confirmed)$/i;
 const GLOBAL_CVC_ADD_SYSTEM_RE = /\b(add another system|add\s+system|another\s+system)\b/i;
@@ -94,7 +134,8 @@ export function makePolicyDecision(
   route: RouteDecision,
   normalized: NormalizedUtterance,
   grounding: GroundingResult,
-  state: V2SessionState
+  state: V2SessionState,
+  onShadowAudit?: (event: ShadowAuditEvent) => void,
 ): PolicyDecision {
   // ── Pending Global CVC offer (Q4) ─────────────────────────────────────────
   // After ≥2 systems calculate, the assistant offers a combination. The
@@ -207,6 +248,9 @@ export function makePolicyDecision(
         const readiness: ReadinessResult = activeInstance && instanceValidator
           ? instanceValidator(activeInstance)
           : cap.readinessValidator(systemState);
+        if (READINESS_SHADOW_ENABLED && primary === "upper_limb" && !activeInstance && onShadowAudit) {
+          runUpperLimbReadinessShadow(readiness, systemState, onShadowAudit);
+        }
         if (!readiness.ready) {
           return {
             action: "clarify",
@@ -450,6 +494,9 @@ export function makePolicyDecision(
       const readiness: ReadinessResult = activeInstance && instanceValidator
         ? instanceValidator(activeInstance)
         : cap.readinessValidator(systemState);
+      if (READINESS_SHADOW_ENABLED && primarySystem === "upper_limb" && !activeInstance && onShadowAudit) {
+        runUpperLimbReadinessShadow(readiness, systemState, onShadowAudit);
+      }
 
       if (!readiness.ready) {
         // Surface the pending-observation question from whichever source holds it.

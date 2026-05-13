@@ -277,6 +277,7 @@ export interface PendingObservation {
     | "renal_value"
     | "spine_category"
     | "semantic_mapping_gap"
+    | "bilateral_mode_choice"
     | "other";
   sourceText: string;
   parsed: Record<string, unknown>;
@@ -438,6 +439,18 @@ export interface PendingConsensus {
   /** "decision" — awaiting Proceed / Edit / Reject / Assess X first / Skip / Use legacy.
    *  "edit_instruction" — Edit was chosen; awaiting the doctor's correction text. */
   awaiting: "decision" | "edit_instruction";
+  /** Increments after each successful re-interpretation. 0 for the first proposal. */
+  revision?: number;
+  /** Total number of LLM invocations attempted for this sourceText (counts
+   *  failed calls if the LLM was actually dispatched). Capped at
+   *  MAX_SEMANTIC_EDIT_ATTEMPTS before edit instructions are rejected. */
+  editAttemptCount?: number;
+  /** interpretationId of the immediately-prior proposal — set on re-interpretation
+   *  so cleanup code can clear overrides linked to the discarded id. */
+  parentInterpretationId?: string;
+  /** The doctor's raw edit instruction that produced this revision (undefined for
+   *  the initial proposal). */
+  lastEditInstruction?: string;
 }
 
 // ── Semantic consensus gate (REQ-SC-GATE-001) ───────────────────────────────
@@ -487,6 +500,15 @@ export interface ClaimComponentOverride {
   reason?: string;
   source?: "semantic_consensus" | "user_choice" | "safe_fail" | "legacy_policy" | "system_registry";
   sourceText?: string;
+  /** interpretationId of the consensus that wrote this override — used for
+   *  cleanup on edit reset and dedup. Only set when source === "semantic_consensus". */
+  interpretationId?: string;
+  /** sha256 of sourceText at acceptance time — lets deferred extraction verify
+   *  the source text hasn't drifted. */
+  sourceHash?: string;
+  /** Candidate findings accepted for this specific system, filtered from
+   *  the full interpretation at acceptance time. */
+  acceptedFindings?: SemanticCandidateFinding[];
   createdAt: string;
   updatedAt: string;
 }
@@ -509,15 +531,19 @@ export interface ExtractionContext {
   sourceHash: string;
   acceptedSystems: GatiodSystemKey[];
   acceptedFindings: SemanticCandidateFinding[];
-  /** When the doctor selected "Assess X first", focusSystem is X. Other accepted
-   *  systems are still extracted; focus only affects rendering order. */
+  /** When the doctor selected "Assess X first", targetSystem is X and
+   *  focusSystem equals X. Other accepted structured systems are written as
+   *  `detected` overrides; focus only affects claim-plan ordering. */
+  targetSystem?: GatiodSystemKey;
   focusSystem?: GatiodSystemKey;
   /** For multi-region narrowing (e.g. spine cervical-first). When set, the
-   *  extractor should use these source spans instead of the full original text. */
+   *  spine extractor builds the effective parse text from these source spans
+   *  via `buildScopedNormalizedUtterance` in `src/v2/spineScope.ts`. */
   selectedScope?: {
     system: GatiodSystemKey;
+    scopeType: "spine_region" | "laterality" | "organ" | "anatomical_subregion";
     scope: string;
-    sourceSpans: string[];
+    sourceSpans: Array<{ text: string; startOffset: number; endOffset: number }>;
   };
 }
 
@@ -535,6 +561,11 @@ export interface ConsensusResolutionResult {
   resolved: boolean;
   action: ConsensusResolutionAction;
   state: V2SessionState;
+  /** The single extraction target for this turn (accepted_system_first only). */
+  targetSystem?: GatiodSystemKey;
+  /** Spine scope chosen by the doctor (set when targetSystem === "spine" and a
+   *  region was identified from the reply). */
+  selectedScope?: ExtractionContext["selectedScope"];
   /** Set when extraction should run this turn (accepted_all / accepted_system_first). */
   extractionPlan?: {
     sourceText: string;
@@ -718,6 +749,20 @@ export interface V2SessionState {
    * comparison loop cannot re-trigger.
    */
   pendingSlotCorrection: PendingSlotCorrection | null;
+  /**
+   * Set when a bilateral (both-sides) assessment is active.
+   * - mode "same": findings collected once, applied to both sides.
+   * - mode "separate": each side assessed sequentially.
+   * Cleared after both sides are confirmed and calculated.
+   */
+  bilateralQueue: {
+    system: GatiodSystemKey;
+    mode: "same" | "separate";
+    pendingSide: "left" | "right";
+    completedSide: "left" | "right" | null;
+    /** PI% of the first completed side (separate mode only). */
+    completedPiPercent: number | null;
+  } | null;
 }
 
 export interface ChatV2Response {
