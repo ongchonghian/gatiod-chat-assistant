@@ -60,7 +60,11 @@ export type AuditEventType =
   // V2-902 — upper_limb readiness shadow comparison
   | "readiness_shadow_agreement"
   | "readiness_shadow_disagreement"
-  | "readiness_shadow_failed";
+  | "readiness_shadow_failed"
+  // ADR-0006/0007 — claim plan sub-header chip actions
+  | "v2_add_system"
+  | "v2_claim_submitted"
+  | "v2_claim_reopened";
 
 export interface AuditEntry {
   sessionId: string;

@@ -75,6 +75,7 @@ export function defaultV2SessionState(): V2SessionState {
     pendingExtractorComparison: null,
     pendingSlotCorrection: null,
     bilateralQueue: null,
+    detectionOrder: [],
   };
 }
 
@@ -292,6 +293,7 @@ export function withRoute(state: V2SessionState, route: RouteDecision): V2Sessio
     pendingClarification: route.operation === "clarify" ? state.pendingClarification : null,
   };
 
+  let detectionOrder = next.detectionOrder;
   for (const system of route.systems) {
     const prev = next.systems[system];
     next.systems[system] = {
@@ -300,7 +302,11 @@ export function withRoute(state: V2SessionState, route: RouteDecision): V2Sessio
       completeness: Math.max(prev.completeness, Math.min(0.75, route.confidence)),
       updatedAt: nowIso(),
     };
+    if (!detectionOrder.includes(system)) {
+      detectionOrder = [...detectionOrder, system];
+    }
   }
+  next.detectionOrder = detectionOrder;
 
   return next;
 }
@@ -316,7 +322,16 @@ export function setPendingConfirmation(state: V2SessionState, pending: PendingCo
   return {
     ...state,
     pendingConfirmation: pending,
+    // Confirmation supersedes clarification routing hint.
+    activeClarificationSystem: undefined,
   };
+}
+
+export function setActiveClarificationSystem(
+  state: V2SessionState,
+  system: GatiodSystemKey | undefined,
+): V2SessionState {
+  return { ...state, activeClarificationSystem: system };
 }
 
 export function setPendingGlobalCvcConfirmation(

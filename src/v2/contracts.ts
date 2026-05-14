@@ -587,6 +587,44 @@ export interface ConsensusResolutionResult {
   };
 }
 
+// ── Claim plan view (REQ-MS-PLAN-001, ADR-0006, ADR-0007) ─────────────────
+// Projected at render time by `claimPlanProjection.ts`. View-only types;
+// not stored in session state.
+
+/** Status shown on a system pill. Extends V2SystemStatus with skipped state. */
+export type SystemPillStatus = V2SystemStatus | "skipped_by_user";
+
+export interface SystemPillView {
+  system: GatiodSystemKey;
+  label: string;
+  status: SystemPillStatus;
+  subtotalPercent: number | null;
+  sideBreakdown?: { left?: number; right?: number };
+  isLegacyMode: boolean;
+}
+
+export interface SubmitState {
+  visible: boolean;
+  blockingSystems?: GatiodSystemKey[];
+}
+
+export interface ClaimPlanView {
+  systems: SystemPillView[];
+  submitState: SubmitState;
+  nextSystem?: GatiodSystemKey;
+  isSubmitted: boolean;
+  submittedAt?: string;
+}
+
+// ── Meta-intents (ADR-0007) ────────────────────────────────────────────────
+// Deterministic, LLM-free navigation utterances recognised before normal
+// routing. Defined here so router.ts and metaIntents.ts share the same type.
+export type MetaIntent =
+  | { kind: "status" }
+  | { kind: "finalise_claim" }
+  | { kind: "skip_system"; system: GatiodSystemKey }
+  | { kind: "jump_to_system"; system: GatiodSystemKey };
+
 // ── Derived claim plan view (REQ-MS-PLAN-001) ──────────────────────────────
 // ClaimAssessmentComponent is computed at render time from V2SystemState +
 // claimComponentOverrides + globalCvcExclusions + pending states. It is a
@@ -763,6 +801,25 @@ export interface V2SessionState {
     /** PI% of the first completed side (separate mode only). */
     completedPiPercent: number | null;
   } | null;
+  /**
+   * Ordered list of systems detected during this session. Drives the claim
+   * plan sub-header pill row. Systems are appended as they are first routed
+   * to; the order reflects first-detection time, not calculation order.
+   */
+  detectionOrder: GatiodSystemKey[];
+  /**
+   * ISO timestamp set when the claim is submitted. Cleared on true-reversal
+   * reopen (ADR-0006 §7). Absence means the claim is not yet submitted.
+   */
+  claimSubmittedAt?: string;
+  /**
+   * Set by the multi-system handoff when the next system needs clarification
+   * (not confirmation). Tracks the active system context so subsequent turns
+   * route to the correct system even when `pendingConfirmation` is null.
+   * Cleared when extraction starts for any system or when `pendingConfirmation`
+   * is set for a system.
+   */
+  activeClarificationSystem?: GatiodSystemKey;
 }
 
 export interface ChatV2Response {
@@ -776,6 +833,9 @@ export interface ChatV2Response {
   toolPlan: ToolPlan;
   policy: PolicyDecision;
   shadowMode: boolean;
+  /** Projected claim plan view — drives the sub-header pill row on the
+   *  frontend. Always present; empty `systems` array when no system detected. */
+  claimPlan: ClaimPlanView;
 }
 
 // ── Component result types (shared across extractor / readiness / arg-builder / renderer) ──

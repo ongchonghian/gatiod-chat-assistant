@@ -450,6 +450,26 @@ Each golden test must assert: (a) the extracted facts produced, (b) the readines
 
 ---
 
+## H — Multi-system clarification routing
+
+### REQ-H2 — Replace pendingClarification string with PendingClarificationContext
+
+**Problem:** `V2SessionState.pendingClarification` is `string | null` — storing only the question text. With multiple systems simultaneously in `collecting`, the pending-observation gate resolves doctor answers against the first system found in `Object.entries()` insertion order, not the system that asked the question. This causes silent mis-routing: an answer intended for `lower_limb` can be consumed by `upper_limb`'s open observation.
+
+**Root cause:** The field predates multi-system flows. A bare string has no `system` or `observationId` fields, so the gate cannot route unambiguously.
+
+**Acceptance criteria:**
+
+1. `PendingClarificationContext` interface (`system`, `observationId`, `question`, `candidateAnswers`) is defined in `src/v2/contracts.ts`.
+2. `V2SessionState.pendingClarification` is typed `PendingClarificationContext | null`. The compiler enforces all writers supply the full object.
+3. `coerceV2State()` coerces legacy sessions where `pendingClarification` is a string to `null` (safe: old string-only contexts cannot be re-routed correctly).
+4. The pending-observation gate reads `pendingClarification.system` directly; no insertion-order scan remains.
+5. Tests verify: (a) answer routes to the correct system when two systems are simultaneously in `collecting`; (b) legacy string value coerces to `null`.
+
+**Files to create/modify:** `src/v2/contracts.ts`, `src/chat/chatServiceV2.ts`, `src/v2/policyEngine.ts` (pending-observation gate), `src/v2/stateMachine.ts` (coerce).
+
+---
+
 ## Summary table
 
 | ID | Summary | Sprint | Blocking on |
@@ -475,3 +495,4 @@ Each golden test must assert: (a) the extracted facts produced, (b) the readines
 | REQ-F1 | V2 failure rate audit dashboard | 7 | REQ-E2 |
 | REQ-F2 | Structured_live watchlist in CI | 7 | REQ-B1 |
 | REQ-BIL-001 | Bilateral upper/lower limb full assessment | 1–2 (backfill) | — |
+| REQ-H2 | Replace pendingClarification string with PendingClarificationContext | 11 | — |

@@ -19,7 +19,9 @@ import {
   getInstanceById,
   getInstances,
   pivotBilateralToNextSide,
+  setActiveClarificationSystem,
   setBilateralQueue,
+  setClaimComponentOverride,
   setPendingClarification,
   setPendingConfirmation,
   setPendingExtractorComparison,
@@ -50,6 +52,8 @@ import { buildLegacyConfirmation, buildStructuredConfirmation } from "../v2/conf
 import { V2_SYSTEM_REGISTRY, isStructuredLiveSystem } from "../v2/systemRegistry.js";
 import { tryResolvePendingObservation } from "../v2/pendingObservationResolver.js";
 import { buildNextClaimStep } from "../v2/claimPlan.js";
+import { projectClaimPlan } from "../v2/claimPlanProjection.js";
+import { submitClaim, reopenClaim, isClaimSubmitted } from "../v2/claimSubmission.js";
 import { randomUUID } from "crypto";
 import type { PendingObservation, ReadinessResult } from "../v2/contracts.js";
 
@@ -253,6 +257,15 @@ interface ProcessChatV2Options {
    *  Gemini-backed client (constructed at first invocation when the
    *  feature flag is on). Tests pass a stub. */
   semanticModelClient?: SemanticModelClient;
+  /**
+   * Optional chip action that bypasses normal routing (ADR-0006/0007).
+   * - "submit_claim": doctor clicked the Submit chip — attempt claim submission.
+   * - "add_system": doctor clicked "+ add" in the overflow menu — add systemToAdd
+   *   to the session's detection order with a "detected" override.
+   */
+  action?: "submit_claim" | "add_system";
+  /** System to add when action === "add_system". */
+  systemToAdd?: string;
 }
 
 /** Issue #12 / RC-3: in the chat path, the consensus orchestrator runs by
@@ -408,6 +421,57 @@ export async function processChatV2(
   const shadow = Boolean(opts?.shadow);
   const { raw, state: initialLoadedState } = loadV2State(sessionId);
 
+  // ── Chip action fast-paths (ADR-0006/0007) ─────────────────────────────────
+  // These are direct UI actions (chip clicks from the sub-header) that bypass
+  // the normal routing and extraction pipeline.
+  if (opts?.action === "add_system") {
+    const VALID_SYSTEM_KEYS = new Set<string>([
+      "upper_limb", "lower_limb", "spine", "respiratory", "renal",
+      "gastro_digestive", "hearing", "cns", "visual",
+    ]);
+    const sys = opts.systemToAdd;
+    if (!sys || !VALID_SYSTEM_KEYS.has(sys)) {
+      const invalidState = initialLoadedState;
+      const enveloped = toSystemStateEnvelope(invalidState, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      return {
+        sessionId,
+        message: `"${sys ?? ""}" is not a recognised system key.`,
+        route: { operation: "clarify", systems: [], confidence: 0, reasons: ["invalid_system_key"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: true,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "invalid_system_key", requiresConfirmation: false, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: projectClaimPlan(invalidState),
+      };
+    }
+    const gk = sys as GatiodSystemKey;
+    let addedState = setClaimComponentOverride(initialLoadedState, gk, {
+      status: "detected",
+      source: "user_choice",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!addedState.detectionOrder.includes(gk)) {
+      addedState = { ...addedState, detectionOrder: [...addedState.detectionOrder, gk] };
+    }
+    const enveloped = toSystemStateEnvelope(addedState, raw);
+    saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+    logAuditEvent({ sessionId, userId: opts?.userId, eventType: "v2_add_system", eventData: { system: gk } });
+    return {
+      sessionId,
+      message: `${gk.toUpperCase().replace(/_/g, " ")} added to this claim. Please provide the clinical findings for ${SYSTEM_DISPLAY_NAMES[gk] ?? gk}.`,
+      route: { operation: "assessment", systems: [gk], confidence: 1, reasons: ["add_system_action"] },
+      grounding: { citations: [], ontologyMatches: [] },
+      needsClarification: true,
+      toolPlan: { proposed: [], actual: [] },
+      policy: { action: "clarify", reason: "system_added_awaiting_findings", requiresConfirmation: false, proposedTools: [] },
+      shadowMode: shadow,
+      claimPlan: projectClaimPlan(addedState),
+    };
+  }
+
   // `loadedState` and `normalized` may be substituted by the consensus
   // orchestrator (Slice F): when the doctor accepts a semantic interpretation,
   // extraction runs against `pendingConsensus.sourceText`, not the doctor's
@@ -497,6 +561,7 @@ export async function processChatV2(
             proposedTools: [],
           },
           shadowMode: shadow,
+          claimPlan: projectClaimPlan(loadedState),
         };
       }
 
@@ -541,6 +606,7 @@ export async function processChatV2(
             proposedTools: [],
           },
           shadowMode: shadow,
+          claimPlan: projectClaimPlan(newState),
         };
       }
 
@@ -601,6 +667,7 @@ export async function processChatV2(
   // to route correctly. Resolve against the pending observation first.
   const pendingSystem: GatiodSystemKey | undefined =
     loadedState.pendingConfirmation?.system ??
+    loadedState.activeClarificationSystem ??
     (Object.entries(loadedState.systems) as [GatiodSystemKey, typeof loadedState.systems[GatiodSystemKey]][])
       .find(([, s]) => s.pendingObservations.length > 0)?.[0];
 
@@ -627,6 +694,7 @@ export async function processChatV2(
         toolPlan: { proposed: [], actual: [] },
         policy: { action: "clarify", reason: "pending_observation_unresolved", requiresConfirmation: false, clarificationQuestion: clarification, chips: resolution.candidateAnswers, proposedTools: [] },
         shadowMode: shadow,
+        claimPlan: projectClaimPlan(loadedState),
       };
     }
     if (resolution.resolved) {
@@ -650,6 +718,7 @@ export async function processChatV2(
           toolPlan: { proposed: [], actual: [] },
           policy: { action: "clarify", reason: "next_pending_observation", requiresConfirmation: false, clarificationQuestion: next.clarificationQuestion, chips: next.candidateAnswers, proposedTools: [] },
           shadowMode: shadow,
+          claimPlan: projectClaimPlan(resolution.state),
         };
       }
 
@@ -796,6 +865,7 @@ export async function processChatV2(
             toolPlan: { proposed: [], actual: [] },
             policy: { action: "clarify", reason: "readiness_check_failed_after_obs_resolve", requiresConfirmation: false, clarificationQuestion: clarification, chips: readiness.candidateAnswers, proposedTools: [] },
             shadowMode: shadow,
+            claimPlan: projectClaimPlan(resolvedState),
           };
         }
       }
@@ -827,6 +897,7 @@ export async function processChatV2(
             toolPlan: { proposed: [], actual: [] },
             policy: { action: "clarify", reason: `Confirmation builder rejected facts: ${built.reason}`, requiresConfirmation: false, clarificationQuestion: fallback, proposedTools: [] },
             shadowMode: shadow,
+            claimPlan: projectClaimPlan(resolvedState),
           };
         }
         confirmMsg = built.message;
@@ -854,6 +925,7 @@ export async function processChatV2(
             toolPlan: { proposed: [], actual: [] },
             policy: { action: "clarify", reason: `Legacy confirmation builder rejected facts: ${legacyResult.reason}`, requiresConfirmation: false, clarificationQuestion: fallback, proposedTools: [] },
             shadowMode: shadow,
+            claimPlan: projectClaimPlan(resolvedState),
           };
         }
         confirmMsg = legacyResult.message;
@@ -893,6 +965,7 @@ export async function processChatV2(
         toolPlan: { proposed: [], actual: [] },
         policy: { action: "clarify", reason: "observation_resolved_pending_confirmation", requiresConfirmation: true, clarificationQuestion: confirmMsg, chips: ["Confirm and calculate", "Edit findings"], proposedTools: [] },
         shadowMode: shadow,
+        claimPlan: projectClaimPlan(resolvedState),
       };
     }
   }
@@ -995,6 +1068,7 @@ export async function processChatV2(
         proposedTools: [],
       },
       shadowMode: shadow,
+      claimPlan: projectClaimPlan(orchestratorResult.state),
     };
   }
 
@@ -1036,10 +1110,12 @@ export async function processChatV2(
 
   // Determine the primary system. Priority: forced extraction target from
   // semantic consensus (accepted_system_first), then pending confirmation,
-  // then router output (ADR-0003 §4).
+  // then active clarification hint (set by clarify_system handoffs to prevent
+  // leakage back to the just-completed system), then router output (ADR-0003 §4).
   const primarySystem: GatiodSystemKey | undefined =
     forcedExtractionTarget ??
     loadedState.pendingConfirmation?.system ??
+    loadedState.activeClarificationSystem ??
     route.systems[0];
 
   // ── V2-007b: extraction-skip on confirmation reply ─────────────────────────
@@ -1062,6 +1138,13 @@ export async function processChatV2(
   }
 
   if (extractionTargets.length > 0 && !confirmationReply) {
+    // Extraction is running for real this turn — clear the clarification
+    // routing hint so it doesn't persist past the turn where the doctor
+    // actually provided clinical details.
+    if (nextState.activeClarificationSystem && extractionTargets.includes(nextState.activeClarificationSystem)) {
+      nextState = setActiveClarificationSystem(nextState, undefined);
+    }
+
     // Whether a comparison offer was stored this turn. Once true, subsequent
     // shadow-capable systems fall back to calibration-only logging to avoid
     // presenting multiple comparison dialogs in a single turn.
@@ -1314,6 +1397,7 @@ export async function processChatV2(
         proposedTools: [],
       },
       shadowMode: shadow,
+      claimPlan: projectClaimPlan(nextState),
     };
   }
 
@@ -1704,6 +1788,10 @@ export async function processChatV2(
               });
             } else {
               nextState = setPendingClarification(nextState, handoff.appendMessage);
+              // Track the active system so subsequent turns route to it rather
+              // than defaulting back to the router's output (which may re-pick
+              // the just-completed system for ambiguous clinical terms).
+              nextState = setActiveClarificationSystem(nextState, handoff.system);
             }
 
             logAuditEvent({
@@ -1808,5 +1896,6 @@ export async function processChatV2(
     toolPlan: { proposed, actual },
     policy,
     shadowMode: shadow,
+    claimPlan: projectClaimPlan(nextState),
   };
 }

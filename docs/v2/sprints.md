@@ -290,6 +290,54 @@ The pattern is the same per system: build the four capability components (extrac
 
 ---
 
+## Sprint 11 — PendingClarificationContext Migration (ADR-0005) — NOT STARTED
+
+**Goal:** Replace `V2SessionState.pendingClarification: string | null` with `PendingClarificationContext` to fix silent multi-system answer mis-routing (the pending-observation gate was resolving against insertion order, not the system that asked the question).
+
+**Read first:** [ADR-0005](../adr/0005-pending-clarification-context.md).
+
+**Why:** With multiple systems in `collecting` simultaneously, a doctor's answer intended for `lower_limb` can be silently consumed by `upper_limb`'s open observation if `upper_limb` appears first in `Object.entries()`. The rich context object carries `system` and `observationId` so the gate routes unambiguously.
+
+### Tickets
+
+| Ticket | Output | Status |
+|---|---|---|
+| **V2-1101** | Add `PendingClarificationContext` interface to `src/v2/contracts.ts`. Update `V2SessionState.pendingClarification` to `PendingClarificationContext \| null`. Update `coerceV2State()` to coerce old string values to `null`. Update all writers (`policyEngine.ts`, `chatServiceV2.ts`) to supply the full context. Compiler enforces completeness. (REQ-H2) | NOT STARTED |
+| **V2-1102** | Tests: clarification answers route to the correct system even when two systems are simultaneously in `collecting`. Coercion test: a session serialised with `pendingClarification: "some question"` coerces cleanly to `null`. | NOT STARTED |
+
+**Exit criterion:** `pendingClarification: string | null` removed from `V2SessionState`. All pending-observation gate paths read `pendingClarification.system`. All V2-1102 tests pass.
+
+---
+
+## Sprint 12 — Multi-System Claim Completion (ADR-0006, ADR-0007) — ✓ DONE
+
+**Goal:** Introduce doctor-affirmed claim submission as a first-class state transition (ADR-0006) and meta-intents as a deterministic, LLM-free routing class for navigation utterances (ADR-0007). All 14 implementation slices are complete.
+
+**Read first:** [ADR-0006](../adr/0006-claim-submission-state-transition.md), [ADR-0007](../adr/0007-meta-intents-deterministic-routing.md), [PRD](.scratch/multi-system-claim-completion/PRD.md).
+
+### Tickets
+
+| Ticket | Output | Status |
+|---|---|---|
+| **V2-1201** | ADR-0006, ADR-0007, and CONTEXT.md additions for claim submission and meta-intents. `docs/v2/sprints.md` sprint section referencing both ADR IDs. `npm run docs:verify` passes. | ✓ DONE |
+| **V2-1202** | Claim plan projection: pure-function `claimPlanProjection(state)` → `ClaimPlanView`. Chat API envelope includes `ClaimPlanView` in every response. `ClaimPlanSubHeader` component slotted between AppBar and ChatPanel. Single-pill render for the first detected system. (`src/v2/claimPlanProjection.ts`, `web/src/components/ClaimPlanSubHeader.tsx`) | ✓ DONE |
+| **V2-1203** | Multi-pill detection order: sub-header renders all detected systems in `detectionOrder` order, each pill showing system name and status badge. | ✓ DONE |
+| **V2-1204** | Pill peek and jump: hovering a system pill shows a summary of its current facts; clicking a `calculated` pill jumps the chat context to that system. | ✓ DONE |
+| **V2-1205** | Transitional legacy pill class: pills for systems still on the legacy path render with a distinct visual treatment so the doctor can see which systems are V2-assessed vs legacy-assessed. | ✓ DONE |
+| **V2-1206** | Add system overflow: when ≥6 system pills are present, overflow into a `+N more` collapsed pill with an expand toggle. | ✓ DONE |
+| **V2-1207** | Submit single system: `canSubmit(state)` eligibility check; Submit chip hidden until eligibility met; `submitClaim(state)` fires `claim_submitted` audit event for a single-system claim; post-submit lock activates. (`src/v2/claimSubmission.ts`) | ✓ DONE |
+| **V2-1208** | Submit multi-system GCVC: Submit chip for multi-system claims triggers the existing `assess_global_cvc` confirmation card; confirming the card fires `claim_submitted` with `finalPiPercent`. | ✓ DONE |
+| **V2-1209** | Post-submit lock and reopen: `policyEngine.ts` short-circuits all operations except `lookup` and `meta:status` once `claimSubmittedAt` is set; `[Reopen this claim]` chip fires `claim_reopened` audit event and clears `claimSubmittedAt`. (HITL: reopen semantics sign-off) | ✓ DONE |
+| **V2-1210** | Meta-intents module: `classifyMetaIntent(utterance)` with four pattern sets (`status`, `skip_system`, `jump_to_system`, `finalise_claim`). Placed before semantic gate in pipeline. Chip clicks bypass classifier. `policyEngine.ts` dispatches on `metaIntent.kind`. (`src/v2/metaIntents.ts`) | ✓ DONE |
+| **V2-1211** | Save-point acknowledgment: after each system reaches `calculated`, the assistant emits a compact save-point message so the doctor has a clear visual marker and can pause safely. | ✓ DONE |
+| **V2-1212** | Stale confirmation diff: when a facts-hash mismatch is detected at confirmation time, surface a structured diff of the changed slots so the doctor can see exactly what changed before re-confirming. (`src/v2/staleConfirmationDiff.ts`) | ✓ DONE |
+| **V2-1213** | Inline plan of attack: on first multi-system detection, render a concise plan-of-attack message listing detected systems and their estimated slot counts so the doctor can plan the session. | ✓ DONE |
+| **V2-1214** | Narrator-only prompt hardening: `promptConstraints.ts` enforces that the narrator role never leaks internal state keys or V2 architecture terms into the doctor-facing transcript. (`src/chat/promptConstraints.ts`) | ✓ DONE |
+
+**Exit criterion:** All 14 slices shipped. `claim_submitted` and `claim_reopened` audit events present in production. Meta-intent routing deterministic for all four pattern sets. `npm run docs:verify` passes.
+
+---
+
 # Pattern for any new system migration
 
 When migrating system `X` after Sprint 1 (and before LLM extractor takes over per Sprint 9):
@@ -335,3 +383,4 @@ Under [ADR-0004](../adr/0004-llm-slot-extractor-and-slot-schema.md), once the LL
 | REQ-F1 — Audit dashboard | 10 | V2-601 |
 | REQ-F2 — CI watchlist | 10 | V2-1002 |
 | REQ-BIL-001 — Bilateral limb assessment | 1–2 (backfill) | — |
+| REQ-H2 — PendingClarificationContext migration | 11 | V2-1101 |
