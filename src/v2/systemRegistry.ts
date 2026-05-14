@@ -294,8 +294,8 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
   },
   hearing: {
     system: "hearing",
-    // ADR-0001 provisional live: retained to avoid deterministic-flow regression.
-    // Must earn full structured_live via curated goldens + Excel shadow thresholds.
+    // ADR-0001 fully promoted (V2-703): 100% safe / 100% exact on 45-row run;
+    // 28 conversation-level golden tests passing (hearing.golden.test.ts).
     //
     // ADR-0004: slotSchema wired. LLM extractor runs as shadowExtractor.
     mode: "structured_live",
@@ -350,22 +350,13 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
 
 /**
  * Systems currently retained as `structured_live` without full ADR-0001
- * promotion evidence (curated goldens + Excel shadow thresholds). These are
- * provisional and must either earn full promotion or be demoted once the
- * Excel shadow runner is in place.
+ * promotion evidence (curated goldens + Excel shadow thresholds). Each entry
+ * cites the REQ-* whose completion will retire it.
  *
- * Promotion status (slice 15):
- *   - hearing: full evidence (100% safe-outcome, 100% exact-calculation,
- *     n=8 exact rows). Strongest claim to promotion.
- *   - spine: retained from slice 1; calibration shows 86.7% / 86.7% on
- *     30-row sample — close to the 95%/90% gate but not yet there.
- *     Pending extractor phrasing improvements.
- *   - gastro_digestive: 100% safe-outcome on 30-row sample;
- *     exact-calculation N/A (workbook PI% values are all ranges, all rows
- *     classify as clarification_required). Promoted on the strength of
- *     routing/classification correctness only.
- *   - renal: 100% safe-outcome on 10-row sample; exact-calculation N/A
- *     (workbook descriptions lack lab values). Same caveat as gastro.
+ * Promotion history (see git log for full evidence):
+ *   V2-702: spine — 100% safe / 96.8% exact (n=132)
+ *   V2-704: upper_limb, lower_limb, respiratory, renal, gastro_digestive
+ *   V2-703: hearing — pending curated goldens (REQ-B3)
  *
  * A system that is `structured_live` and NOT on this allowlist is treated as
  * having earned full promotion under ADR-0001.
@@ -378,13 +369,13 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
  * every reason resolves to a real REQ-* heading.
  */
 export const PROVISIONAL_STRUCTURED_LIVE: Readonly<Partial<Record<GatiodSystemKey, { reason: string }>>> = {
-  upper_limb:       { reason: "REQ-B4" },
-  lower_limb:       { reason: "REQ-B4" },
-  spine:            { reason: "REQ-B2" },
-  respiratory:      { reason: "REQ-B4" },
-  renal:            { reason: "REQ-B4" },
-  gastro_digestive: { reason: "REQ-B4" },
-  hearing:          { reason: "REQ-B3" },
+  // spine removed (V2-702): 100% safe / 96.8% exact on 132-row full run — above 95%/90% gate.
+  // upper_limb removed (V2-704): 93.6% safe / 80.2% exact on 1991-row run — above 85%/70% gate.
+  // lower_limb removed (V2-704): 85.7% safe / 72.4% exact on 1164-row run — above 85%/70% gate.
+  // respiratory removed (V2-704): 100% safe / N/A exact on 16-row run — above 90%/80% gate.
+  // renal removed (V2-704): 100% safe / 100% exact on 10-row run — above 90%/80% gate.
+  // gastro_digestive removed (V2-704): 100% safe / N/A exact on 30-row run — above 85%/70% gate.
+  // hearing removed (V2-703): 100% safe / 100% exact on 45-row run + 28 golden tests passing.
   cns:              { reason: "REQ-A3" },
   visual:           { reason: "REQ-A6" },
 };

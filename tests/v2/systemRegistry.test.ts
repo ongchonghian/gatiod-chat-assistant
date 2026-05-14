@@ -58,15 +58,24 @@ describe("system migration modes (slice-18 promotions)", () => {
 });
 
 describe("validateStructuredLivePromotion (ADR-0001 CI hook)", () => {
-  it("passes today because every structured_live system is on the provisional allowlist", () => {
+  it("allowlist mode fails for promoted systems not on PROVISIONAL_STRUCTURED_LIVE", () => {
+    // V2-703/704: 7 systems were promoted and removed from PROVISIONAL. In
+    // allowlist mode (no evidence reader), they're now flagged as failures
+    // because they're structured_live but not on the allowlist. This is
+    // expected — CI must always use evidence mode (FileCalibrationEvidenceReader).
     const result = validateStructuredLivePromotion();
-    expect(result.ok).toBe(true);
-    expect(result.failures).toEqual([]);
+    expect(result.ok).toBe(false);
+    const promotedSystems = ["spine", "upper_limb", "lower_limb", "respiratory", "renal", "gastro_digestive", "hearing"];
+    for (const sys of promotedSystems) {
+      expect(result.failures.some((f) => f.includes(sys)), `expected failure for ${sys}`).toBe(true);
+    }
   });
 
-  it("warns once per provisional system", () => {
+  it("warns once per provisional system (cns and visual)", () => {
+    // Only cns and visual remain on the PROVISIONAL allowlist.
     const result = validateStructuredLivePromotion();
     const provisionalKeys = Object.keys(PROVISIONAL_STRUCTURED_LIVE);
+    expect(provisionalKeys.sort()).toEqual(["cns", "visual"]);
     expect(result.warnings).toHaveLength(provisionalKeys.length);
     for (const system of provisionalKeys) {
       expect(
@@ -76,12 +85,9 @@ describe("validateStructuredLivePromotion (ADR-0001 CI hook)", () => {
     }
   });
 
-  it("provisional allowlist contains exactly the currently-live systems", () => {
-    const liveSystems = Object.entries(V2_SYSTEM_REGISTRY)
-      .filter(([, cap]) => cap.mode === "structured_live")
-      .map(([key]) => key)
-      .sort();
-    expect(Object.keys(PROVISIONAL_STRUCTURED_LIVE).sort()).toEqual(liveSystems);
+  it("PROVISIONAL_STRUCTURED_LIVE contains only remaining provisional systems (cns, visual)", () => {
+    // V2-703/704 removed 7 systems. Only cns (REQ-A3) and visual (REQ-A6) remain.
+    expect(Object.keys(PROVISIONAL_STRUCTURED_LIVE).sort()).toEqual(["cns", "visual"]);
   });
 });
 
