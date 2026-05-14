@@ -82,7 +82,7 @@ export type GatiodSystemKey =
   | "cns"
   | "visual";
 
-export type RouteOperation = "lookup" | "assessment" | "global_cvc" | "clarify";
+export type RouteOperation = "lookup" | "assessment" | "global_cvc" | "clarify" | "meta";
 
 export interface NormalizedToken {
   original: string;
@@ -342,6 +342,10 @@ export interface PendingGlobalCvcConfirmation {
   componentSystems: GatiodSystemKey[];
   componentValues: number[];
   createdAt: string;
+  /** True when this confirmation is part of a claim submission flow. */
+  isSubmitFlow?: boolean;
+  /** True when the doctor toggled the PTI bonus ON during the submission flow. */
+  ptiBonus?: boolean;
 }
 
 // ── Semantic consensus layer (ADR-0003) ────────────────────────────────────
@@ -813,6 +817,12 @@ export interface V2SessionState {
    * reopen (ADR-0006 §7). Absence means the claim is not yet submitted.
    */
   claimSubmittedAt?: string;
+  /**
+   * Set when the doctor triggered multi-system claim submission via the
+   * Submit chip (ADR-0006 slice #08). Tracks PTI toggle state while the
+   * doctor reviews the Components card before confirming.
+   */
+  pendingSubmitConfirmation?: { ptiEnabled: boolean };
   /**
    * Set by the multi-system handoff when the next system needs clarification
    * (not confirmation). Tracks the active system context so subsequent turns

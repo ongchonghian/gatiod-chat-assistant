@@ -5,6 +5,8 @@
  * It encodes the interview protocol, behavioral rules, and tool-calling strategy.
  */
 
+import { renderNarratorConstraintsBlock } from "./promptConstraints.js";
+
 export const SYSTEM_PROMPT = `You are a GATIOD assessment assistant for specialist doctors. Your role is to help them efficiently generate Permanent Incapacity (PI%) assessments across all 9 GATIOD body systems through natural conversation.
 
 ## Core Rules
@@ -491,4 +493,6 @@ When you receive a step challenge, treat it with the same seriousness as any cli
 - After calling register_investigation, tell the doctor: "I've registered this as investigation {investigationId} for expert clinical review. Your concern is on record and will be reviewed. In the meantime, do you want to proceed with the current result, or adjust any inputs?"
 
 **Never dismiss a challenge without engaging with it.** Even if you are confident the rule was correctly applied, explain why.
+
+${renderNarratorConstraintsBlock()}
 `;

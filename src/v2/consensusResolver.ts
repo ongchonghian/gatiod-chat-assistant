@@ -238,6 +238,48 @@ export function tryResolvePendingConsensus(
     });
   }
 
+  // ── Reorder-instruction mode ──────────────────────────────────────────────
+  // When the doctor clicked "Reorder" and awaiting === "reorder_instruction",
+  // the reply is treated as a comma-separated ordered list of system names.
+  if (pending.awaiting === "reorder_instruction") {
+    // "Cancel reorder" → restore awaiting=decision without changing detectionOrder.
+    if (/\bcancel\b.*\breorder\b|\breorder\b.*\bcancel\b/i.test(replyText)) {
+      const next = {
+        ...state,
+        pendingConsensus: { ...pending, awaiting: "decision" as const },
+      };
+      return makeResult({ resolved: true, action: "unresolved", state: next });
+    }
+    // Parse comma-separated system names using the existing synonym resolver.
+    const tokens = replyText.split(/[,;]+/).map((t) => t.trim()).filter(Boolean);
+    const resolved: GatiodSystemKey[] = [];
+    for (const token of tokens) {
+      const found = detectExplicitSystemSelection(token);
+      if (found.length > 0) resolved.push(found[0]);
+    }
+    // Validate: every candidate system must appear exactly once.
+    const candidates = new Set(pending.candidateSystems);
+    const resolvedSet = new Set(resolved);
+    const valid =
+      resolved.length === candidates.size &&
+      [...candidates].every((s) => resolvedSet.has(s));
+    if (!valid) {
+      return makeResult({
+        resolved: false,
+        action: "unresolved",
+        state,
+        message: `I couldn't map that to a valid ordering of ${pending.candidateSystems.join(", ")}. Please list all systems in your preferred order, e.g. "${pending.candidateSystems.join(", ")}".`,
+        chips: ["Cancel reorder"],
+      });
+    }
+    const next = {
+      ...state,
+      detectionOrder: resolved,
+      pendingConsensus: { ...pending, awaiting: "decision" as const },
+    };
+    return makeResult({ resolved: true, action: "accepted_all", state: next });
+  }
+
   // ── Priority 1 — rejected ─────────────────────────────────────────────────
   if (anyMatch(lower, REJECT_PATTERNS)) {
     const next = setPendingConsensus(state, null);
@@ -455,6 +497,20 @@ export function tryResolvePendingConsensus(
           stage: "awaiting_instruction",
         },
       },
+    });
+  }
+
+  // ── Priority 5.5 — reorder requested ─────────────────────────────────────
+  if (/\breorder\b/i.test(replyText) && pending.candidateSystems.length > 1) {
+    const next = {
+      ...state,
+      pendingConsensus: { ...pending, awaiting: "reorder_instruction" as const },
+    };
+    return makeResult({
+      resolved: true,
+      action: "unresolved",
+      state: next,
+      message: `In what order should I assess them? Please list the systems comma-separated, e.g. "${pending.candidateSystems.join(", ")}".`,
     });
   }
 
