@@ -3,10 +3,10 @@
   "sampleSize": 30,
   "byExpected": {
     "exact_calculation": {
-      "total": 0,
-      "matched": 0,
+      "total": 10,
+      "matched": 10,
       "observedDist": {
-        "exact_calculation": 0,
+        "exact_calculation": 10,
         "clarification_required": 0,
         "unsupported_safe_fail": 0,
         "routing_only": 0,
@@ -16,12 +16,12 @@
     },
     "clarification_required": {
       "total": 17,
-      "matched": 16,
+      "matched": 17,
       "observedDist": {
         "exact_calculation": 0,
-        "clarification_required": 16,
+        "clarification_required": 17,
         "unsupported_safe_fail": 0,
-        "routing_only": 1,
+        "routing_only": 0,
         "legacy_deferred": 0,
         "wrong_route": 0
       }
@@ -39,13 +39,13 @@
       }
     },
     "routing_only": {
-      "total": 13,
-      "matched": 13,
+      "total": 3,
+      "matched": 3,
       "observedDist": {
         "exact_calculation": 0,
-        "clarification_required": 0,
+        "clarification_required": 3,
         "unsupported_safe_fail": 0,
-        "routing_only": 13,
+        "routing_only": 0,
         "legacy_deferred": 0,
         "wrong_route": 0
       }
@@ -63,15 +63,7 @@
       }
     }
   },
-  "componentSafeOutcomeRate": 0.9666666666666667,
-  "exactCalculationRate": 0,
-  "mismatchSamples": [
-    {
-      "rowId": "SCN-1143",
-      "inputText": "Visual function: Glaucoma",
-      "expected": "clarification_required",
-      "observed": "routing_only",
-      "notes": "routed to expected system; no extraction or clarification"
-    }
-  ]
+  "componentSafeOutcomeRate": 1,
+  "exactCalculationRate": 1,
+  "mismatchSamples": []
 }
