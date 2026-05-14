@@ -192,7 +192,18 @@ export function buildNextSystemHandoff(
     case "clarify_system": {
       const sysState = state.systems[step.system];
       const obs = sysState.pendingObservations[0];
-      const chips = obs?.candidateAnswers ?? [];
+      let chips: string[] = obs?.candidateAnswers ?? [];
+      // When needs-clarification comes from the readiness validator (no pending
+      // observation, or the observation has no candidateAnswers — e.g. the
+      // "no_assessable_finding" branch), the chips never reach the ClaimStep.
+      // Re-run the validator here to recover them.
+      if (chips.length === 0) {
+        const cap = V2_SYSTEM_REGISTRY[step.system];
+        const readiness = cap?.readinessValidator?.(sysState);
+        if (readiness && !readiness.ready && readiness.candidateAnswers?.length) {
+          chips = readiness.candidateAnswers;
+        }
+      }
       return {
         system: step.system,
         appendMessage: step.message,
@@ -1133,7 +1144,12 @@ export async function processChatV2(
   if (primarySystem) {
     extractionTargets.push(primarySystem);
     for (const sys of route.systems) {
-      if (!extractionTargets.includes(sys)) extractionTargets.push(sys);
+      // Never re-extract into a system that has already been calculated — doing
+      // so would generate a spurious comparison dialog (e.g. "Spine input")
+      // in response to an answer meant for the next system in the workflow.
+      if (!extractionTargets.includes(sys) && nextState.systems[sys]?.status !== "calculated") {
+        extractionTargets.push(sys);
+      }
     }
   }
 
