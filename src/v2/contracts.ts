@@ -437,8 +437,9 @@ export interface PendingConsensus {
   candidateFindings?: SemanticCandidateFinding[];
   createdAt: string;
   /** "decision" — awaiting Proceed / Edit / Reject / Assess X first / Skip / Use legacy.
-   *  "edit_instruction" — Edit was chosen; awaiting the doctor's correction text. */
-  awaiting: "decision" | "edit_instruction";
+   *  "edit_instruction" — Edit was chosen; awaiting the doctor's correction text.
+   *  "reorder_instruction" — Reorder was chosen; awaiting a comma-separated system list. */
+  awaiting: "decision" | "edit_instruction" | "reorder_instruction";
   /** Increments after each successful re-interpretation. 0 for the first proposal. */
   revision?: number;
   /** Total number of LLM invocations attempted for this sourceText (counts

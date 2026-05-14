@@ -172,7 +172,7 @@ describe("buildGastroArgs", () => {
       expect(args.subSystem).toBe("upperDigestive");
       expect(args.selectedBracketIndex).toBe(1);
       expect(args.piPercent).toBe(15);
-      expect(r.toolName).toBe("assess_gastro_digestive");
+      expect(r.toolName).toBe("assess_gastro");
       expect(r.provenance.factsHash).toHaveLength(16);
     }
   });

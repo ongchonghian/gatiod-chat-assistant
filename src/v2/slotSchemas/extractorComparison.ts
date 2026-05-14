@@ -331,10 +331,12 @@ export function buildSlotCorrectionOffer(
   const systemLabel = SYSTEM_LABELS[comparison.system] ?? comparison.system;
 
   const primarySummary = formatExtractionSummary(
+    comparison.system,
     comparison.primaryResult.extractedFactsPatch,
     comparison.primaryResult.displayValuesPatch,
   );
   const shadowSummary = formatExtractionSummary(
+    comparison.system,
     comparison.shadowResult.extractedFactsPatch,
     comparison.shadowResult.displayValuesPatch,
   );
