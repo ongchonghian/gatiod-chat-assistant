@@ -17,7 +17,10 @@
     "docs:verify": "tsx scripts/docs-verify.ts",
     "test:excel-shadow": "GATIOD_RUN_EXCEL_SCENARIOS=true vitest run tests/v2/excelScenarios",
     "test:excel-full": "GATIOD_RUN_EXCEL_SCENARIOS=true EXCEL_SCENARIO_FULL=true vitest run --testTimeout=900000 tests/v2/excelScenarios",
-    "test:semantic-shadow": "GATIOD_RUN_SEMANTIC_SHADOW=true vitest run --testTimeout=600000 tests/v2/semanticShadow"
+    "test:semantic-shadow": "GATIOD_RUN_SEMANTIC_SHADOW=true vitest run --testTimeout=600000 tests/v2/semanticShadow",
+    "calibration:run": "tsx scripts/calibration/run.ts",
+    "calibration:run:full": "tsx scripts/calibration/run.ts --full",
+    "calibration:check": "tsx scripts/calibration/run.ts --check"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

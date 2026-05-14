@@ -161,6 +161,15 @@ export function renderSemanticConsensus(
     lines.push("");
   }
 
+  // For multi-system claims, append the plan-of-attack ordering line (slice #13).
+  if (candidateSystems.length > 1) {
+    const orderList = candidateSystems
+      .map((sys, i) => `${i + 1}) ${SYSTEM_DISPLAY_NAMES[sys] ?? sys}`)
+      .join(", ");
+    lines.push(`I'll work through these in this order: ${orderList}`);
+    lines.push("");
+  }
+
   lines.push("How would you like to proceed?");
 
   const chips = buildChipsForKind(kind, interpretation);

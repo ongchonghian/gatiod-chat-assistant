@@ -53,7 +53,9 @@ import { V2_SYSTEM_REGISTRY, isStructuredLiveSystem } from "../v2/systemRegistry
 import { tryResolvePendingObservation } from "../v2/pendingObservationResolver.js";
 import { buildNextClaimStep } from "../v2/claimPlan.js";
 import { projectClaimPlan } from "../v2/claimPlanProjection.js";
-import { submitClaim, reopenClaim, isClaimSubmitted } from "../v2/claimSubmission.js";
+import { submitClaim, reopenClaim, isClaimSubmitted, canSubmit } from "../v2/claimSubmission.js";
+import { classifyMetaIntent } from "../v2/metaIntents.js";
+import { getCalculatedSystems } from "../v2/globalCvc.js";
 import { randomUUID } from "crypto";
 import type { PendingObservation, ReadinessResult } from "../v2/contracts.js";
 
@@ -481,6 +483,307 @@ export async function processChatV2(
       shadowMode: shadow,
       claimPlan: projectClaimPlan(addedState),
     };
+  }
+
+  // ── submit_claim action fast-path (ADR-0006 slice #08) ────────────────────
+  // Doctor clicked the Submit chip. For multi-system claims: present the
+  // Components card (GCVC review step). For single-system: mark submitted.
+  if (opts?.action === "submit_claim") {
+    const submitGuard = canSubmit(initialLoadedState);
+    if (!submitGuard.ok) {
+      if (submitGuard.alreadySubmitted) {
+        return {
+          sessionId,
+          message: "This claim has already been submitted.",
+          route: { operation: "clarify", systems: [], confidence: 1, reasons: ["already_submitted"] },
+          grounding: { citations: [], ontologyMatches: [] },
+          needsClarification: true,
+          toolPlan: { proposed: [], actual: [] },
+          policy: { action: "clarify", reason: "already_submitted", requiresConfirmation: false, proposedTools: [] },
+          shadowMode: shadow,
+          claimPlan: projectClaimPlan(initialLoadedState),
+        };
+      }
+      const blocking = submitGuard.blockingSystems.map((s) => SYSTEM_DISPLAY_NAMES[s] ?? s).join(", ");
+      return {
+        sessionId,
+        message: `Cannot submit yet — ${blocking} ${submitGuard.blockingSystems.length === 1 ? "has" : "have"} not been calculated.`,
+        route: { operation: "clarify", systems: submitGuard.blockingSystems, confidence: 1, reasons: ["submit_blocked"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: true,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "submit_blocked", requiresConfirmation: false, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: projectClaimPlan(initialLoadedState),
+      };
+    }
+    // Ready to submit — build the Components card.
+    const components = getCalculatedSystems(initialLoadedState);
+    const lines = [
+      "**Components:**",
+      ...components.map((c) => `- ${SYSTEM_DISPLAY_NAMES[c.system] ?? c.system}: ${c.piPercent}%`),
+      "",
+      "Confirm claim submission?",
+    ];
+    const submitState: typeof initialLoadedState = {
+      ...initialLoadedState,
+      pendingSubmitConfirmation: { ptiEnabled: false },
+    };
+    const enveloped = toSystemStateEnvelope(submitState, raw);
+    saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+    return {
+      sessionId,
+      message: lines.join("\n"),
+      route: { operation: "clarify", systems: components.map((c) => c.system), confidence: 1, reasons: ["submit_claim_cvc_offer"] },
+      grounding: { citations: [], ontologyMatches: [] },
+      needsClarification: true,
+      suggestedChips: ["Confirm submission", "Add PTI bonus (+25%)"],
+      toolPlan: { proposed: [], actual: [] },
+      policy: { action: "clarify", reason: "submit_claim_cvc_offer", requiresConfirmation: true, proposedTools: [] },
+      shadowMode: shadow,
+      claimPlan: projectClaimPlan(submitState),
+    };
+  }
+
+  // ── Pending submit confirmation flow (ADR-0006 slice #08) ─────────────────
+  // When the doctor is reviewing the Components card, intercept PTI toggle
+  // and "Confirm submission" before normal routing runs.
+  if (initialLoadedState.pendingSubmitConfirmation) {
+    const msg = userMessage.trim().toLowerCase();
+    if (/\bconfirm\s+submission\b/i.test(userMessage)) {
+      const ptiEnabled = initialLoadedState.pendingSubmitConfirmation.ptiEnabled;
+      const components = getCalculatedSystems(initialLoadedState);
+      const basePi = components.reduce((acc, c) => {
+        // Simple combined value — in practice the CVC formula is more complex,
+        // but for the submit path we just sum as a stand-in.
+        return acc === 0 ? c.piPercent : acc + (1 - acc / 100) * c.piPercent;
+      }, 0 as number);
+      const finalPi = ptiEnabled ? Math.min(100, basePi * 1.25) : basePi;
+      const submittedState = submitClaim({
+        ...initialLoadedState,
+        pendingSubmitConfirmation: undefined,
+      });
+      const enveloped = toSystemStateEnvelope(submittedState, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      logAuditEvent({
+        sessionId,
+        userId: opts?.userId,
+        eventType: "v2_claim_submitted",
+        eventData: { finalPiPercent: Math.round(finalPi * 10) / 10, ptiEnabled },
+      });
+      const confirmMsg = ptiEnabled
+        ? `PTI bonus applied.\n\n**Claim submitted.** Final PI%: ${Math.round(finalPi * 10) / 10}%`
+        : `**Claim submitted.**`;
+      return {
+        sessionId,
+        message: confirmMsg,
+        route: { operation: "clarify", systems: [], confidence: 1, reasons: ["claim_submitted"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: false,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "claim_submitted", requiresConfirmation: false, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: projectClaimPlan(submittedState),
+      };
+    }
+    if (/\badd\s+pti\b|\bpti\s+bonus\b/i.test(userMessage)) {
+      const toggled: typeof initialLoadedState = {
+        ...initialLoadedState,
+        pendingSubmitConfirmation: { ptiEnabled: true },
+      };
+      const enveloped = toSystemStateEnvelope(toggled, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      return {
+        sessionId,
+        message: "PTI bonus is ON (+25% applied to final combined PI).",
+        route: { operation: "clarify", systems: [], confidence: 1, reasons: ["pti_toggled_on"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: true,
+        suggestedChips: ["Confirm submission", "Remove PTI bonus"],
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "pti_toggled_on", requiresConfirmation: true, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: projectClaimPlan(toggled),
+      };
+    }
+    if (/\bremove\s+pti\b|\bpti\s+off\b/i.test(userMessage)) {
+      const toggled: typeof initialLoadedState = {
+        ...initialLoadedState,
+        pendingSubmitConfirmation: { ptiEnabled: false },
+      };
+      const enveloped = toSystemStateEnvelope(toggled, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      return {
+        sessionId,
+        message: "PTI bonus removed.",
+        route: { operation: "clarify", systems: [], confidence: 1, reasons: ["pti_toggled_off"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: true,
+        suggestedChips: ["Confirm submission", "Add PTI bonus (+25%)"],
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "pti_toggled_off", requiresConfirmation: true, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: projectClaimPlan(toggled),
+      };
+    }
+  }
+
+  // ── Post-submit lock (ADR-0006 slice #09) ─────────────────────────────────
+  // When a claim is submitted, intercept all messages except Reopen/Start new.
+  if (isClaimSubmitted(initialLoadedState)) {
+    if (/\breopen\b/i.test(userMessage)) {
+      const result = reopenClaim(initialLoadedState);
+      const enveloped = toSystemStateEnvelope(result.state, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      logAuditEvent({
+        sessionId,
+        userId: opts?.userId,
+        eventType: "v2_claim_reopened",
+        eventData: { previousSubmittedAt: result.originalSubmittedAt },
+      });
+      return {
+        sessionId,
+        message: "Claim reopened. You can continue adding or editing findings.",
+        route: { operation: "clarify", systems: [], confidence: 1, reasons: ["claim_reopened"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: false,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "claim_reopened", requiresConfirmation: false, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: projectClaimPlan(result.state),
+      };
+    }
+    if (/\bstart\s+new\s+claim\b/i.test(userMessage)) {
+      // Reset to fresh session state.
+      const fresh = { ...defaultV2SessionState() };
+      const enveloped = toSystemStateEnvelope(fresh, {});
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      return {
+        sessionId,
+        message: "Session reset. Please describe the new claim.",
+        route: { operation: "clarify", systems: [], confidence: 1, reasons: ["new_claim"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: false,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "new_claim", requiresConfirmation: false, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: projectClaimPlan(fresh),
+      };
+    }
+    // Soft redirect.
+    const submittedAt = initialLoadedState.claimSubmittedAt ?? "";
+    return {
+      sessionId,
+      message: `This claim was submitted at ${submittedAt}. Would you like to reopen it to make changes, or start a new claim?`,
+      route: { operation: "clarify", systems: [], confidence: 1, reasons: ["post_submit_lock"] },
+      grounding: { citations: [], ontologyMatches: [] },
+      needsClarification: true,
+      suggestedChips: ["Reopen this claim", "Start new claim"],
+      toolPlan: { proposed: [], actual: [] },
+      policy: { action: "clarify", reason: "post_submit_lock", requiresConfirmation: false, proposedTools: [] },
+      shadowMode: shadow,
+      claimPlan: projectClaimPlan(initialLoadedState),
+    };
+  }
+
+  // ── Meta-intent routing (ADR-0007 slice #10) ──────────────────────────────
+  // Deterministic navigation intents short-circuit the extraction pipeline.
+  const meta = classifyMetaIntent(userMessage);
+  if (meta) {
+    if (meta.kind === "status") {
+      const plan = projectClaimPlan(initialLoadedState);
+      const lines = ["**Claim plan:**"];
+      for (const sys of plan.systems) {
+        const label = SYSTEM_DISPLAY_NAMES[sys.system as GatiodSystemKey] ?? sys.system;
+        if (sys.status === "calculated" && typeof sys.subtotalPercent === "number") {
+          lines.push(`- ${label}: ✓ ${sys.subtotalPercent}%`);
+        } else {
+          lines.push(`- ${label}: ${sys.status}`);
+        }
+      }
+      if (plan.systems.length === 0) lines.push("No systems detected yet.");
+      return {
+        sessionId,
+        message: lines.join("\n"),
+        route: { operation: "meta", systems: [], confidence: 1, reasons: ["meta_status"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: false,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "meta_status", requiresConfirmation: false, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: plan,
+      };
+    }
+
+    if (meta.kind === "skip_system") {
+      const sys = meta.system;
+      const skipState = setClaimComponentOverride(initialLoadedState, sys, {
+        status: "skipped_by_user",
+        source: "user_choice",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const enveloped = toSystemStateEnvelope(skipState, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      const label = SYSTEM_DISPLAY_NAMES[sys] ?? sys;
+      return {
+        sessionId,
+        message: `${label} skipped.`,
+        route: { operation: "meta", systems: [sys], confidence: 1, reasons: ["meta_skip"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: false,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "meta_skip", requiresConfirmation: false, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: projectClaimPlan(skipState),
+      };
+    }
+
+    if (meta.kind === "finalise_claim") {
+      const guard = canSubmit(initialLoadedState);
+      if (!guard.ok) {
+        const blocking = guard.alreadySubmitted
+          ? "already submitted"
+          : (guard.blockingSystems.map((s) => SYSTEM_DISPLAY_NAMES[s] ?? s).join(", ") + " not yet calculated");
+        return {
+          sessionId,
+          message: `Cannot finalise claim — ${blocking}.`,
+          route: { operation: "meta", systems: [], confidence: 1, reasons: ["meta_finalise_blocked"] },
+          grounding: { citations: [], ontologyMatches: [] },
+          needsClarification: true,
+          toolPlan: { proposed: [], actual: [] },
+          policy: { action: "clarify", reason: "meta_finalise_blocked", requiresConfirmation: false, proposedTools: [] },
+          shadowMode: shadow,
+          claimPlan: projectClaimPlan(initialLoadedState),
+        };
+      }
+      const components = getCalculatedSystems(initialLoadedState);
+      const singlePi = components.length === 1 ? components[0].piPercent : null;
+      const submitted = submitClaim(initialLoadedState);
+      const enveloped = toSystemStateEnvelope(submitted, raw);
+      saveSessionSystemStates(sessionId, enveloped, { userId: opts?.userId, claimId: opts?.claimId });
+      logAuditEvent({
+        sessionId,
+        userId: opts?.userId,
+        eventType: "v2_claim_submitted",
+        eventData: { via: "meta_finalise_claim" },
+      });
+      const finalMsg = singlePi !== null
+        ? `**Claim submitted.**\n\nFinal PI%: ${singlePi}%`
+        : `**Claim submitted.**`;
+      return {
+        sessionId,
+        message: finalMsg,
+        route: { operation: "meta", systems: [], confidence: 1, reasons: ["meta_finalise"] },
+        grounding: { citations: [], ontologyMatches: [] },
+        needsClarification: false,
+        toolPlan: { proposed: [], actual: [] },
+        policy: { action: "clarify", reason: "meta_finalise", requiresConfirmation: false, proposedTools: [] },
+        shadowMode: shadow,
+        claimPlan: projectClaimPlan(submitted),
+      };
+    }
+    // jump_to_system — fall through to normal routing with the system seeded.
   }
 
   // `loadedState` and `normalized` may be substituted by the consensus

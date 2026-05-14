@@ -12,32 +12,10 @@
 // `npm run test:excel-shadow` first to refresh evidence; commit the
 // resulting *.calibration.generated.json files.
 
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import {
-  type PromotionEvidence,
-  validateStructuredLivePromotion,
-} from "../src/v2/systemRegistry.js";
-import type { GatiodSystemKey } from "../src/v2/contracts.js";
+import { validateStructuredLivePromotion } from "../src/v2/systemRegistry.js";
+import { FileCalibrationEvidenceReader } from "./calibration/fileCalibrationEvidenceReader.js";
 
-const fileEvidence: PromotionEvidence = {
-  loadCalibration(system) {
-    const path = resolve(`tests/v2/excelScenarios/${system}.calibration.generated.json`);
-    if (!existsSync(path)) return null;
-    const raw = JSON.parse(readFileSync(path, "utf8")) as {
-      sampleSize: number;
-      componentSafeOutcomeRate: number;
-      exactCalculationRate: number;
-      byExpected: { exact_calculation: { total: number } };
-    };
-    return {
-      sampleSize: raw.sampleSize,
-      componentSafeOutcomeRate: raw.componentSafeOutcomeRate,
-      exactCalculationRate: raw.exactCalculationRate,
-      exactRowCount: raw.byExpected?.exact_calculation?.total ?? 0,
-    };
-  },
-};
+const fileEvidence = new FileCalibrationEvidenceReader();
 
 function main(): void {
   const result = validateStructuredLivePromotion(fileEvidence);

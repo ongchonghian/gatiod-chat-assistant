@@ -87,7 +87,7 @@ export function buildGastroArgs(facts: V2SystemFacts): BuildResult<GastroValue> 
 
   return {
     ok: true,
-    toolName: "assess_gastro_digestive",
+    toolName: "assess_gastro",
     args: parsed.data,
     warnings: [],
     provenance: { userSupplied, builderZeroFilled, factsHash: hashExtractedFacts(facts) },

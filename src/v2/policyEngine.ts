@@ -1,4 +1,5 @@
 import type {
+  GatiodSystemKey,
   GroundingResult,
   NormalizedUtterance,
   PolicyDecision,
@@ -30,7 +31,7 @@ const READINESS_SHADOW_ENABLED = process.env.GATIOD_READINESS_SHADOW === "true";
 
 function runUpperLimbReadinessShadow(
   primaryResult: ReadinessResult,
-  systemState: V2SessionState["systems"][string],
+  systemState: V2SessionState["systems"][GatiodSystemKey],
   onShadowAudit: (event: ShadowAuditEvent) => void,
 ): void {
   try {

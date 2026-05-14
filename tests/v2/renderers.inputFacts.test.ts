@@ -18,14 +18,14 @@ import type { V2SystemState, V2SystemFacts } from "../../src/v2/contracts.js";
 
 function makeState(facts: V2SystemFacts): V2SystemState {
   return {
-    status: "ready_to_calculate",
+    status: "calculated",
     completeness: 1,
     pendingFields: [],
     slotSignals: {},
     extractedValues: {},
     extractedFacts: facts,
     pendingObservations: [],
-    confirmation: { factsHash: "", confirmedAt: "", confirmedFacts: {} },
+    confirmation: { status: "not_confirmed", factsHash: "", confirmedAt: "" },
     piPercent: null,
     updatedAt: new Date().toISOString(),
   };

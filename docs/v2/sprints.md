@@ -17,7 +17,7 @@ V2 replaces the legacy Gemini-driven flow with a deterministic, structured-fact-
 | Phase | Goal | Sprint | ADR / REQ | Status |
 |---|---|---|---|---|
 | **1 — Per-system migration** | Move all 9 GATIOD systems from `legacy` to `structured_live` via the four-component pipeline (extractor, readiness, argBuilder, renderer) | Sprints 1–6 | ADR-0001, ADR-0002 | ✓ COMPLETE (2026-05-14) — all 9 systems structured_live |
-| **2 — Evidence & verification backfill** | Stand up the calibration runner, write the missing conversation-level goldens, and remove every system from `PROVISIONAL_STRUCTURED_LIVE` | Sprint 7 | REQ-B1–B4, REQ-C1–C3, REQ-E2 | ◔ PARTIAL (runner missing) |
+| **2 — Evidence & verification backfill** | Stand up the calibration runner, write the missing conversation-level goldens, and remove every system from `PROVISIONAL_STRUCTURED_LIVE` | Sprint 7 | REQ-B1–B4, REQ-C1–C3, REQ-E2 | ◔ PARTIAL (B1–B4 ✓; C1–C3/E2 pending) |
 | **3 — Semantic consensus** | LLM proposal-only front door for dense multi-system narratives (ADR-0003 slices A–H) | Sprint 8 | ADR-0003, D13, D15, D16 | ✓ COMPLETE (all slices shipped; shadow grader wired; V2-809 post-rollout) |
 | **4 — Slot schema + LLM extractor** | Replace per-system regex extraction with a schema-validated LLM extractor; centralise `required_when` logic | Sprint 9 | ADR-0004 | ◔ PARTIAL (schema + shadow wired; calibration + rollout pending V2-701) |
 | **5 — Legacy disable + operational hardening** | Disconnect `slotEvaluator` from `structured_live` paths, ship the loop guard, dashboard, admin route | Sprint 10 | REQ-D1–D3, REQ-E1, REQ-F1–F2 | NOT STARTED |
@@ -59,7 +59,7 @@ Phases 2, 3, 4 are independent and can run in parallel once Phase 1 closes. Phas
 | Sprint 4 | Respiratory + Renal | ✓ COMPLETE | ADR-0001 cleared (both 100%) |
 | Sprint 5 | Gastro + Hearing | ✓ COMPLETE | ADR-0001 cleared (both 100%) |
 | Sprint 6 | CNS + Visual | ✓ COMPLETE | ADR-0002 superseded; both systems structured_live; calibration passes (2026-05-14) |
-| Sprint 7 | Evidence & Verification Backfill | NOT STARTED | Independent of Sprint 6; can start now |
+| Sprint 7 | Evidence & Verification Backfill | ◔ PARTIAL | V2-701–709 ✓; V2-710–V2-711 pending |
 | Sprint 8 | Semantic Consensus | ✓ COMPLETE | All slices A–H shipped; shadow grader wired (V2-805 ✓); V2-809 post-rollout follow-up |
 | Sprint 9 | Slot Schema + LLM Extractor | ◔ PARTIAL | V2-901/902/903 ✓; V2-904 calibration blocked on V2-701 (Sprint 7) |
 | Sprint 10 | Legacy Disable + Ops | NOT STARTED | Blocked on Sprints 6, 7 (and Sprint 8 if rollout overlaps) |
@@ -166,7 +166,7 @@ The pattern is the same per system: build the four capability components (extrac
 
 # Phase 2 — Evidence & Verification Backfill
 
-## Sprint 7 — Evidence & Verification Backfill — NOT STARTED
+## Sprint 7 — Evidence & Verification Backfill — ◔ PARTIAL (V2-701–709 ✓)
 
 **Goal:** Stand up the calibration runner as a CI gate. Close every per-system golden-test shortfall. Remove every system from `PROVISIONAL_STRUCTURED_LIVE` and replace allowlist promotion with evidence-mode promotion. Wire end-to-end failure audit events.
 
@@ -176,22 +176,22 @@ The pattern is the same per system: build the four capability components (extrac
 
 ### Track A — Calibration infrastructure (REQ-B)
 
-| Ticket | Output |
-|---|---|
-| **V2-701** | Excel shadow runner / calibration runner. `scripts/calibration/run.ts` reads `.xlsx` workbook, runs extraction → readiness → argBuilder → mocked tool chain per row, emits `SystemCalibrationReport` JSON. Runnable locally; `FileCalibrationEvidenceReader` implements `PromotionEvidence`. (REQ-B1) |
-| **V2-702** | Spine extractor phrasing improvements. Address fracture height-loss thresholds, cord-injury ASIA narrative, spondylolisthesis grade phrasings flagged by calibration. Spine must reach ≥ 95% safe / ≥ 90% exact (currently 86.7% / 86.7% on 30-row sample). Remove `"spine"` from `PROVISIONAL_STRUCTURED_LIVE`. (REQ-B2) |
-| **V2-703** | Hearing curated golden suite (20+ conversation-level scenarios) + calibration. NID path with bilateral AHL + age, age-clarification path, presbycusis deduction, injury path, tinnitus inclusion, chip vs free-text input. Remove `"hearing"` from `PROVISIONAL_STRUCTURED_LIVE`. (REQ-B3) |
-| **V2-704** | Calibration passes for the remaining 5 provisional systems (upper_limb, lower_limb, respiratory, renal, gastro_digestive). Each must reach its ADR-0001 threshold. Remove from `PROVISIONAL_STRUCTURED_LIVE`. Gastro safe-outcome check verifies the bracket offered; exact-calc N/A for gastro. (REQ-B4) |
+| Ticket | Output | Status |
+|---|---|---|
+| **V2-701** | Excel shadow runner / calibration runner. `scripts/calibration/run.ts` reads `.xlsx` workbook, runs extraction → readiness → argBuilder → mocked tool chain per row, emits `SystemCalibrationReport` JSON. Runnable locally; `FileCalibrationEvidenceReader` implements `PromotionEvidence`. (REQ-B1) | ✓ DONE (2026-05-14) |
+| **V2-702** | Spine extractor phrasing improvements. Address fracture height-loss thresholds, cord-injury ASIA narrative, spondylolisthesis grade phrasings flagged by calibration. Spine must reach ≥ 95% safe / ≥ 90% exact (currently 86.7% / 86.7% on 30-row sample). Remove `"spine"` from `PROVISIONAL_STRUCTURED_LIVE`. (REQ-B2) | ✓ DONE (2026-05-14) — extractor improvements were delivered in slices 16/17; full-run calibration confirms 100% safe / 96.8% exact (n=132). `spine` removed from `PROVISIONAL_STRUCTURED_LIVE`. |
+| **V2-703** | Hearing curated golden suite (20+ conversation-level scenarios) + calibration. NID path with bilateral AHL + age, age-clarification path, presbycusis deduction, injury path, tinnitus inclusion, chip vs free-text input. Remove `"hearing"` from `PROVISIONAL_STRUCTURED_LIVE`. (REQ-B3) | ✓ DONE (2026-05-14) — 28 golden tests (`hearing.golden.test.ts`) passing; calibration 100% safe / 100% exact (n=45). `hearing` removed from `PROVISIONAL_STRUCTURED_LIVE`. |
+| **V2-704** | Calibration passes for the remaining 5 provisional systems (upper_limb, lower_limb, respiratory, renal, gastro_digestive). Each must reach its ADR-0001 threshold. Remove from `PROVISIONAL_STRUCTURED_LIVE`. Gastro safe-outcome check verifies the bracket offered; exact-calc N/A for gastro. (REQ-B4) | ✓ DONE (2026-05-14) — all 5 systems above threshold (upper_limb 93.6%/80.2%, lower_limb 85.7%/72.4%, respiratory 100%/N/A, renal 100%/100%, gastro 100%/N/A). All removed from `PROVISIONAL_STRUCTURED_LIVE`. |
 
 ### Track B — Golden-test shortfalls (REQ-C)
 
 | Ticket | Output |
 |---|---|
-| **V2-705** | Lower-limb conversation-level golden suite (15+). ROM-only, shortening, ankylosis, nerve gate, amputation level, bilateral. (REQ-C1) |
-| **V2-706** | Respiratory conversation-level golden suite (15+). PFT-only, occupational asthma (all 3 prereqs), asbestosis/silicosis with profusion bands, VO2max path. (REQ-C1) |
-| **V2-707** | Renal conversation-level golden suite (15+). Serum-creatinine path, creatinine-clearance path, CKD-stage-only, clinical-severity-only, solitary kidney, eGFR disambiguation (→ pending observation, not a fact). (REQ-C1) |
-| **V2-708** | Gastro conversation-level golden suite (15+). Each of 4 subsystems, bracket selection, upper-GI weight-loss modifier. (REQ-C1) |
-| **V2-709** | Spine golden-suite expansion to 25+. Cauda equina, monoparesis halving, fracture height-loss thresholds, multi-region guard. (REQ-C1) |
+| **V2-705** | Lower-limb conversation-level golden suite (15+). ROM-only, shortening, ankylosis, nerve gate, amputation level, bilateral. (REQ-C1) | ✓ DONE (2026-05-14) — 27 golden tests (`lowerLimb.golden.test.ts`) passing; covers ROM, ankylosis, nerve deficit, ROM+nerve gate, AK/BK/transmetatarsal/toe amputation, shortening, bilateral, side-gate, and 4 full-pipeline end-to-end scenarios. |
+| **V2-706** | Respiratory conversation-level golden suite (15+). PFT-only, occupational asthma (all 3 prereqs), asbestosis/silicosis with profusion bands, VO2max path. (REQ-C1) | ✓ DONE (2026-05-14) — 26 golden tests (`respiratory.golden.test.ts`) passing; covers standard PFT (FVC/FEV1/DLCO/VO2/colon-phrasing), dyspnoea (all 4 levels), OA (all prereqs, workbook phrasing, high/low/oral/bronchodilator meds, missing-prereq/med/FEV1 gates), asbestosis/silicosis (radio+profusion, PFT path, below-profusion gate), multi-turn accumulation, and 4 full-pipeline end-to-end scenarios. |
+| **V2-707** | Renal conversation-level golden suite (15+). Serum-creatinine path, creatinine-clearance path, CKD-stage-only, clinical-severity-only, solitary kidney, eGFR disambiguation (→ pending observation, not a fact). (REQ-C1) | ✓ DONE (2026-05-14) — 24 golden tests (`renal.golden.test.ts`) passing; covers SC/CC/CKD/clinical-severity extraction, solitary kidney, provisional award, eGFR disambiguation pending obs, sex gate, missing-classifying-input gate, multi-turn accumulation, and 4 full-pipeline end-to-end scenarios. |
+| **V2-708** | Gastro conversation-level golden suite (15+). Each of 4 subsystems, bracket selection, upper-GI weight-loss modifier. (REQ-C1) | ✓ DONE (2026-05-14) — 19 golden tests (`gastro.golden.test.ts`) passing; covers all 4 subsystems (upperDigestive, colonicRectalAnal, liverBiliary, herniation), colonal/liver-biliary sub-paths, bracket selection (class 1–4), weight-loss modifier, missing-subsystem/bracket/PI% pending obs, and 4 full-pipeline end-to-end scenarios. Fixed `assess_gastro_digestive` → `assess_gastro` tool-name mismatch in argBuilder. |
+| **V2-709** | Spine golden-suite expansion to 25+. Cauda equina, monoparesis halving, fracture height-loss thresholds, multi-region guard. (REQ-C1) | ✓ DONE (2026-05-14) — 25 golden tests (`spine.golden.test.ts`) passing; covers region extraction (cervical/thoraco-lumbar/lumbo-sacral), fracture height-loss thresholds (lt25/gt25), ASIA grades (B/C/D), monoparesis halving modifier, bladder/bowel add-on, IVD (3.1d/3.2), spondylolysis pre-existing, chronic pain normal MRI, clarification cases (no-region readiness gate, no-severity pending obs, multi-region guard, disc-cord reroute readiness gate), and 6 full-pipeline end-to-end scenarios (5%/25%/50%/100%/35%/3% PI). |
 | **V2-710** | No-tool-no-PI guard integration tests across all 9 systems (REQ-C2) + V2 failure path tests per `structured_live` system covering `readiness_failed`, `schema_validation_failed`, `stale_confirmation` (REQ-C3). |
 
 ### Track C — Audit-event wiring (REQ-E2)
@@ -366,8 +366,8 @@ Under [ADR-0004](../adr/0004-llm-slot-extractor-and-slot-schema.md), once the LL
 | REQ-A4 — Visual extractor | 6 | V2-504 ✓ |
 | REQ-A5 — Visual readiness/arg/renderer | 6 | V2-505 ✓ |
 | REQ-A6 — Visual goldens + flip | 6 | V2-506 ✓, V2-507 |
-| REQ-B1 — Calibration runner | 7 | V2-701 |
-| REQ-B2 — Spine phrasing | 7 | V2-702 |
+| REQ-B1 — Calibration runner | 7 | V2-701 ✓ |
+| REQ-B2 — Spine phrasing | 7 | V2-702 ✓ |
 | REQ-B3 — Hearing goldens + calibration | 7 | V2-703 |
 | REQ-B4 — Remaining provisional calibration | 7 | V2-704 |
 | REQ-C1 — Conversation goldens | 7 | V2-705, V2-706, V2-707, V2-708, V2-709 |

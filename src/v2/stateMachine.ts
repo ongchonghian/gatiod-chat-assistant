@@ -283,6 +283,23 @@ export function coerceV2State(raw: unknown): V2SessionState {
     }
   }
 
+  // ADR-0006 claim submission + detection order — must survive persistence
+  // round-trips so canSubmit and projectClaimPlan work after reload.
+  const rawDetectionOrder = (candidate as unknown as Record<string, unknown>).detectionOrder;
+  merged.detectionOrder = Array.isArray(rawDetectionOrder)
+    ? (rawDetectionOrder as string[]).filter((s): s is GatiodSystemKey => SYSTEM_KEYS.includes(s as GatiodSystemKey))
+    : [];
+
+  const rawSubmittedAt = (candidate as unknown as Record<string, unknown>).claimSubmittedAt;
+  if (typeof rawSubmittedAt === "string" && rawSubmittedAt.length > 0) {
+    merged.claimSubmittedAt = rawSubmittedAt;
+  }
+
+  const rawSubmitConf = (candidate as unknown as Record<string, unknown>).pendingSubmitConfirmation;
+  if (rawSubmitConf && typeof rawSubmitConf === "object" && typeof (rawSubmitConf as Record<string, unknown>).ptiEnabled === "boolean") {
+    merged.pendingSubmitConfirmation = { ptiEnabled: (rawSubmitConf as Record<string, unknown>).ptiEnabled as boolean };
+  }
+
   return merged;
 }
 
