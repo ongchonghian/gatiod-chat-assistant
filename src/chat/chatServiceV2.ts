@@ -1365,7 +1365,12 @@ export async function processChatV2(
     return {
       sessionId,
       message: orchestratorResult.message,
-      route: { operation: "clarify", systems: [], confidence: 0, reasons: [orchestratorResult.policyReason] },
+      route: {
+        operation: "clarify",
+        systems: orchestratorResult.state.pendingConsensus?.candidateSystems ?? [],
+        confidence: 0,
+        reasons: [orchestratorResult.policyReason],
+      },
       grounding: { citations: [], ontologyMatches: [] },
       needsClarification: orchestratorResult.needsClarification,
       clarificationQuestion: orchestratorResult.needsClarification

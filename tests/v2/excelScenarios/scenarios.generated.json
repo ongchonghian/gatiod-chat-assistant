@@ -1,7 +1,7 @@
 {
   "sourceWorkbook": "data/gatiod_injury_scenario_catalogue.xlsx",
   "sourceSha256": "0da2ebb54ea4a28939692e08a3ed12667f575e80635fff11c7120b5c91be3b21",
-  "generatedAt": "inputs-ce7e381da29941d4",
+  "generatedAt": "inputs-c3924d3f4750bc67",
   "sheetCounts": {
     "Scenario Catalogue": 1148,
     "Specific Scenarios": 2419,
@@ -76339,8 +76339,8 @@
           "injuryDescription": "Right eye: visual acuity 6/6",
           "expectedPiPercent": 0,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }
@@ -76377,8 +76377,8 @@
           "injuryDescription": "Right eye: visual acuity 6/7.5",
           "expectedPiPercent": 5,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }
@@ -76415,8 +76415,8 @@
           "injuryDescription": "Right eye: visual acuity 6/9",
           "expectedPiPercent": 10,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }
@@ -76453,8 +76453,8 @@
           "injuryDescription": "Right eye: visual acuity 6/12",
           "expectedPiPercent": 15,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }
@@ -76491,8 +76491,8 @@
           "injuryDescription": "Right eye: visual acuity 6/15",
           "expectedPiPercent": 20,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }
@@ -76529,8 +76529,8 @@
           "injuryDescription": "Right eye: visual acuity 6/18",
           "expectedPiPercent": 25,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }
@@ -76567,8 +76567,8 @@
           "injuryDescription": "Right eye: visual acuity 6/24",
           "expectedPiPercent": 30,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }
@@ -76605,8 +76605,8 @@
           "injuryDescription": "Right eye: visual acuity 6/30",
           "expectedPiPercent": 35,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }
@@ -76643,8 +76643,8 @@
           "injuryDescription": "Right eye: visual acuity 6/36",
           "expectedPiPercent": 40,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }
@@ -76681,8 +76681,8 @@
           "injuryDescription": "Right eye: visual acuity 6/48",
           "expectedPiPercent": 45,
           "heuristicOutcomeClass": "routing_only",
-          "outcomeClass": "routing_only",
-          "overrideApplied": false,
+          "outcomeClass": "exact_calculation",
+          "overrideApplied": true,
           "countsTowardSystemGate": true,
           "countsTowardCrossSystemE2E": false
         }

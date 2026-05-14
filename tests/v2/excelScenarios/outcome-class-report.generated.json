@@ -1,7 +1,7 @@
 {
   "sourceSha256": "0da2ebb54ea4a28939692e08a3ed12667f575e80635fff11c7120b5c91be3b21",
-  "generatedAt": "inputs-ce7e381da29941d4",
-  "overrideEventCount": 2,
+  "generatedAt": "inputs-c3924d3f4750bc67",
+  "overrideEventCount": 12,
   "componentSystemCounts": {
     "upper_limb": 2096,
     "lower_limb": 1286,
@@ -14,13 +14,93 @@
     "visual": 202
   },
   "outcomeClassCounts": {
-    "exact_calculation": 2761,
+    "exact_calculation": 2771,
     "clarification_required": 1421,
     "unsupported_safe_fail": 0,
-    "routing_only": 105,
+    "routing_only": 95,
     "legacy_deferred": 0
   },
   "overrideEvents": [
+    {
+      "rowId": "SPC-02313",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/6 (Snellen) is directly parseable by extractVisual — right_acuity_id='6_6' is extracted, readiness passes, assess_visual runs and produces finalPercent=0 matching the workbook. Heuristic over-estimates difficulty; override to exact_calculation."
+    },
+    {
+      "rowId": "SPC-02315",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/7.5 — same reasoning as SPC-02313. extractVisual extracts right_acuity_id='6_7.5', assess_visual produces finalPercent=5."
+    },
+    {
+      "rowId": "SPC-02317",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/9 — extractVisual extracts right_acuity_id='6_9', assess_visual produces finalPercent=10."
+    },
+    {
+      "rowId": "SPC-02319",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/12 — extractVisual extracts right_acuity_id='6_12', assess_visual produces finalPercent=15."
+    },
+    {
+      "rowId": "SPC-02321",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/15 — extractVisual extracts right_acuity_id='6_15', assess_visual produces finalPercent=20."
+    },
+    {
+      "rowId": "SPC-02323",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/18 — extractVisual extracts right_acuity_id='6_18', assess_visual produces finalPercent=25."
+    },
+    {
+      "rowId": "SPC-02325",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/24 — extractVisual extracts right_acuity_id='6_24', assess_visual produces finalPercent=30."
+    },
+    {
+      "rowId": "SPC-02327",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/30 — extractVisual extracts right_acuity_id='6_30', assess_visual produces finalPercent=35."
+    },
+    {
+      "rowId": "SPC-02329",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/36 — extractVisual extracts right_acuity_id='6_36', assess_visual produces finalPercent=40."
+    },
+    {
+      "rowId": "SPC-02331",
+      "sheetName": "Specific Scenarios",
+      "componentIndex": 0,
+      "heuristicClass": "routing_only",
+      "overrideClass": "exact_calculation",
+      "reason": "Right-eye acuity 6/48 — extractVisual extracts right_acuity_id='6_48', assess_visual produces finalPercent=45."
+    },
     {
       "rowId": "SCN-1139",
       "sheetName": "Scenario Catalogue",

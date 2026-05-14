@@ -32,5 +32,56 @@
     "componentIndex": 0,
     "outcomeClass": "routing_only",
     "reason": "Diplopia row uses abstract workbook phrasing ('expected to be reasonably corrected by surgery between 30 and 60 degrees') rather than the canonical '30-60 degrees' zone marker. Visual extractor routes correctly but no zone extraction; override to routing_only."
+  },
+
+  "Specific Scenarios:SPC-02313": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/6 (Snellen) is directly parseable by extractVisual — right_acuity_id='6_6' is extracted, readiness passes, assess_visual runs and produces finalPercent=0 matching the workbook. Heuristic over-estimates difficulty; override to exact_calculation."
+  },
+  "Specific Scenarios:SPC-02315": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/7.5 — same reasoning as SPC-02313. extractVisual extracts right_acuity_id='6_7.5', assess_visual produces finalPercent=5."
+  },
+  "Specific Scenarios:SPC-02317": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/9 — extractVisual extracts right_acuity_id='6_9', assess_visual produces finalPercent=10."
+  },
+  "Specific Scenarios:SPC-02319": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/12 — extractVisual extracts right_acuity_id='6_12', assess_visual produces finalPercent=15."
+  },
+  "Specific Scenarios:SPC-02321": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/15 — extractVisual extracts right_acuity_id='6_15', assess_visual produces finalPercent=20."
+  },
+  "Specific Scenarios:SPC-02323": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/18 — extractVisual extracts right_acuity_id='6_18', assess_visual produces finalPercent=25."
+  },
+  "Specific Scenarios:SPC-02325": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/24 — extractVisual extracts right_acuity_id='6_24', assess_visual produces finalPercent=30."
+  },
+  "Specific Scenarios:SPC-02327": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/30 — extractVisual extracts right_acuity_id='6_30', assess_visual produces finalPercent=35."
+  },
+  "Specific Scenarios:SPC-02329": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/36 — extractVisual extracts right_acuity_id='6_36', assess_visual produces finalPercent=40."
+  },
+  "Specific Scenarios:SPC-02331": {
+    "componentIndex": 0,
+    "outcomeClass": "exact_calculation",
+    "reason": "Right-eye acuity 6/48 — extractVisual extracts right_acuity_id='6_48', assess_visual produces finalPercent=45."
   }
 }
