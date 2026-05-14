@@ -61,6 +61,7 @@ function stateWithPendingObs(): V2SystemState {
 describe("lowerLimbSlotSchema shape", () => {
   const EXPECTED_KEYS: LowerLimbFactKey[] = [
     "side",
+    "bilateral_mode",
     "rom_joints",
     "rom_from_nerve",
     "nerve_selections",
@@ -70,10 +71,10 @@ describe("lowerLimbSlotSchema shape", () => {
     "dbe_selections",
   ];
 
-  it("contains all 8 fact keys", () => {
+  it("contains all 9 fact keys", () => {
     const keys = lowerLimbSlotSchema.map((d) => d.factKey);
     expect(keys).toEqual(expect.arrayContaining(EXPECTED_KEYS));
-    expect(keys).toHaveLength(8);
+    expect(keys).toHaveLength(9);
   });
 
   it("every slot has required fields", () => {

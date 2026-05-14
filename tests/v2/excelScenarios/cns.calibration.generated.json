@@ -1,0 +1,84 @@
+{
+  "system": "cns",
+  "sampleSize": 30,
+  "byExpected": {
+    "exact_calculation": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    },
+    "clarification_required": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    },
+    "unsupported_safe_fail": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    },
+    "routing_only": {
+      "total": 30,
+      "matched": 28,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 1,
+        "unsupported_safe_fail": 0,
+        "routing_only": 28,
+        "legacy_deferred": 0,
+        "wrong_route": 1
+      }
+    },
+    "legacy_deferred": {
+      "total": 0,
+      "matched": 0,
+      "observedDist": {
+        "exact_calculation": 0,
+        "clarification_required": 0,
+        "unsupported_safe_fail": 0,
+        "routing_only": 0,
+        "legacy_deferred": 0,
+        "wrong_route": 0
+      }
+    }
+  },
+  "componentSafeOutcomeRate": 0.9333333333333333,
+  "exactCalculationRate": 0,
+  "mismatchSamples": [
+    {
+      "rowId": "SCN-1104",
+      "inputText": "Station and gait: Rises to standing position, walks some distance with difficulty and without assistance, but is limited to level surfaces",
+      "expected": "routing_only",
+      "observed": "wrong_route",
+      "notes": "expected cns; routed to [none]"
+    },
+    {
+      "rowId": "SCN-1110",
+      "inputText": "Optic nerves: Optic nerve impairment",
+      "expected": "routing_only",
+      "observed": "clarification_required",
+      "notes": "asked: \"Which CNS section applies? (Section A: cerebral impairment, Section B: cranial n…\""
+    }
+  ]
+}

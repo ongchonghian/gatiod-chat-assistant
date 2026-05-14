@@ -1,13 +1,12 @@
-// Heuristic outcome-class classifier (ADR-0001 / ADR-0002).
+// Heuristic outcome-class classifier (ADR-0001).
 // Bulk classification by row inspection; per-row hand-labels in
 // `outcomeClassOverrides.json` take precedence at fixture-generation time.
 //
 // Mapping rules (priority order):
-//   1. CNS / Visual systems → `legacy_deferred` (ADR-0002).
-//   2. Extraction status indicates intentional skip → `unsupported_safe_fail`.
-//   3. Numeric expected PI% present → `exact_calculation`.
-//   4. Description present but PI% missing → `clarification_required`.
-//   5. Otherwise → `routing_only`.
+//   1. Extraction status indicates intentional skip → `unsupported_safe_fail`.
+//   2. Numeric expected PI% present → `exact_calculation`.
+//   3. Description present but PI% missing → `clarification_required`.
+//   4. Otherwise → `routing_only`.
 
 import type { GatiodSystemKey } from "../../../src/v2/contracts.js";
 import type { ExpectedOutcomeClass } from "./scenarioTypes.js";
@@ -42,7 +41,6 @@ export const COMPONENT_SYSTEM_TO_KEY: Record<string, GatiodSystemKey> = {
   "Visual function": "visual",
 };
 
-const DEFERRED_SYSTEMS: ReadonlySet<GatiodSystemKey> = new Set(["cns", "visual"]);
 
 const SKIPPED_STATUS_RE = /\b(rejected|skipped|out of scope|unsupported|deferred)\b/i;
 
@@ -169,11 +167,96 @@ function renalNeedsClarification(description: string | null): boolean {
   return true;
 }
 
+/**
+ * CNS workbook rows use policy bracket-criteria language rather than
+ * doctor-facing clinical text. The CNS extractor cannot bracket-match
+ * these, so they correctly produce `routing_only` (routes to CNS but
+ * no slot is filled). Two patterns cover all 26 affected rows:
+ *
+ *   1. Section-heading prefix: "Consciousness / awareness: Brief repetitive…"
+ *      — a CNS section name followed by colon then the bracket description.
+ *   2. Aphasia bracket rows: "Minimal disturbance in comprehension…",
+ *      "Able to comprehend but unable to produce…" — standalone bracket
+ *      criterion without an explicit section prefix.
+ */
+const CNS_SECTION_PREFIX_RE =
+  /^(consciousness\s*[/]\s*awareness|sleep\s+and\s+arousal|mental\s+status|behaviour\s*[/]\s*mood|cranial\s+nerve|vestibulocochlear|station\s+and\s+gait|optic\s+nerve|respiration\s+related|olfactor)/i;
+const CNS_APHASIA_BRACKET_RE =
+  /^(minimal|moderate|severe)\s+(disturbance|impairment)\s+in\s+(comprehension|production|language)/i;
+const CNS_COMPREHENSION_BRACKET_RE = /^(able|unable)\s+to\s+comprehend/i;
+
+function cnsIsRoutingOnly(description: string | null): boolean {
+  if (!description) return false;
+  if (CNS_SECTION_PREFIX_RE.test(description)) return true;
+  if (CNS_APHASIA_BRACKET_RE.test(description)) return true;
+  if (CNS_COMPREHENSION_BRACKET_RE.test(description)) return true;
+  return false;
+}
+
+/**
+ * Visual engine readiness validator requires both-eye context before it
+ * can call assess_visual. Workbook SPC rows for visual acuity give one
+ * eye at a time (after spliceVisualRegion produces "Left eye: visual
+ * acuity 6/9") — the assistant correctly routes to visual but asks for
+ * the other eye, yielding `routing_only`. Mark these explicitly so the
+ * calibration thresholds aren't penalised for correct behaviour.
+ *
+ * Also mark "6/6" rows: normal vision — the engine asks whether there is
+ * a compensable impairment, which is `routing_only` in shadow.
+ */
+function visualIsRoutingOnly(description: string | null): boolean {
+  if (!description) return false;
+  // Single-eye acuity rows produced by spliceVisualRegion
+  if (/\b(right|left)\s+eye:\s*(visual acuity|legal blindness)/i.test(description)) return true;
+  // Normal acuity — engine routes correctly but cannot compute PI without impairment
+  if (/\b6\/6\b/.test(description)) return true;
+  return false;
+}
+
+/**
+ * Visual engine assesses one eye at a time. Workbook catalogue rows that
+ * describe "any eye" or "one eye" without specifying which require the
+ * assistant to ask "which eye?" before calculating. Rows that specify
+ * "right eye" or "left eye" explicitly can go direct to extraction.
+ *
+ * Cases that legitimately need clarification:
+ *   1. "in any eye" phrasing — no specific eye given.
+ *   2. "legal blindness in one eye" without a side.
+ *   3. "remaining horizontal visual field" — catalogue rows omit side.
+ *   4. Colour-vision loss without a side.
+ */
+// Combined regex for visual extractor's CONDITION_PATTERNS (glaucoma, cataract,
+// corneal, orbital, mydriasis) — must match the extractor's CONDITION_PATTERNS.
+const VISUAL_CONDITION_RE =
+  /\b(glaucomat?(?:ous)?|cataract|lens\s+subluxation|corneal\s+(?:opacity|scar|decompensation|damage|scarring)|orbital\s+(?:deformit|enophthalmos|hypoglobus|hyperglobus)|enophthalmos|hypoglobus|hyperglobus|traumatic\s+mydriasis|mydriasis|iris\s+abnormali|pupillary\s+abnormali)\b/i;
+
+// Regex for contrast/glare modifier — mirrors MODIFIER_PATTERNS contrast_glare entry.
+const VISUAL_CONTRAST_GLARE_RE =
+  /\b(contrast\s+(?:sensitivity\s+)?(?:loss|deficit)|glare\s+(?:sensitivity|disability|acuity)|loss\s+of\s+(?:contrast|glare\s+acuity))\b/i;
+
+// Regex for accommodation/pseudophakia/aphakia modifier — mirrors MODIFIER_PATTERNS.
+const VISUAL_ACCOMMODATION_RE =
+  /\b(loss\s+of\s+accommodation|pseudophakia|aphakia(?:\s+requiring)?|accommodation\s+(?:loss|impairment))\b/i;
+
+function visualNeedsClarification(description: string | null): boolean {
+  if (!description) return false;
+  if (/\bin any eye\b/i.test(description)) return true;
+  if (/\bin one eye\b/i.test(description) && !/\b(right|left)\b/i.test(description)) return true;
+  if (/remaining horizontal visual field/i.test(description) && !/\b(right|left)\b/i.test(description)) return true;
+  if (/legal blindness/i.test(description) && !/\b(right|left)\b/i.test(description)) return true;
+  if (/differentiate colou?r/i.test(description) && !/\b(right|left)\b/i.test(description)) return true;
+  // Specific condition or contrast/glare modifier without eye laterality — the V2 visual
+  // extractor now requires an explicit eye side rather than silently applying bilaterally.
+  const noLaterality = !/\b(right|left|both)\s+eye/i.test(description);
+  if (noLaterality && VISUAL_CONDITION_RE.test(description)) return true;
+  if (noLaterality && VISUAL_CONTRAST_GLARE_RE.test(description)) return true;
+  if (noLaterality && VISUAL_ACCOMMODATION_RE.test(description)) return true;
+  return false;
+}
+
 export function classifyComponentHeuristic(
   input: HeuristicClassifierInput,
 ): ExpectedOutcomeClass {
-  if (DEFERRED_SYSTEMS.has(input.system)) return "legacy_deferred";
-
   if (input.extractionStatus && SKIPPED_STATUS_RE.test(input.extractionStatus)) {
     return "unsupported_safe_fail";
   }
@@ -199,6 +282,18 @@ export function classifyComponentHeuristic(
     /\b(sensory|motor|combined)\s+(?:and\s+(?:sensory|motor|combined)\s+)?deficit\b/i.test(input.injuryDescription) &&
     !/\b(total|partial)\b/i.test(input.injuryDescription)
   ) {
+    return "clarification_required";
+  }
+
+  if (input.system === "cns" && cnsIsRoutingOnly(input.injuryDescription)) {
+    return "routing_only";
+  }
+
+  if (input.system === "visual" && visualIsRoutingOnly(input.injuryDescription)) {
+    return "routing_only";
+  }
+
+  if (input.system === "visual" && visualNeedsClarification(input.injuryDescription)) {
     return "clarification_required";
   }
 

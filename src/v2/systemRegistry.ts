@@ -314,10 +314,9 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
   },
   cns: {
     system: "cns",
-    // Components wired (REQ-A1–A3) but mode stays legacy pending ADR-0001 calibration.
-    // ADR-0004: slotSchema wired. LLM extractor available as shadowExtractor once
-    // mode promotes to structured_shadow or structured_live.
-    mode: "legacy",
+    // ADR-0002 superseded (2026-05-14). All four components wired (REQ-A1–A3);
+    // ADR-0001 calibration passed. ADR-0004: LLM extractor available as shadowExtractor.
+    mode: "structured_live",
     slotSchema: cnsSlotSchema,
     extractor: extractCns as StructuredExtractor,
     shadowExtractor: (() => {
@@ -332,10 +331,9 @@ export const V2_SYSTEM_REGISTRY: Record<GatiodSystemKey, V2SystemCapability> = {
   },
   visual: {
     system: "visual",
-    // Components wired (REQ-A4–A6) but mode stays legacy pending ADR-0001 calibration.
-    // ADR-0004: slotSchema wired. LLM extractor available as shadowExtractor once
-    // mode promotes to structured_shadow or structured_live.
-    mode: "legacy",
+    // ADR-0002 superseded (2026-05-14). All four components wired (REQ-A4–A6);
+    // ADR-0001 calibration passed. ADR-0004: LLM extractor available as shadowExtractor.
+    mode: "structured_live",
     slotSchema: visualSlotSchema,
     extractor: extractVisual as StructuredExtractor,
     shadowExtractor: (() => {
@@ -387,6 +385,8 @@ export const PROVISIONAL_STRUCTURED_LIVE: Readonly<Partial<Record<GatiodSystemKe
   renal:            { reason: "REQ-B4" },
   gastro_digestive: { reason: "REQ-B4" },
   hearing:          { reason: "REQ-B3" },
+  cns:              { reason: "REQ-A3" },
+  visual:           { reason: "REQ-A6" },
 };
 
 export interface PromotionCheckResult {
@@ -419,8 +419,8 @@ const ADR_0001_REGISTRY_THRESHOLDS: Record<GatiodSystemKey, { safe: number; exac
   gastro_digestive:  { safe: 85, exact: 70 },
   upper_limb:        { safe: 85, exact: 70 },
   lower_limb:        { safe: 85, exact: 70 },
-  cns:               null, // deferred per ADR-0002
-  visual:            null,
+  cns:               { safe: 90, exact: 80 },
+  visual:            { safe: 90, exact: 80 },
 };
 
 /**

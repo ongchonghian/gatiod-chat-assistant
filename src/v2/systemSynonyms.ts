@@ -257,6 +257,25 @@ export const SYSTEM_SYNONYMS: SystemSynonym[] = [
   { term: "hazardous surroundings", system: "cns", confidence: 1.0, notes: "equilibrium bracket descriptor" },
   { term: "neurological impairment", system: "cns", confidence: 0.9 },
   { term: "neurological deficit", system: "cns", confidence: 0.9 },
+  // Workbook section-heading vocabulary (Chapter 10) — needed for calibration
+  // shadow runner rows whose descriptions use catalogue headings as clinical context.
+  { term: "consciousness", system: "cns", confidence: 1.0 },
+  { term: "paroxysmal", system: "cns", confidence: 1.0, notes: "paroxysmal disorder = CNS Section A" },
+  { term: "arousal", system: "cns", confidence: 1.0, notes: "sleep and arousal = CNS Section A" },
+  { term: "mental status", system: "cns", confidence: 1.0 },
+  { term: "dysarthria", system: "cns", confidence: 1.0 },
+  { term: "dysphasia", system: "cns", confidence: 1.0 },
+  { term: "dysphagia", system: "cns", confidence: 0.85, requiresConfirmation: true, notes: "swallowing = CNS Section B; may overlap specialist referrals" },
+  { term: "cranial nerve", system: "cns", confidence: 1.0 },
+  { term: "optic nerve", system: "cns", confidence: 0.9, requiresConfirmation: true, notes: "optic nerve impairment in CNS Section B; distinguish from visual acuity" },
+  { term: "facial paralysis", system: "cns", confidence: 1.0 },
+  { term: "facial palsy", system: "cns", confidence: 1.0 },
+  { term: "station gait", system: "cns", confidence: 1.0, notes: "station and gait = CNS Section B" },
+  { term: "olfactory function", system: "cns", confidence: 1.0 },
+  { term: "language symbols", system: "cns", confidence: 1.0, notes: "comprehension of language symbols = CNS aphasia bracket" },
+  { term: "nonverbal communication", system: "cns", confidence: 1.0 },
+  { term: "interpersonal function", system: "cns", confidence: 0.9, notes: "behaviour/mood section of CNS assessment" },
+  { term: "alertness", system: "cns", confidence: 0.8, notes: "daytime alertness = CNS sleep/arousal section" },
 
   // ── Visual ─────────────────────────────────────────────────────────────
   { term: "visual", system: "visual", confidence: 1.0 },

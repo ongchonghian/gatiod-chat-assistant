@@ -46,9 +46,9 @@ function validInterpretation(overrides?: Partial<SemanticInterpretation>): Seman
       {
         system: "cns",
         confidence: 0.85,
-        status: "legacy_deferred",
+        status: "structured_supported",
         evidence: ["complete anosmia"],
-        rationale: "CNS olfactory finding, currently legacy/deferred.",
+        rationale: "CNS olfactory finding, structured_live as of Sprint 6.",
       },
     ],
     candidateFindings: [
@@ -105,9 +105,9 @@ describe("Slice E — semanticSystemTaxonomy", () => {
     ]);
   });
 
-  it("derives semanticStatus from V2_SYSTEM_REGISTRY mode", () => {
-    expect(getSemanticSystemStatus("cns")).toBe("legacy_deferred");
-    expect(getSemanticSystemStatus("visual")).toBe("legacy_deferred");
+  it("derives semanticStatus from V2_SYSTEM_REGISTRY mode (all 9 structured_supported after Sprint 6)", () => {
+    expect(getSemanticSystemStatus("cns")).toBe("structured_supported");
+    expect(getSemanticSystemStatus("visual")).toBe("structured_supported");
     expect(getSemanticSystemStatus("hearing")).toBe("structured_supported");
     expect(getSemanticSystemStatus("spine")).toBe("structured_supported");
   });
@@ -115,7 +115,7 @@ describe("Slice E — semanticSystemTaxonomy", () => {
   it("buildSemanticTaxonomyPromptSection includes registry-backed status for every system", () => {
     const text = buildSemanticTaxonomyPromptSection();
     expect(text).toContain("Known GATIOD systems:");
-    expect(text).toContain("cns — Central Nervous System — legacy_deferred");
+    expect(text).toContain("cns — Central Nervous System — structured_supported");
     expect(text).toContain("hearing — Hearing — structured_supported");
     expect(text).toContain("Clinical signals:");
     expect(text).toContain("Example source span:");
@@ -320,14 +320,16 @@ describe("Slice E — safety validator", () => {
     }
   });
 
-  it("rejects when a registry-legacy system is mislabelled", () => {
-    const bad = validInterpretation();
-    bad.candidateSystems[1].status = "structured_supported"; // cns mislabeled
-    const result = validateSemanticInterpretation(bad);
-    expect(result.ok).toBe(false);
+  it("no legacy systems remain after Sprint 6 — legacy_system_not_labelled never fires", () => {
+    // All 9 systems are now structured_live. The validator's legacy_system_not_labelled
+    // check will not fire for any current system. The valid fixture (all structured_supported)
+    // should pass without that issue.
+    const good = validInterpretation();
+    const result = validateSemanticInterpretation(good);
+    expect(result.ok).toBe(true);
     if (!result.ok) {
       expect(
-        result.issues.some((i) => i.kind === "legacy_system_not_labelled"),
+        result.issues.every((i) => i.kind !== "legacy_system_not_labelled"),
       ).toBe(true);
     }
   });
@@ -341,21 +343,22 @@ describe("Slice E — proposal renderer", () => {
     expect(rendered.message).toContain("2 GATIOD assessment areas");
     expect(rendered.message).toContain("Lower Limb");
     expect(rendered.message).toContain("Central Nervous System");
-    expect(rendered.message).toContain("legacy/deferred");
+    // No legacy systems after Sprint 6 — no "legacy/deferred" text.
+    expect(rendered.message).not.toContain("legacy/deferred");
     expect(rendered.message).toContain(
       'Source: "Left common peroneal nerve lesion',
     );
     expect(rendered.message).toContain("Missing: partial vs total loss");
   });
 
-  it("includes proposal-kind-specific action chips (mixed_structured_legacy)", () => {
-    // Fixture: lower_limb (structured_supported) + cns (legacy_deferred)
-    // → mixed_structured_legacy chips per ADR-0003 §6.
+  it("includes proposal-kind-specific action chips (multi_system — all structured after Sprint 6)", () => {
+    // Fixture: lower_limb (structured_supported) + cns (structured_supported)
+    // → multi_system chips per ADR-0003 §6 (no legacy systems remain).
     const rendered = renderSemanticConsensus(validInterpretation());
     expect(rendered.chips).toEqual([
-      "Proceed",
       "Assess Lower Limb first",
-      "Use legacy for Central Nervous System",
+      "Assess Central Nervous System first",
+      "Proceed",
       "Edit interpretation",
       "Reject",
     ]);

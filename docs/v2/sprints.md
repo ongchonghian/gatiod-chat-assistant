@@ -16,7 +16,7 @@ V2 replaces the legacy Gemini-driven flow with a deterministic, structured-fact-
 
 | Phase | Goal | Sprint | ADR / REQ | Status |
 |---|---|---|---|---|
-| **1 — Per-system migration** | Move all 9 GATIOD systems from `legacy` to `structured_live` via the four-component pipeline (extractor, readiness, argBuilder, renderer) | Sprints 1–6 | ADR-0001, ADR-0002 | Sprints 1–5 ✓ COMPLETE; Sprint 6 ⬤ FINAL STEP |
+| **1 — Per-system migration** | Move all 9 GATIOD systems from `legacy` to `structured_live` via the four-component pipeline (extractor, readiness, argBuilder, renderer) | Sprints 1–6 | ADR-0001, ADR-0002 | ✓ COMPLETE (2026-05-14) — all 9 systems structured_live |
 | **2 — Evidence & verification backfill** | Stand up the calibration runner, write the missing conversation-level goldens, and remove every system from `PROVISIONAL_STRUCTURED_LIVE` | Sprint 7 | REQ-B1–B4, REQ-C1–C3, REQ-E2 | ◔ PARTIAL (runner missing) |
 | **3 — Semantic consensus** | LLM proposal-only front door for dense multi-system narratives (ADR-0003 slices A–H) | Sprint 8 | ADR-0003, D13, D15, D16 | ✓ COMPLETE (all slices shipped; shadow grader wired; V2-809 post-rollout) |
 | **4 — Slot schema + LLM extractor** | Replace per-system regex extraction with a schema-validated LLM extractor; centralise `required_when` logic | Sprint 9 | ADR-0004 | ◔ PARTIAL (schema + shadow wired; calibration + rollout pending V2-701) |
@@ -58,7 +58,7 @@ Phases 2, 3, 4 are independent and can run in parallel once Phase 1 closes. Phas
 | Sprint 3 | Spine | ✓ COMPLETE | ADR-0001 cleared (100% / 96.8%, n=132) |
 | Sprint 4 | Respiratory + Renal | ✓ COMPLETE | ADR-0001 cleared (both 100%) |
 | Sprint 5 | Gastro + Hearing | ✓ COMPLETE | ADR-0001 cleared (both 100%) |
-| Sprint 6 | CNS + Visual | ⬤ FINAL STEP | All components wired and golden-tested; awaits V2-508 (ADR-0002 close) and V2-507 (mode flip + Excel shadow run) |
+| Sprint 6 | CNS + Visual | ✓ COMPLETE | ADR-0002 superseded; both systems structured_live; calibration passes (2026-05-14) |
 | Sprint 7 | Evidence & Verification Backfill | NOT STARTED | Independent of Sprint 6; can start now |
 | Sprint 8 | Semantic Consensus | ✓ COMPLETE | All slices A–H shipped; shadow grader wired (V2-805 ✓); V2-809 post-rollout follow-up |
 | Sprint 9 | Slot Schema + LLM Extractor | ◔ PARTIAL | V2-901/902/903 ✓; V2-904 calibration blocked on V2-701 (Sprint 7) |
@@ -139,13 +139,11 @@ The pattern is the same per system: build the four capability components (extrac
 | **V2-405** | Golden tests (15+ each). Include hernia routing. |
 | **V2-406** | Flip both to `"structured_live"`. |
 
-## Sprint 6 — CNS + Visual — ⬤ FINAL STEP
+## Sprint 6 — CNS + Visual — ✓ COMPLETE
 
 **Goal:** Migrate CNS and Visual. These are the systems with the largest pre-existing slot-policy mismatches; scheduled last because the fixes are the most disruptive.
 
-**Current state (2026-05-12):** All four components are fully wired for both CNS and Visual (extractor, readiness, arg builder, renderer all present and non-empty). Mode remains `"legacy"` pending ADR-0002 resolution. Policy fixes §1 (CNS Section B) and §2 (visual diplopia zones) are confirmed applied in the extractors. Golden suites: 71 CNS cases, 58 Visual cases.
-
-**Blocking item:** [ADR-0002](../adr/0002-cns-visual-structured-migration.md) — formally close the open questions (now tracked in V2-508), then run the Excel shadow runner and flip the mode.
+**Completed (2026-05-14):** Both systems flipped to `structured_live`. ADR-0002 superseded. Excel shadow calibration passes ADR-0001 thresholds (CNS safe=93.3%, Visual safe=96.7%, exact=N/A for both). Visual extractor tightened: conditions and modifiers without explicit eye laterality now produce a PendingObservation (consistent with the core invariant against silent clinical inference).
 
 ### Tickets
 
@@ -157,8 +155,8 @@ The pattern is the same per system: build the four capability components (extrac
 | **V2-504** | Visual structured extractor. **[policy-fixes.md](policy-fixes.md) §2** applied (correct diplopia zones: uncorrectable / central 30° / 30–60° / beyond 60° / none). | ✓ DONE |
 | **V2-505** | Visual readiness + arg builder + renderer. Visual acuity per eye, visual field, diplopia zone. | ✓ DONE |
 | **V2-506** | Golden tests for both. | ✓ DONE (71 CNS cases, 58 Visual cases) |
-| **V2-507** | Run Excel shadow runner for CNS and Visual; verify ADR-0001 thresholds; flip `cns` and `visual` to `"structured_live"`. | ✗ BLOCKED on V2-508 |
-| **V2-508** | Resolve [ADR-0002](../adr/0002-cns-visual-structured-migration.md) open questions and close the ADR. (1) Migration order: both moving together — Visual-first is moot. (2) CNS curated golden set: signed off via V2-506 (71 cases). (3) Visual curated golden set: signed off via V2-506 (58 cases). (4) `legacy_deferred` cross-system counting: already resolved by [ADR-0001](../adr/0001-structured-live-promotion-gate.md) — excluded from `cross_system_end_to_end_rate`. Update ADR-0002 status to Superseded; remove the blocking note on V2-507. | ✗ NOT STARTED |
+| **V2-507** | Run Excel shadow runner for CNS and Visual; verify ADR-0001 thresholds; flip `cns` and `visual` to `"structured_live"`. | ✓ DONE (2026-05-14) |
+| **V2-508** | Resolve [ADR-0002](../adr/0002-cns-visual-structured-migration.md) open questions and close the ADR. (1) Migration order: both moving together — Visual-first is moot. (2) CNS curated golden set: signed off via V2-506 (71 cases). (3) Visual curated golden set: signed off via V2-506 (58 cases). (4) `legacy_deferred` cross-system counting: already resolved by [ADR-0001](../adr/0001-structured-live-promotion-gate.md) — excluded from `cross_system_end_to_end_rate`. Update ADR-0002 status to Superseded; remove the blocking note on V2-507. | ✓ DONE (2026-05-14) |
 
 **Maps to:** REQ-A1 through REQ-A6 in [requirements-known-issues.md](requirements-known-issues.md).
 

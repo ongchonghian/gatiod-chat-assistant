@@ -31,7 +31,7 @@ function isFullRun(): boolean {
  * Per-system ADR-0001 promotion thresholds (safe-outcome %, exact-calc %).
  * Source: docs/adr/0001-structured-live-promotion-gate.md.
  */
-export const ADR_0001_THRESHOLDS: Record<GatiodSystemKey, { safe: number; exact: number } | "deferred"> = {
+export const ADR_0001_THRESHOLDS: Record<GatiodSystemKey, { safe: number; exact: number }> = {
   hearing:           { safe: 95, exact: 90 },
   spine:             { safe: 95, exact: 90 },
   respiratory:       { safe: 90, exact: 80 },
@@ -39,8 +39,8 @@ export const ADR_0001_THRESHOLDS: Record<GatiodSystemKey, { safe: number; exact:
   gastro_digestive:  { safe: 85, exact: 70 },
   upper_limb:        { safe: 85, exact: 70 },
   lower_limb:        { safe: 85, exact: 70 },
-  cns:               "deferred",
-  visual:            "deferred",
+  cns:               { safe: 90, exact: 80 },
+  visual:            { safe: 90, exact: 80 },
 };
 
 /**
@@ -56,9 +56,6 @@ export interface ThresholdCheck {
 }
 export function checkAdr0001Thresholds(report: SystemCalibrationReport): ThresholdCheck {
   const cfg = ADR_0001_THRESHOLDS[report.system];
-  if (cfg === "deferred") {
-    return { ok: true, safeOk: true, exactOk: true, reasons: ["Deferred per ADR-0002."] };
-  }
   const safePct = report.componentSafeOutcomeRate * 100;
   const exactTotal = report.byExpected.exact_calculation.total;
   const exactPct = report.exactCalculationRate * 100;

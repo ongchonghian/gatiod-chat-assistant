@@ -15,8 +15,8 @@ describe("validateSystemRegistry", () => {
 });
 
 describe("system migration modes (slice-18 promotions)", () => {
-  it("all 7 capable systems are structured_live (provisional under ADR-0001)", () => {
-    const live = ["spine", "hearing", "gastro_digestive", "renal", "respiratory", "upper_limb", "lower_limb"];
+  it("all 9 systems are structured_live (Sprint 6 complete — CNS + Visual migrated 2026-05-14)", () => {
+    const live = ["spine", "hearing", "gastro_digestive", "renal", "respiratory", "upper_limb", "lower_limb", "cns", "visual"];
     for (const system of live) {
       expect(
         V2_SYSTEM_REGISTRY[system as keyof typeof V2_SYSTEM_REGISTRY].mode,
@@ -25,35 +25,18 @@ describe("system migration modes (slice-18 promotions)", () => {
     }
   });
 
-  it("cns and visual remain legacy", () => {
-    expect(V2_SYSTEM_REGISTRY.cns.mode).toBe("legacy");
-    expect(V2_SYSTEM_REGISTRY.visual.mode).toBe("legacy");
-  });
-
-  it("isStructuredLiveSystem returns true for all 7 capable systems", () => {
-    const live = ["spine", "hearing", "gastro_digestive", "renal", "respiratory", "upper_limb", "lower_limb"] as const;
+  it("isStructuredLiveSystem returns true for all 9 systems", () => {
+    const live = ["spine", "hearing", "gastro_digestive", "renal", "respiratory", "upper_limb", "lower_limb", "cns", "visual"] as const;
     for (const system of live) {
       expect(isStructuredLiveSystem(system), system).toBe(true);
     }
   });
 
-  it("isStructuredLiveSystem returns false for legacy systems only", () => {
-    expect(isStructuredLiveSystem("cns")).toBe(false);
-    expect(isStructuredLiveSystem("visual")).toBe(false);
-  });
-
-  it("isStructuredCapableSystem returns true for all structured-capable (live or shadow) systems", () => {
-    // Same set as before — all 7 non-CNS/visual systems are capable
-    // regardless of which mode they're currently in.
-    const capable = ["upper_limb", "lower_limb", "spine", "respiratory", "renal", "gastro_digestive", "hearing"] as const;
+  it("isStructuredCapableSystem returns true for all 9 systems", () => {
+    const capable = ["upper_limb", "lower_limb", "spine", "respiratory", "renal", "gastro_digestive", "hearing", "cns", "visual"] as const;
     for (const system of capable) {
       expect(isStructuredCapableSystem(system), system).toBe(true);
     }
-  });
-
-  it("isStructuredCapableSystem returns false for legacy systems", () => {
-    expect(isStructuredCapableSystem("cns")).toBe(false);
-    expect(isStructuredCapableSystem("visual")).toBe(false);
   });
 
   it("hearing is the only system with instanceReadinessValidator", () => {

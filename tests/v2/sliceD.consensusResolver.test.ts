@@ -48,16 +48,17 @@ describe("Slice D — accepted_all branch", () => {
     expect(res.state.pendingConsensus).toBeNull();
   });
 
-  it("auto-applies legacy_deferred for legacy systems and detected for structured systems on accept", () => {
-    // ADR-0003 §4 fan-out model: accept_all writes legacy_deferred for legacy
-    // candidates and detected for structured candidates so buildNextClaimStep
-    // can route to them on subsequent turns.
+  it("auto-applies detected for all structured_live systems on accept (Sprint 6: all 9 systems now live)", () => {
+    // ADR-0003 §4 fan-out model: accept_all writes detected for all structured_live
+    // candidates. Legacy systems no longer exist after Sprint 6.
     const state = withConsensus(["spine", "hearing", "cns", "visual"]);
     const res = tryResolvePendingConsensus({ state, replyText: "Yes, proceed" });
     expect(res.action).toBe("accepted_all");
-    expect(res.state.claimComponentOverrides.cns?.status).toBe("legacy_deferred");
-    expect(res.state.claimComponentOverrides.visual?.status).toBe("legacy_deferred");
-    // Structured systems get detected overrides (fan-out — not legacy_deferred).
+    // All four are now structured_live — all get detected overrides.
+    expect(res.state.claimComponentOverrides.cns?.status).toBe("detected");
+    expect(res.state.claimComponentOverrides.cns?.source).toBe("semantic_consensus");
+    expect(res.state.claimComponentOverrides.visual?.status).toBe("detected");
+    expect(res.state.claimComponentOverrides.visual?.source).toBe("semantic_consensus");
     expect(res.state.claimComponentOverrides.spine?.status).toBe("detected");
     expect(res.state.claimComponentOverrides.spine?.source).toBe("semantic_consensus");
     expect(res.state.claimComponentOverrides.hearing?.status).toBe("detected");

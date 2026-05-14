@@ -40,9 +40,9 @@ function validInterpretation(
       {
         system: "cns",
         confidence: 0.85,
-        status: "legacy_deferred",
+        status: "structured_supported",
         evidence: ["complete anosmia"],
-        rationale: "CNS olfactory finding, currently legacy/deferred.",
+        rationale: "CNS olfactory finding, structured_live as of Sprint 6.",
       },
     ],
     candidateFindings: [
@@ -176,12 +176,12 @@ describe("Slice F — initiate consensus (no pendingConsensus)", () => {
       expect(result.message).toContain("2 GATIOD assessment areas");
       expect(result.message).toContain("Lower Limb");
       expect(result.message).toContain("Central Nervous System");
-      // Fixture: lower_limb (structured) + cns (legacy_deferred)
-      // → mixed_structured_legacy chips per ADR-0003 §6.
+      // Fixture: lower_limb (structured) + cns (structured_supported, Sprint 6)
+      // → multi_system chips per ADR-0003 §6 (no legacy systems remain).
       expect(result.chips).toEqual([
-        "Proceed",
         "Assess Lower Limb first",
-        "Use legacy for Central Nervous System",
+        "Assess Central Nervous System first",
+        "Proceed",
         "Edit interpretation",
         "Reject",
       ]);
@@ -260,8 +260,8 @@ describe("Slice F — resolve pendingConsensus (decision mode)", () => {
       expect(result.extractionContext.acceptedSystems).toEqual(["lower_limb", "cns"]);
       expect(result.extractionContext.consensusId).toBe("interp-1");
       expect(result.extractionContext.focusSystem).toBeUndefined();
-      // CNS should be auto-marked legacy_deferred on accept.
-      expect(result.state.claimComponentOverrides.cns?.status).toBe("legacy_deferred");
+      // CNS is structured_live — auto-marked detected on accept (not legacy_deferred).
+      expect(result.state.claimComponentOverrides.cns?.status).toBe("detected");
     }
   });
 

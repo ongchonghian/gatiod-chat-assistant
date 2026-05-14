@@ -1123,11 +1123,27 @@ export async function processChatV2(
   // semantic consensus (accepted_system_first), then pending confirmation,
   // then active clarification hint (set by clarify_system handoffs to prevent
   // leakage back to the just-completed system), then router output (ADR-0003 §4).
-  const primarySystem: GatiodSystemKey | undefined =
+  let primarySystem: GatiodSystemKey | undefined =
     forcedExtractionTarget ??
     loadedState.pendingConfirmation?.system ??
     loadedState.activeClarificationSystem ??
     route.systems[0];
+
+  // Refuse to re-extract a system that is already calculated. A calculated
+  // system as primarySystem (e.g. because activeClarificationSystem was stale
+  // after being cleared, or the router scored the just-completed system for
+  // an ambiguous term like "DBE injury") would trigger its extractor/shadow
+  // pair and produce a spurious comparison dialog (ADR-0004). Fall back to
+  // the first non-calculated system in the route, then any non-idle/non-
+  // calculated system in detection order.
+  if (primarySystem && nextState.systems[primarySystem]?.status === "calculated") {
+    primarySystem =
+      route.systems.find((s) => nextState.systems[s]?.status !== "calculated") ??
+      nextState.detectionOrder.find((s) => {
+        const st = nextState.systems[s]?.status;
+        return st !== "calculated" && st !== "idle";
+      });
+  }
 
   // ── V2-007b: extraction-skip on confirmation reply ─────────────────────────
   const confirmationReply = Boolean(loadedState.pendingConfirmation) && isConfirmation(normalized);
@@ -1157,6 +1173,10 @@ export async function processChatV2(
     // Extraction is running for real this turn — clear the clarification
     // routing hint so it doesn't persist past the turn where the doctor
     // actually provided clinical details.
+    // Save the value before clearing so we can restore it below if
+    // extraction produced no progress (e.g. generic chip selections like
+    // "DBE injury" that the extractor can't resolve into facts yet).
+    const activeClarificationSystemBeforeExtraction = nextState.activeClarificationSystem;
     if (nextState.activeClarificationSystem && extractionTargets.includes(nextState.activeClarificationSystem)) {
       nextState = setActiveClarificationSystem(nextState, undefined);
     }
@@ -1385,6 +1405,26 @@ export async function processChatV2(
           routeConfidence: route.confidence,
         },
       });
+    }
+
+    // Restore the active clarification routing hint if extraction produced no
+    // progress for that system. This happens when the doctor answers a generic
+    // finding-type chip (e.g. "DBE injury", "ROM restriction") that the
+    // deterministic extractor cannot map to a concrete fact — the system still
+    // needs to stay in "lower_limb" (or equivalent) mode so the readiness
+    // validator can re-ask the right follow-up question on the next turn,
+    // instead of the router defaulting back to the just-calculated system.
+    if (activeClarificationSystemBeforeExtraction && !nextState.activeClarificationSystem) {
+      const sys = activeClarificationSystemBeforeExtraction;
+      const prevSys = loadedState.systems[sys];
+      const currSys = nextState.systems[sys];
+      const factsChanged =
+        JSON.stringify(prevSys?.extractedFacts) !== JSON.stringify(currSys?.extractedFacts);
+      const obsAdded =
+        (currSys?.pendingObservations?.length ?? 0) > (prevSys?.pendingObservations?.length ?? 0);
+      if (!factsChanged && !obsAdded) {
+        nextState = setActiveClarificationSystem(nextState, sys);
+      }
     }
   }
 

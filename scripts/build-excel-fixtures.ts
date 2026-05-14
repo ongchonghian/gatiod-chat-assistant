@@ -157,6 +157,60 @@ function spliceLimbSide(
   return `${sideLabel}: ${description}`;
 }
 
+/**
+ * Visual rows in the "Specific Scenarios" sheet store the eye side in the
+ * "Region / joint / organ" column as "Visual acuity / accommodation: Right eye"
+ * or "Visual acuity / accommodation: Left eye". The generic spliceRegion
+ * prepends the full region string, producing awkward text like:
+ *   "Visual acuity / accommodation: Right eye: Remaining vision in any eye: LogMAR 0 / Snellen 6/6"
+ *
+ * The visual extractor correctly identifies "Right eye" in this text but the
+ * "any eye" clause and the LogMAR format confuse extraction. This function
+ * produces clean extractor-friendly text instead:
+ *   "Right eye: visual acuity 6/6"
+ */
+/**
+ * Visual SPC rows already have "Left eye:" or "Right eye:" embedded in the
+ * description text (from the raw scenario description column), but are followed
+ * by the workbook's "Remaining vision in any eye: LogMAR X / Snellen Y" template
+ * phrase. The "any eye" language makes the visual extractor ask "which eye?".
+ *
+ * When a specific side is present in the description, extract it and produce
+ * concise extractor-friendly text: "Left eye: visual acuity 6/6".
+ * When no side is specified (genuine "any eye" rows), leave unchanged — those
+ * are legitimately clarification_required and are handled by the heuristic.
+ */
+function spliceVisualRegion(
+  system: GatiodSystemKey,
+  _region: string | null | undefined,
+  description: string,
+): string {
+  if (system !== "visual") return description;
+
+  // Find an explicit eye side in the description (e.g. "Left eye:" or "Right eye:").
+  const sideMatch = description.match(/\b(right|left)\s+eye:/i);
+  if (!sideMatch) return description;
+  const side = sideMatch[1].charAt(0).toUpperCase() + sideMatch[1].slice(1).toLowerCase();
+
+  // "Legal blindness" rows — keep as concise side-qualified statement.
+  if (/legal blindness/i.test(description)) {
+    return `${side} eye: legal blindness`;
+  }
+
+  // "Remaining vision in any eye: LogMAR X / Snellen Y" — extract Snellen fraction.
+  const snellenMatch = description.match(/snellen\s+([\d/.]+)/i);
+  if (snellenMatch) {
+    return `${side} eye: visual acuity ${snellenMatch[1]}`;
+  }
+
+  // Generic fallback: strip boilerplate prefixes and present cleanly.
+  const cleaned = description
+    .replace(/^.*?\b(right|left)\s+eye:\s*/i, "")
+    .replace(/\bremaining vision in any eye:\s*/i, "")
+    .trim();
+  return `${side} eye: ${cleaned}`;
+}
+
 function buildSpecificScenarioRows(
   rows: Record<string, unknown>[],
   overrides: Record<string, OutcomeClassOverride>,
@@ -170,10 +224,12 @@ function buildSpecificScenarioRows(
     if (!rowId || !system) continue;
 
     const rawDescription = String(row["Scenario / injury description"] ?? "").trim();
-    const withRegion = spliceRegion(row["Region / joint / organ"] as string | null, rawDescription);
+    const regionRaw = (row["Region / joint / organ"] as string | null) ?? null;
+    const withRegion = spliceRegion(regionRaw, rawDescription);
     const sideAffectedRaw = (row["Side affected"] as string | null) ?? null;
     const withHearing = spliceHearingContext(system, sideAffectedRaw, withRegion);
-    const description = spliceLimbSide(system, sideAffectedRaw, withHearing);
+    const withLimb = spliceLimbSide(system, sideAffectedRaw, withHearing);
+    const description = spliceVisualRegion(system, regionRaw, withLimb);
     const piRaw = (row["PI%"] as string | number | null) ?? null;
     const expectedPi = parsePiPercent(piRaw) ?? undefined;
     const expectedPiRange = parsePiPercentRange(piRaw) ?? undefined;

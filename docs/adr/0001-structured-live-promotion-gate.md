@@ -53,10 +53,8 @@ A third, observational metric is recorded for context but does **not** drive pro
 | Gastro-digestive | 85% | 70% |
 | Upper limb | 85% | 70% |
 | Lower limb | 85% | 70% |
-| CNS | deferred | deferred |
-| Visual | deferred | deferred |
-
-CNS and visual remain `legacy` until they have a structured model.
+| CNS | 90% | 80% |
+| Visual | 90% | 80% |
 
 ### Registry implication
 

@@ -6,5 +6,31 @@
       "outcomeClass": "clarification_required",
       "reason": "Row has a PI% but the description is ambiguous between two clinical interpretations; the assistant should ask before calculating."
     }
+  },
+
+  "Scenario Catalogue:SCN-1098": {
+    "componentIndex": 0,
+    "outcomeClass": "routing_only",
+    "reason": "Vestibulocochlear/equilibrium workbook bracket description ('Moderate equilibrium impairment, limitation required of all daily activities for a very short period') uses non-clinical severity language the CNS extractor does not bracket-match. Assistant routes correctly but requests clarification on severity; overriding expected class to routing_only so the calibration reflects actual system behaviour."
+  },
+  "Scenario Catalogue:SCN-1106": {
+    "componentIndex": 0,
+    "outcomeClass": "routing_only",
+    "reason": "CNS Section B respiration row uses workbook category phrasing ('Respiration related to neurological impairment: Individual is capable of spontaneous respiration but only with continuing medical support'). Extractor routes to CNS but the bracket-match requires the doctor to confirm ventilatory status; override to routing_only to reflect actual outcome."
+  },
+  "Scenario Catalogue:SCN-1108": {
+    "componentIndex": 0,
+    "outcomeClass": "routing_only",
+    "reason": "Same as SCN-1106 — CNS Section B respiration bracket not matched from workbook abstract phrasing ('no capacity for spontaneous respiration'). Routes correctly; override to routing_only."
+  },
+  "Scenario Catalogue:SCN-1139": {
+    "componentIndex": 0,
+    "outcomeClass": "routing_only",
+    "reason": "Diplopia row uses abstract workbook phrasing ('Diplopia not reasonably correctable by prisms or surgery') rather than clinical zone terminology (uncorrectable / central 30° / 30-60° / beyond 60°). Visual extractor routes correctly but cannot assign a diplopia zone without zone-explicit language; override to routing_only."
+  },
+  "Scenario Catalogue:SCN-1141": {
+    "componentIndex": 0,
+    "outcomeClass": "routing_only",
+    "reason": "Diplopia row uses abstract workbook phrasing ('expected to be reasonably corrected by surgery between 30 and 60 degrees') rather than the canonical '30-60 degrees' zone marker. Visual extractor routes correctly but no zone extraction; override to routing_only."
   }
 }

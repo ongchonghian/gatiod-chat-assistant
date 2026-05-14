@@ -293,9 +293,22 @@ export function extractVisual(
     if (!re.test(text)) continue;
     const rightCtx = RIGHT_EYE_RE.test(text);
     const leftCtx  = LEFT_EYE_RE.test(text);
-    // If no side context, apply to both (modifier applies bilaterally)
-    const applyRight = rightCtx || (!rightCtx && !leftCtx);
-    const applyLeft  = leftCtx  || (!rightCtx && !leftCtx);
+    const bothCtx  = BOTH_EYES_RE.test(text);
+    if (!rightCtx && !leftCtx && !bothCtx) {
+      // Eye laterality is a required clinical field — no silent bilateral default.
+      // Ask the doctor which eye before applying the modifier.
+      if (!pending.some((p) => (p.parsed as Record<string, unknown>)?.modifierId === id)) {
+        pending.push(makePending(
+          "visual_modifier_eye_pick", src, VISUAL_FK_LEFT_MODIFIERS,
+          "Which eye has the finding?",
+          ["Right eye", "Left eye", "Both eyes"],
+          { modifierId: id },
+        ));
+      }
+      continue;
+    }
+    const applyRight = rightCtx || bothCtx;
+    const applyLeft  = leftCtx  || bothCtx;
 
     if (applyRight) {
       const existArr = (patch[VISUAL_FK_RIGHT_MODIFIERS]?.value ?? ef[VISUAL_FK_RIGHT_MODIFIERS]?.value) as string[] | undefined;
@@ -319,8 +332,21 @@ export function extractVisual(
     if (!re.test(text)) continue;
     const rightCtx = RIGHT_EYE_RE.test(text);
     const leftCtx  = LEFT_EYE_RE.test(text);
-    const applyRight = rightCtx || (!rightCtx && !leftCtx);
-    const applyLeft  = leftCtx  || (!rightCtx && !leftCtx);
+    const bothCtx  = BOTH_EYES_RE.test(text);
+    if (!rightCtx && !leftCtx && !bothCtx) {
+      // Eye laterality is a required clinical field — no silent bilateral default.
+      if (!pending.some((p) => (p.parsed as Record<string, unknown>)?.conditionId === id)) {
+        pending.push(makePending(
+          "visual_condition_eye_pick", src, VISUAL_FK_LEFT_CONDITIONS,
+          "Which eye has the condition?",
+          ["Right eye", "Left eye", "Both eyes"],
+          { conditionId: id },
+        ));
+      }
+      continue;
+    }
+    const applyRight = rightCtx || bothCtx;
+    const applyLeft  = leftCtx  || bothCtx;
 
     if (applyRight) {
       const existArr = (patch[VISUAL_FK_RIGHT_CONDITIONS]?.value ?? ef[VISUAL_FK_RIGHT_CONDITIONS]?.value) as string[] | undefined;

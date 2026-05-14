@@ -119,20 +119,27 @@ describe("enucleation detection", () => {
 // ── Functional modifiers ───────────────────────────────────────────────────────
 
 describe("functional modifiers", () => {
-  it("detects loss of accommodation", () => {
-    const r = extractVisual(utt("visual impairment loss of accommodation pseudophakia"), emptyState());
+  it("detects loss of accommodation (bilateral)", () => {
+    const r = extractVisual(utt("visual impairment loss of accommodation pseudophakia both eyes"), emptyState());
     expect((r.extractedFactsPatch[VISUAL_FK_RIGHT_MODIFIERS]?.value as string[])?.includes("accommodation")).toBe(true);
     expect((r.extractedFactsPatch[VISUAL_FK_LEFT_MODIFIERS]?.value as string[])?.includes("accommodation")).toBe(true);
     expect(r.slotSignalsPatch.modifiers).toBe(true);
   });
 
-  it("detects contrast sensitivity loss", () => {
-    const r = extractVisual(utt("eye impairment contrast sensitivity loss"), emptyState());
+  it("pushes PendingObservation when modifier has no eye laterality", () => {
+    const r = extractVisual(utt("visual impairment loss of accommodation pseudophakia"), emptyState());
+    expect(r.pendingObservationsToAdd.some((p) => (p.parsed as Record<string, unknown>)?.modifierId === "accommodation")).toBe(true);
+    expect(r.extractedFactsPatch[VISUAL_FK_RIGHT_MODIFIERS]).toBeUndefined();
+    expect(r.extractedFactsPatch[VISUAL_FK_LEFT_MODIFIERS]).toBeUndefined();
+  });
+
+  it("detects contrast sensitivity loss (right eye)", () => {
+    const r = extractVisual(utt("right eye impairment contrast sensitivity loss"), emptyState());
     expect((r.extractedFactsPatch[VISUAL_FK_RIGHT_MODIFIERS]?.value as string[])?.includes("contrast_glare")).toBe(true);
   });
 
-  it("detects colour loss", () => {
-    const r = extractVisual(utt("visual impairment colour differentiation loss"), emptyState());
+  it("detects colour loss (right eye)", () => {
+    const r = extractVisual(utt("right eye visual impairment colour differentiation loss"), emptyState());
     expect((r.extractedFactsPatch[VISUAL_FK_RIGHT_MODIFIERS]?.value as string[])?.includes("colour")).toBe(true);
   });
 });
@@ -150,13 +157,20 @@ describe("specific ophthalmic conditions", () => {
     expect((r.extractedFactsPatch[VISUAL_FK_RIGHT_CONDITIONS]?.value as string[])?.includes("cataract")).toBe(true);
   });
 
-  it("detects corneal opacity", () => {
-    const r = extractVisual(utt("ocular corneal opacity scar"), emptyState());
+  it("detects corneal opacity (right eye)", () => {
+    const r = extractVisual(utt("right eye corneal opacity scar"), emptyState());
     expect((r.extractedFactsPatch[VISUAL_FK_RIGHT_CONDITIONS]?.value as string[])?.includes("corneal")).toBe(true);
   });
 
-  it("detects traumatic mydriasis", () => {
-    const r = extractVisual(utt("eye impairment traumatic mydriasis iris abnormalities"), emptyState());
+  it("pushes PendingObservation when condition has no eye laterality", () => {
+    const r = extractVisual(utt("ocular corneal opacity scar"), emptyState());
+    expect(r.pendingObservationsToAdd.some((p) => (p.parsed as Record<string, unknown>)?.conditionId === "corneal")).toBe(true);
+    expect(r.extractedFactsPatch[VISUAL_FK_RIGHT_CONDITIONS]).toBeUndefined();
+    expect(r.extractedFactsPatch[VISUAL_FK_LEFT_CONDITIONS]).toBeUndefined();
+  });
+
+  it("detects traumatic mydriasis (right eye)", () => {
+    const r = extractVisual(utt("right eye traumatic mydriasis iris abnormalities"), emptyState());
     expect((r.extractedFactsPatch[VISUAL_FK_RIGHT_CONDITIONS]?.value as string[])?.includes("mydriasis")).toBe(true);
   });
 });

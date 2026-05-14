@@ -93,15 +93,6 @@ export function gradeOutcome(
 
   const routedToExpected = response.route.systems.includes(expectedSystem);
 
-  // Legacy systems (CNS/visual) — route correct → legacy_deferred.
-  if ((expectedSystem === "cns" || expectedSystem === "visual") && routedToExpected) {
-    return {
-      observed: "legacy_deferred",
-      matches: expected === "legacy_deferred",
-      notes: "legacy system routed correctly",
-    };
-  }
-
   // Clarification asked + routed correctly.
   if (response.needsClarification && routedToExpected) {
     return {
