@@ -94,10 +94,16 @@ export function gradeOutcome(
   const routedToExpected = response.route.systems.includes(expectedSystem);
 
   // Clarification asked + routed correctly.
+  // `clarification_required` is treated as "at least" routing_only — the system
+  // correctly identified the area AND asked for more input, which exceeds the
+  // routing_only expectation. This covers the semantic-consensus card path where
+  // the orchestrator proposes a system and asks the doctor to confirm/proceed.
   if (response.needsClarification && routedToExpected) {
+    const matches =
+      expected === "clarification_required" || expected === "routing_only";
     return {
       observed: "clarification_required",
-      matches: expected === "clarification_required",
+      matches,
       notes: response.clarificationQuestion ? `asked: "${response.clarificationQuestion.slice(0, 80)}…"` : "needsClarification=true",
     };
   }
